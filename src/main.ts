@@ -164,6 +164,11 @@ type StrobeLight = {
   maxZ: number
 }
 
+type StrobeReflectionLight = {
+  light: StrobeLight
+  target: Vec3
+}
+
 type Vertex = [
   x: number,
   y: number,
@@ -1372,6 +1377,8 @@ const backLightX = [-4.5, 0, 4.5]
 const strobeLights = createStrobeLights()
 const players = createPlayers(100)
 let lightFrame = 0
+let strobeReflectionFrame = -1
+let strobeReflectionLights: StrobeReflectionLight[] = []
 const characterParts: CharacterPart[] = [
   { from: 'mixamorig:Hips', to: 'mixamorig:Neck', width: 0.26, depth: 0.16, color: shirtLight, start: -0.06, end: 1.02,
     top: 'torso' },
@@ -1988,10 +1995,7 @@ function addRenderedCharacter(
 
   const hair = playerHair(player.style.hairIndex)
 
-  if (hair && detailedHair) {
-    addCharacterHair(target, pose, hair, player, style.hairColor)
-  }
-  else if (hair && characterHairMeshes.length > 0) {
+  if (hair && characterHairMeshes.length > 0) {
     addNpcHairInstance(pose, hair, player, style.hairColor)
   }
 }
@@ -2402,22 +2406,38 @@ function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: numb
 
 function strobeReflection(point: Vec3, normal: Vec3) {
   let amount = 0
+  const active = activeStrobeReflectionLights()
 
-  for (const light of strobeLights) {
-    const strobe = Math.floor(strobeRandom(light.id, lightFrame) + 0.18)
-
-    if (strobe > 0) {
-      amount = Math.max(amount, strobeLightAmount(point, normal, light, lightFrame / 60))
-    }
+  for (const setup of active) {
+    amount = Math.max(amount, strobeLightAmount(point, normal, setup.light, setup.target))
   }
 
   return amount
 }
 
-function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, time: number) {
+function activeStrobeReflectionLights() {
+  if (strobeReflectionFrame !== lightFrame) {
+    strobeReflectionLights = []
+    strobeReflectionFrame = lightFrame
+
+    for (const light of strobeLights) {
+      const strobe = Math.floor(strobeRandom(light.id, lightFrame) + 0.18)
+
+      if (strobe > 0) {
+        strobeReflectionLights.push({
+          light,
+          target: strobeTarget(light, lightFrame / 60),
+        })
+      }
+    }
+  }
+
+  return strobeReflectionLights
+}
+
+function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, target: Vec3) {
   const top = 4.75
   const floor = -1.96
-  const target = strobeTarget(light, time)
   const t = clamp((top - point[1]) / (top - floor), 0, 1)
   const radiusX = mix(0.07, 0.5, t)
   const radiusZ = mix(0.07, 0.68, t)
@@ -2431,8 +2451,11 @@ function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, time: 
     return 0
   }
 
-  const toLight = subtract([light.x, top, light.z], point)
-  const facing = Math.max(0, dot(normal, normalize(toLight)))
+  const lx = light.x - point[0]
+  const ly = top - point[1]
+  const lz = light.z - point[2]
+  const length = Math.hypot(lx, ly, lz)
+  const facing = Math.max(0, (normal[0] * lx + normal[1] * ly + normal[2] * lz) / length)
   const inside = Math.pow(1 - cone, 0.45)
 
   return inside * Math.pow(facing, 0.78) * 7.2
