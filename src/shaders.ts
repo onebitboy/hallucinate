@@ -114,6 +114,7 @@ uniform float time;
 uniform vec3 cameraEye;
 uniform int renderZone;
 uniform int bloomPass;
+uniform int doorCoverVisible;
 uniform sampler2D treeShadowMap;
 
 in vec3 shade;
@@ -126,6 +127,13 @@ flat in float strobeId;
 out vec4 pixel;
 
 bool sceneVisible() {
+  if (strobeId > 9000.0 && doorCoverVisible == 0) {
+    return false;
+  }
+  if (renderZone == 0 && hazeAmount > 1.5) {
+    return false;
+  }
+
   bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
   bool shell = (
     abs(worldPosition.z - 4.0) < 0.18
@@ -510,18 +518,21 @@ vec3 hashStar(vec2 cell) {
 }
 
 vec3 nightSky(vec2 point) {
-  float starCell = 210.0;
+  float starCell = 445.0;
   vec2 cell = floor(point * vec2(starCell, starCell * 0.5));
   vec2 local = fract(point * vec2(starCell, starCell * 0.5)) - 0.5;
   vec3 seed = hashStar(cell);
-  float size = seed.y * seed.y * seed.y * seed.y;
-  float radius = mix(0.035, 0.16, size);
-  float star = step(0.972, seed.x) * smoothstep(radius, 0.0, length(local));
-  vec3 blue = vec3(0.55, 0.68, 1.0);
-  vec3 red = vec3(1.0, 0.58, 0.52);
-  vec3 yellow = vec3(1.0, 0.9, 0.52);
+  float size = seed.y * seed.y * seed.y;
+  float radius = mix(0.500, 0.01, pow(size, 0.15));
+  float star = step(0.955, seed.x) * smoothstep(radius, 0.0, length(local));
+  vec3 blue = vec3(0.44, 0.62, 1.0);
+  vec3 cyan = vec3(0.62, 0.95, 1.0);
+  vec3 red = vec3(1.0, 0.48, 0.38);
+  vec3 yellow = vec3(1.0, 0.86, 0.38);
   vec3 white = vec3(0.95, 0.97, 1.0);
-  vec3 starColor = seed.z < 0.25 ? blue : seed.z < 0.5 ? red : seed.z < 0.75 ? yellow : white;
+  vec3 starColor = seed.z < 0.18 ? blue : seed.z < 0.34 ? cyan : seed.z < 0.55 ? red
+    : seed.z < 0.76 ? yellow : white;
+  float twinkle = mix(0.72, 1.35, hashStar(cell + 19.0).x);
   vec3 low = vec3(0.015, 0.01, 0.035);
   vec3 high = vec3(0.0, 0.0, 0.012);
   vec2 moonDelta = vec2(abs(fract(point.x - 0.55 + 0.5) - 0.5), point.y - 0.62);
@@ -531,7 +542,7 @@ vec3 nightSky(vec2 point) {
   vec3 sky = mix(low, high, smoothstep(0.0, 1.0, point.y));
   vec3 moonColor = vec3(0.94, 0.92, 0.82);
 
-  return sky + starColor * star + moonColor * moonGlow + moonColor * moon;
+  return sky + starColor * star * twinkle + moonColor * moonGlow + moonColor * moon;
 }
 
 vec2 skyPoint(vec2 point) {

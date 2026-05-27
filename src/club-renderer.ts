@@ -19,6 +19,7 @@ type Camera = {
 type RoomUniforms = {
   bloomPass: WebGLUniformLocation
   cameraEye: WebGLUniformLocation
+  doorCoverVisible: WebGLUniformLocation
   renderZone: WebGLUniformLocation
   treeShadowSampler: WebGLUniformLocation
   viewProjection: WebGLUniformLocation
@@ -77,6 +78,7 @@ export function renderClubFrame(options: {
     uniforms: LightUniforms
   }
   outside: boolean
+  doorCoverVisible: boolean
   points: Float32Array
   post: {
     bloom: WebGLUniformLocation
@@ -121,6 +123,7 @@ export function renderClubFrame(options: {
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
+  gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
   gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)
@@ -139,6 +142,7 @@ export function renderClubFrame(options: {
     camera: options.camera,
     cameraMatrix: mainCameraMatrix,
     count: options.points.length / options.vertexSize,
+    doorCoverVisible: options.doorCoverVisible,
     gl,
     height: options.height,
     outside: options.outside,
@@ -179,6 +183,7 @@ export function renderClubFrame(options: {
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
+  gl.uniform1i(options.roomUniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
   gl.uniform1i(options.roomUniforms.treeShadowSampler, 4)

@@ -9,6 +9,7 @@ export function drawRoomDepth(options: {
   camera: Camera
   cameraMatrix: CameraMatrix
   count: number
+  doorCoverVisible: boolean
   gl: WebGL2RenderingContext
   height: number
   outside: boolean
@@ -17,6 +18,7 @@ export function drawRoomDepth(options: {
   uniforms: {
     bloomPass: WebGLUniformLocation
     cameraEye: WebGLUniformLocation
+    doorCoverVisible: WebGLUniformLocation
     renderZone: WebGLUniformLocation
     treeShadowSampler: WebGLUniformLocation
     viewProjection: WebGLUniformLocation
@@ -28,6 +30,7 @@ export function drawRoomDepth(options: {
   options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
   options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
   options.gl.uniform1i(options.uniforms.bloomPass, 0)
+  options.gl.uniform1i(options.uniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
   options.gl.activeTexture(options.gl.TEXTURE4)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.treeShadowMap)
   options.gl.uniform1i(options.uniforms.treeShadowSampler, 4)

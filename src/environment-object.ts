@@ -31,6 +31,8 @@ export function addRoom(target: Vertex[]) {
     0.04)
   addBox(target, backDoor.x, -2 + backDoor.height + 0.05, 4.035, backDoor.width + 0.2, 0.1, 0.08, [0.025, 0.035, 0.023],
     0.04)
+  addQuad(target, [doorRight, -2, 4], [doorLeft, -2, 4], [doorLeft, -2 + backDoor.height, 4], [doorRight,
+    -2 + backDoor.height, 4], [0.001, 0.001, 0.001], 0, 9001)
   addOutsideVideoBackdrop(target)
   addDoorPerimeterStripes(target)
   addBartenderBar(target)
@@ -239,15 +241,12 @@ function addOpenAirHut(target: Vertex[], floor: number) {
   addBox(target, outsideHut.x, postTop, back + 0.16, outsideHut.width, 0.16, 0.14, trim, 0)
   addBox(target, outsideHut.x, postTop, front - 0.16, outsideHut.width, 0.16, 0.14, trim, 0)
   addBox(target, left + 0.16, postTop, outsideHut.z, 0.14, 0.16, outsideHut.depth, trim, 0)
-  addBox(target, right - 0.16, postTop, outsideHut.z, 0.14, 0.16, outsideHut.depth, trim, 0)
 
   addQuad(target, [left - eave, roofBottom, back - eave], [right + eave, roofBottom, back - eave], [right + eave,
     ridge, ridgeZ], [left - eave, ridge, ridgeZ], roof, 0)
   addQuad(target, [right + eave, roofBottom, front + eave], [left - eave, roofBottom, front + eave], [left - eave,
     ridge, ridgeZ], [right + eave, ridge, ridgeZ], roof, 0)
   addTriangle(target, [left - eave, roofBottom, front + eave], [left - eave, roofBottom, back - eave], [left - eave,
-    ridge, ridgeZ], roof, 0)
-  addTriangle(target, [right + eave, roofBottom, back - eave], [right + eave, roofBottom, front + eave], [right + eave,
     ridge, ridgeZ], roof, 0)
   addBox(target, outsideHut.x, ridge, ridgeZ, outsideHut.width + eave * 2.1, 0.12, 0.12, trim, 0)
   addOpenAirHutBar(target, deckTop)

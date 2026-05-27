@@ -109,6 +109,8 @@ let lastStamp = 0
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
+let wasOutside = isOutside(characterPosition)
+let doorCoverReleased = true
 const saveTimer = createSaveTimer(0.5)
 
 addRoom(vertices)
@@ -131,6 +133,7 @@ const viewProjection = gl.getUniformLocation(program, 'viewProjection')
 const cameraEye = gl.getUniformLocation(program, 'cameraEye')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
 const bloomPass = gl.getUniformLocation(program, 'bloomPass')
+const doorCoverVisible = gl.getUniformLocation(program, 'doorCoverVisible')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
 const characterBoxViewProjection = gl.getUniformLocation(characterBoxProgram, 'viewProjection')
 const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
@@ -182,7 +185,8 @@ const characterBoxGeometry = createCharacterBoxGeometry()
 const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 
-if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !treeShadowSampler || !characterBoxViewProjection
+if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisible || !treeShadowSampler
+  || !characterBoxViewProjection
   || !characterBoxRenderZone || !lightTime || !lightSmokeMap || !lightRenderZone || !lightViewProjection
   || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
   || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
@@ -320,6 +324,19 @@ const draw = (stamp: number) => {
   chatUi.update(projector, stamp)
 
   const outside = isOutside(characterPosition)
+  const moving = lengthSq(localCharacter.input) > 0
+
+  if (outside && !wasOutside && moving) {
+    doorCoverReleased = false
+  }
+  if (outside && !moving) {
+    doorCoverReleased = true
+  }
+  if (!outside) {
+    doorCoverReleased = true
+  }
+
+  wasOutside = outside
   const sky = outside && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
@@ -359,6 +376,7 @@ const draw = (stamp: number) => {
         viewProjection: lightViewProjection,
       },
     },
+    doorCoverVisible: outside && doorCoverReleased,
     outside,
     points,
     post: {
@@ -375,6 +393,7 @@ const draw = (stamp: number) => {
     roomUniforms: {
       bloomPass,
       cameraEye,
+      doorCoverVisible,
       renderZone,
       treeShadowSampler,
       viewProjection,
@@ -453,7 +472,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const players = createPlayers(500, outsideTree, occupiedSeats)
+const players = createPlayers(150, outsideTree, occupiedSeats)
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
   boxInstanceSize: characterBoxInstanceSize,

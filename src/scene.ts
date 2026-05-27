@@ -1,7 +1,8 @@
 import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideDjBooth, outsideDjSpeakers,
-  outsideCouches, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight, roomBounds } from './scene-data.ts'
+import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideCouches, outsideDjBooth,
+  outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
+  roomBounds } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3 } from './types.ts'
 
 export type Seat = {
@@ -24,7 +25,7 @@ const seatStools = [...bartenderStools, ...outsideHutBarStools]
 const djSpeakerCollisions = djSpeakers.map(bounds => paddedBounds(bounds))
 const outsideDjBoothCollision = paddedBounds(outsideDjBooth)
 const outsideDjSpeakerCollisions = outsideDjSpeakers.map(bounds => paddedBounds(bounds))
-const outsideCouchCollisions = outsideCouches.map(bounds => paddedBounds(bounds))
+const outsideCouchCollisions = outsideCouches.map(bounds => couchCollisionBounds(bounds))
 const outsideHutBarCollision = paddedBounds(outsideHutBar)
 const outsideHutBarStoolCollisions = outsideHutBarStools.map(bounds => paddedBounds(bounds))
 const outsideHutBarDeckBounds: Bounds = {
@@ -245,6 +246,22 @@ function paddedBounds(bounds: Bounds, padding = 0.28): PaddedBounds {
     left: bounds.x - bounds.width / 2 - padding,
     right: bounds.x + bounds.width / 2 + padding,
   }
+}
+
+function couchCollisionBounds(bounds: (typeof outsideCouches)[number]): PaddedBounds {
+  const collision = paddedBounds(bounds, 0.22)
+  const endGap = 0.15
+
+  if (bounds.face === 'north' || bounds.face === 'south') {
+    collision.left += endGap
+    collision.right -= endGap
+  }
+  else {
+    collision.back += endGap
+    collision.front -= endGap
+  }
+
+  return collision
 }
 
 function hutPostBounds(bounds: Bounds): Bounds[] {

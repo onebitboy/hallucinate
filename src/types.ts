@@ -155,6 +155,7 @@ export type ResolvedPlayerStyle = {
 }
 
 export type PlayerDestination = {
+  kind: 'dj' | 'kiosk' | 'lounge' | 'random' | 'stool' | 'tree'
   outside: boolean
   position: Vec3
   lookAt?: Vec3
@@ -169,6 +170,11 @@ export type Player = {
   idleClipIndex: number
   input: Vec3
   nextDecision: number
+  nextPauseDecision?: number
+  pauseUntil?: number
+  sidestepUntil?: number
+  destinationUntil?: number
+  leavingSeatUntil?: number
   destination: PlayerDestination
   seat?: string
   sittingUntil?: number
