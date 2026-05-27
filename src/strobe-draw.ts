@@ -23,9 +23,8 @@ type StrobeDrawOptions = {
 }
 
 export function createStrobeDrawController(options: StrobeDrawOptions) {
-  const instances: number[] = []
-  let instanceBuffer = new Float32Array(0)
-  const instanceBufferCache = { data: instanceBuffer }
+  let instances = new Float32Array(0)
+  const instanceBufferCache = { data: instances }
   let instanceCount = 0
   let reflectionFrame = -1
   let reflectionLights: StrobeReflectionLight[] = []
@@ -36,44 +35,42 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
       frame = nextFrame
     },
     updateInstances(time: number, zone: VideoZone) {
-      instances.length = 0
+      let length = 0
 
       for (const light of options.lights) {
         if (light.zone !== zone) {
           continue
         }
 
+        if (instances.length < length + options.instanceSize) {
+          const next = new Float32Array(Math.max(length + options.instanceSize, instances.length * 2, 64))
+
+          next.set(instances)
+          instances = next
+          instanceBufferCache.data = instances
+        }
+
         const hit = strobeTarget(light, time)
         const outside = light.zone === 'outside'
 
-        instances.push(
-          light.x,
-          light.top,
-          light.z,
-          hit[0],
-          light.floor,
-          hit[2],
-          0.07,
-          outside ? 1.35 : 0.5,
-          outside ? 1.85 : 0.68,
-          light.color[0],
-          light.color[1],
-          light.color[2],
-          light.id,
-          outside ? 0.7 : 0.42,
-        )
+        instances[length++] = light.x
+        instances[length++] = light.top
+        instances[length++] = light.z
+        instances[length++] = hit[0]
+        instances[length++] = light.floor
+        instances[length++] = hit[2]
+        instances[length++] = 0.07
+        instances[length++] = outside ? 1.35 : 0.5
+        instances[length++] = outside ? 1.85 : 0.68
+        instances[length++] = light.color[0]
+        instances[length++] = light.color[1]
+        instances[length++] = light.color[2]
+        instances[length++] = light.id
+        instances[length++] = outside ? 0.7 : 0.42
       }
 
-      instanceCount = instances.length / options.instanceSize
-      if (instanceBuffer.length < instances.length) {
-        instanceBuffer = new Float32Array(instances.length)
-        instanceBufferCache.data = instanceBuffer
-      }
-
-      instanceBuffer.set(instances)
-      uploadFloatBuffer(options.gl, options.instanceBuffer, instanceBuffer.length === instances.length
-        ? instanceBuffer
-        : instanceBuffer.subarray(0, instances.length), instanceBufferCache)
+      instanceCount = length / options.instanceSize
+      uploadFloatBuffer(options.gl, options.instanceBuffer, instances.subarray(0, length), instanceBufferCache)
     },
     draw(nextFrame: number, cameraMatrix: CameraMatrix) {
       if (instanceCount === 0) {

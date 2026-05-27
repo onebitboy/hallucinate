@@ -129,7 +129,7 @@ export function renderClubFrame(options: {
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
   gl.disable(gl.POLYGON_OFFSET_FILL)
   gl.disable(gl.BLEND)
-  drawCharacters(options, options.width, options.height)
+  drawCharacters(options, options.width, options.height, true)
 
   drawRoomDepth({
     array: options.arrays.room,
@@ -184,7 +184,7 @@ export function renderClubFrame(options: {
   gl.polygonOffset(1, 1)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
   gl.disable(gl.POLYGON_OFFSET_FILL)
-  drawCharacters(options, options.bloomTarget.width, options.bloomTarget.height)
+  drawCharacters(options, options.bloomTarget.width, options.bloomTarget.height, false)
 
   drawRoomDepth({
     array: options.arrays.room,
@@ -229,7 +229,7 @@ export function renderClubFrame(options: {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 }
 
-function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: number, height: number) {
+function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: number, height: number, hair: boolean) {
   if (options.character.count > 0) {
     options.gl.bindVertexArray(options.arrays.character)
     options.gl.drawArrays(options.gl.TRIANGLES, 0, options.character.count)
@@ -248,17 +248,19 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
     uniforms: options.character.boxUniforms,
     width,
   })
-  drawNpcHair({
-    camera: options.camera,
-    cameraMatrix: width === options.width ? mainCameraMatrix : bloomCameraMatrix,
-    gl: options.gl,
-    hairRenderMeshes: options.character.hairRenderMeshes,
-    height,
-    outside: options.outside,
-    program: options.character.hairProgram,
-    uniforms: options.character.hairUniforms,
-    width,
-  })
+  if (hair) {
+    drawNpcHair({
+      camera: options.camera,
+      cameraMatrix: width === options.width ? mainCameraMatrix : bloomCameraMatrix,
+      gl: options.gl,
+      hairRenderMeshes: options.character.hairRenderMeshes,
+      height,
+      outside: options.outside,
+      program: options.character.hairProgram,
+      uniforms: options.character.hairUniforms,
+      width,
+    })
+  }
 }
 
 function drawLights(options: Parameters<typeof renderClubFrame>[0], width: number, height: number, frame: number) {
