@@ -2,23 +2,28 @@ import type { Vec3 } from './types.ts'
 
 export type VertexBufferCache = {
   data: Float32Array
+  length: number
 }
+
+export type VertexWriter = VertexBufferCache
 
 const lightPoint: Vec3 = [0, 0, 0]
 const lightNormal: Vec3 = [0, 1, 0]
 
-export function flattenVertices(target: number[], cache?: VertexBufferCache) {
-  const size = target.length
-  const data = cache ? resizeVertexBuffer(cache, size) : new Float32Array(size)
+export function resetVertexWriter(writer: VertexWriter) {
+  writer.length = 0
+}
 
-  data.set(target)
-
-  return data.length === size ? data : data.subarray(0, size)
+export function vertexWriterData(writer: VertexWriter) {
+  return writer.data.length === writer.length ? writer.data : writer.data.subarray(0, writer.length)
 }
 
 function resizeVertexBuffer(cache: VertexBufferCache, size: number) {
   if (cache.data.length < size) {
-    cache.data = new Float32Array(size)
+    const data = new Float32Array(Math.max(size, cache.data.length * 2, 1024))
+
+    data.set(cache.data.subarray(0, cache.length))
+    cache.data = data
   }
 
   return cache.data
@@ -39,7 +44,7 @@ export function triangleAreaSquared(a: Vec3, b: Vec3, c: Vec3) {
 }
 
 export function addCharacterBox(
-  target: number[],
+  target: VertexWriter,
   instances: number[],
   a: Vec3,
   b: Vec3,
@@ -123,7 +128,7 @@ export function addCharacterBox(
 }
 
 export function addCharacterQuad(
-  target: number[],
+  target: VertexWriter,
   a: Vec3,
   b: Vec3,
   c: Vec3,
@@ -142,7 +147,7 @@ export function addCharacterQuad(
 }
 
 function addLitQuad(
-  target: number[],
+  target: VertexWriter,
   a: Vec3,
   b: Vec3,
   c: Vec3,
@@ -176,7 +181,7 @@ function addLitQuad(
 }
 
 export function addFlatTriangle(
-  target: number[],
+  target: VertexWriter,
   ax: number,
   ay: number,
   az: number,
@@ -196,7 +201,7 @@ export function addFlatTriangle(
 }
 
 function addFlatQuad(
-  target: number[],
+  target: VertexWriter,
   a: Vec3,
   b: Vec3,
   c: Vec3,
@@ -210,7 +215,7 @@ function addFlatQuad(
 }
 
 function addFlatVertex(
-  target: number[],
+  target: VertexWriter,
   x: number,
   y: number,
   z: number,
@@ -218,7 +223,21 @@ function addFlatVertex(
   glow: number,
   strobe: number,
 ) {
-  target.push(x, y, z, color[0], color[1], color[2], glow, strobe, 0, 0, 0)
+  const data = resizeVertexBuffer(target, target.length + 11)
+  let offset = target.length
+
+  data[offset++] = x
+  data[offset++] = y
+  data[offset++] = z
+  data[offset++] = color[0]
+  data[offset++] = color[1]
+  data[offset++] = color[2]
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  target.length = offset
 }
 
 function addCharacterBoxInstance(

@@ -3,9 +3,10 @@ import {
   addCharacterBox,
   addCharacterQuad,
   addFlatTriangle,
-  flattenVertices,
+  resetVertexWriter,
+  vertexWriterData,
 } from './character-geometry.ts'
-import type { VertexBufferCache } from './character-geometry.ts'
+import type { VertexWriter } from './character-geometry.ts'
 import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
@@ -41,7 +42,7 @@ type BuildOptions = {
   rig: CharacterRig
   time: number
   drawCache?: CharacterDrawCache
-  vertexCache?: VertexBufferCache
+  vertexWriter?: VertexWriter
   width: number
   height: number
 }
@@ -59,7 +60,7 @@ export type CharacterDrawCache = {
   poses: Vec3[][]
   usedBasePoseKeys: Set<number>
   usedNpcBlendKeys: Set<number>
-  vertices: number[]
+  vertices: VertexWriter
 }
 
 const poseJointIndices = new Map(characterPoseJoints.map((name, index) => [name, index]))
@@ -83,7 +84,7 @@ const hairLightNormal: Vec3 = [0, 1, 0]
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
-  const vertices = cache?.vertices ?? []
+  const vertices = cache?.vertices ?? options.vertexWriter ?? { data: new Float32Array(0), length: 0 }
   const boxInstances = cache?.boxInstances ?? []
   const hairInstances = cache?.hairInstances ?? []
   const npcBlendCache = cache?.npcBlendCache ?? new Map()
@@ -94,7 +95,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const basePose = sampleBasePose(options.rig, options.time, characterPoseJoints, characterPoseJointSet)
   let poseIndex = 0
 
-  vertices.length = 0
+  resetVertexWriter(vertices)
   boxInstances.length = 0
   hairInstances.length = 0
   usedBasePoseKeys.clear()
@@ -134,14 +135,14 @@ export function buildCharacterDrawData(options: BuildOptions) {
   }
 
   return {
-    vertices: flattenVertices(vertices, options.vertexCache),
+    vertices: vertexWriterData(vertices),
     boxInstances,
     hairInstances,
   }
 }
 
 function addRenderedCharacter(
-  target: number[],
+  target: VertexWriter,
   boxInstances: number[],
   hairInstances: number[],
   player: CharacterInput,
@@ -248,7 +249,7 @@ function addNpcHairInstance(
 }
 
 function addCharacterPart(
-  target: number[],
+  target: VertexWriter,
   boxInstances: number[],
   pose: Vec3[],
   plan: { part: CharacterPart; fromIndex: number; toIndex: number },
@@ -313,7 +314,7 @@ function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
 }
 
 function addCharacterChest(
-  target: number[],
+  target: VertexWriter,
   boxInstances: number[],
   pose: Vec3[],
   player: { turn: number },
@@ -338,7 +339,7 @@ function addCharacterChest(
 }
 
 function addCharacterChestSide(
-  target: number[],
+  target: VertexWriter,
   boxInstances: number[],
   centerX: number,
   centerY: number,
@@ -369,7 +370,7 @@ function addCharacterChestSide(
 }
 
 function addCharacterSkirt(
-  target: number[],
+  target: VertexWriter,
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
@@ -429,7 +430,7 @@ function addCharacterSkirt(
 }
 
 function addCharacterHair(
-  target: number[],
+  target: VertexWriter,
   pose: Vec3[],
   mesh: HairMesh,
   turn: TurnBasis,

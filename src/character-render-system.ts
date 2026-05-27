@@ -9,7 +9,7 @@ import type { HairInstanceUploadCache } from './character-hair.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { createLocalCharacter } from './local-character.ts'
 import type { CharacterRig, HairRenderMesh, Player, Vec3 } from './types.ts'
-import type { VertexBufferCache } from './character-geometry.ts'
+import type { VertexWriter } from './character-geometry.ts'
 
 export function createCharacterRenderSystem(options: {
   boxInstanceBuffer: WebGLBuffer
@@ -45,10 +45,10 @@ export function createCharacterRenderSystem(options: {
     poses: [],
     usedBasePoseKeys: new Set(),
     usedNpcBlendKeys: new Set(),
-    vertices: [],
+    vertices: { data: new Float32Array(0), length: 0 },
   }
   const hairInstanceCache: HairInstanceUploadCache = { buffers: [], counts: [], uploads: [] }
-  const vertexCache: VertexBufferCache = { data: new Float32Array(0) }
+  const vertexWriter: VertexWriter = drawCache.vertices
 
   async function loadAssets(hairIndex: number) {
     const assets = await loadCharacterAssets(options.gl, hairIndex)
@@ -98,7 +98,7 @@ export function createCharacterRenderSystem(options: {
       rig,
       time,
       drawCache,
-      vertexCache,
+      vertexWriter,
       width: options.canvas.width,
     })
 
