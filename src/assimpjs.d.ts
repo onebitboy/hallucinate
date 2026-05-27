@@ -15,7 +15,7 @@ declare module 'assimpjs' {
   }
 
   type AssimpModule = {
-    FileList: new () => AssimpFileList
+    FileList: new() => AssimpFileList
     ConvertFileList(files: AssimpFileList, format: string): AssimpResult
   }
 

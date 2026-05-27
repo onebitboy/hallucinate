@@ -1,257 +1,96 @@
 import './style.css'
 import assimpjs from 'assimpjs'
-
-const outsideMotif = 'night' as 'afternoon' | 'night'
-
-type Vec3 = [number, number, number]
-const electricNavy: Vec3 = [0.0, 0.028, 0.42]
-type Quat = [number, number, number, number]
-type Mat4 = [
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-]
-
-type AssimpNode = {
-  name: string
-  transformation?: number[]
-  children?: AssimpNode[]
-}
-
-type AssimpChannel = {
-  name: string
-  positionkeys?: [number, Vec3][]
-  rotationkeys?: [number, Quat][]
-  scalingkeys?: [number, Vec3][]
-}
-
-type AssimpAnimation = {
-  duration?: number
-  tickspersecond?: number
-  channels?: AssimpChannel[]
-}
-
-type AssimpScene = {
-  rootnode: AssimpNode
-  meshes?: AssimpMesh[]
-  animations?: AssimpAnimation[]
-}
-
-type AssimpMesh = {
-  name: string
-  vertices: number[]
-  faces: number[][]
-}
-
-type CharacterClip = {
-  duration: number
-  ticksPerSecond: number
-  channels: Map<string, AssimpChannel>
-}
-
-type HairMesh = {
-  name: string
-  points: Vec3[]
-  faces: number[][]
-}
-
-type TreeMesh = {
-  points: Vec3[]
-  faces: number[][]
-  color: Vec3
-}
-
-type VideoZone = 'inside' | 'outside'
-
-type YouTubePlayer = {
-  cueVideoById(options: { videoId: string; startSeconds: number }): void
-  getCurrentTime(): number
-  loadVideoById(options: { videoId: string; startSeconds: number }): void
-  pauseVideo(): void
-  playVideo(): void
-}
-
-type YouTubeConstructor = new(
-  element: HTMLElement,
-  options: {
-    events: { onReady: () => void }
-    playerVars: Record<string, number>
-  },
-) => YouTubePlayer
-
-type YouTubeWindow = Window & {
-  YT?: {
-    Player: YouTubeConstructor
-  }
-  onYouTubeIframeAPIReady?: () => void
-}
-
-type CharacterRig = {
-  root: AssimpNode
-  nodes: RigNode[]
-  clips: Record<CharacterMode, CharacterClip>
-}
-
-type RigNode = {
-  name: string
-  parent: number
-  helper: boolean
-  transform: Mat4
-  origin: Vec3
-}
-
-type CharacterMode = 'stand' | 'run'
-type BottomMode = 'pants' | 'skirt'
-type TopMode = 'shirt' | 'sleeveless' | 'skin' | 'chest'
-type CharacterPart = {
-  from: string
-  to: string
-  width: number
-  depth: number
-  color: Vec3
-  glow?: number
-  start?: number
-  end?: number
-  top?: 'torso' | 'sleeve'
-  armOffset?: number
-  lift?: number
-  bottom?: true
-}
-
-type PlayerStyle = {
-  topStyleIndex: number
-  bottomStyleIndex: number
-  hairIndex: number
-  hairColorIndex: number
-}
-
-type ResolvedPlayerStyle = {
-  topMode: TopMode
-  bottomMode: BottomMode
-  shirt: Vec3
-  shirtLight: Vec3
-  pants: Vec3
-  shoe: Vec3
-  hairColor: Vec3
-}
-
-type PlayerDestination = {
-  position: Vec3
-  lookAt?: Vec3
-}
-
-type Player = {
-  position: Vec3
-  turn: number
-  motionBlend: number
-  input: Vec3
-  nextDecision: number
-  destination: PlayerDestination
-  style: PlayerStyle
-  resolvedStyle: ResolvedPlayerStyle
-  seed: number
-}
-
-type SampledPose = {
-  stand: Map<string, Vec3>
-  run: Map<string, Vec3>
-}
-
-type PoseBlendCache = Map<number, Map<string, Vec3>>
-
-type CharacterBoxGeometry = {
-  data: Float32Array
-  count: number
-}
-
-type StrobeLight = {
-  id: number
-  x: number
-  z: number
-  zone: VideoZone
-  top: number
-  floor: number
-  color: Vec3
-  minX: number
-  maxX: number
-  minZ: number
-  maxZ: number
-}
-
-type StrobeReflectionLight = {
-  light: StrobeLight
-  target: Vec3
-}
-
-type Vertex = [
-  x: number,
-  y: number,
-  z: number,
-  r: number,
-  g: number,
-  b: number,
-  glow: number,
-  strobe: number,
-  u: number,
-  v: number,
-  haze: number,
-]
-
-type Target = {
-  frame: WebGLFramebuffer
-  color: WebGLTexture
-  depth: WebGLRenderbuffer
-  width: number
-  height: number
-}
-
-type Bounds = {
-  x: number
-  z: number
-  width: number
-  depth: number
-}
-
-type CircleBounds = {
-  x: number
-  z: number
-  radius: number
-}
-
-type HairRenderMesh = {
-  array: WebGLVertexArrayObject
-  vertexBuffer: WebGLBuffer
-  instanceBuffer: WebGLBuffer
-  vertexCount: number
-  instanceCount: number
-}
-
-type HairInstance = {
-  meshIndex: number
-  center: Vec3
-  side: Vec3
-  up: Vec3
-  forward: Vec3
-  color: Vec3
-}
-
-type ClubGlobal = typeof globalThis & {
-  clubFrameId?: number
-  clubCharacterRigLoad?: Promise<CharacterRig>
-}
+import {
+  characterBones,
+  characterFloor,
+  characterGroundJoints,
+  characterScale,
+  hairPalette,
+  jewelPalette,
+  pants,
+  shirt,
+  shirtLight,
+  shoe,
+  skin,
+} from './character-data.ts'
+import { createHairMeshes, createHairRenderMeshes, updateHairInstances } from './character-hair.ts'
+import {
+  createCharacterClip,
+  createRigNodes,
+  sampleBasePose,
+  sampleCharacterPose,
+  validateCharacterRig,
+} from './character-rig.ts'
+import { electricNavy, outsideMotif } from './constants.ts'
+import {
+  add,
+  clamp,
+  cross,
+  dot,
+  lengthSq,
+  lerpVec3,
+  mix,
+  normalize,
+  normalizeIndex,
+  normalizeInto,
+  scale,
+  setVec3,
+  smoothAngle,
+  smoothstep,
+  subtract,
+} from './math.ts'
+import { projectedQuadTransform, projectWallPoint } from './projection.ts'
+import {
+  characterBoxFragment,
+  characterBoxVertex,
+  fragment,
+  hairFragment,
+  hairVertex,
+  lightFragment,
+  postFragment,
+  postVertex,
+  smokeFragment,
+  smokeVertex,
+  strobeVertex,
+  vertex,
+} from './shaders.ts'
+import type {
+  AssimpScene,
+  BottomMode,
+  Bounds,
+  CharacterMode,
+  CharacterPart,
+  CharacterRig,
+  CircleBounds,
+  ClubGlobal,
+  HairInstance,
+  HairMesh,
+  HairRenderMesh,
+  Player,
+  PlayerDestination,
+  PlayerStyle,
+  PoseBlendCache,
+  ResolvedPlayerStyle,
+  SampledPose,
+  StrobeLight,
+  StrobeReflectionLight,
+  TopMode,
+  TreeMesh,
+  Vec3,
+  Vertex,
+  VideoZone,
+  YouTubePlayer,
+  YouTubeWindow,
+} from './types.ts'
+import {
+  createCharacterBoxGeometry,
+  createProgram,
+  createSmokeMap,
+  createStrobeGeometry,
+  createTarget,
+  createTreeShadowMap,
+  resizeTarget,
+} from './webgl.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -309,671 +148,6 @@ const gl = canvas.getContext('webgl2', {
 if (!gl) {
   throw new Error('WebGL2 is not available')
 }
-
-const vertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 color;
-layout(location = 2) in float glow;
-layout(location = 3) in float strobe;
-layout(location = 4) in vec2 pattern;
-layout(location = 5) in float haze;
-
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
-
-out vec3 shade;
-out float light;
-out vec2 patternUv;
-out float hazeAmount;
-out vec3 worldPosition;
-flat out float strobeId;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
-void main() {
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
-  shade = color;
-  light = glow;
-  patternUv = pattern;
-  hazeAmount = haze;
-  worldPosition = position;
-  strobeId = strobe;
-}
-`
-
-const characterBoxVertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec3 boxPosition;
-layout(location = 1) in float boxShade;
-layout(location = 2) in vec3 instanceA;
-layout(location = 3) in vec3 instanceB;
-layout(location = 4) in vec3 instanceSide;
-layout(location = 5) in vec3 instanceUp;
-layout(location = 6) in vec3 instanceColor;
-layout(location = 7) in float instanceGlow;
-layout(location = 8) in float instanceStrobe;
-
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
-
-out vec3 shade;
-out float light;
-out vec2 patternUv;
-out float hazeAmount;
-out vec3 worldPosition;
-flat out float strobeId;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
-void main() {
-  vec3 along = mix(instanceA, instanceB, boxPosition.z);
-  vec3 position = along + instanceSide * boxPosition.x + instanceUp * boxPosition.y;
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
-  shade = instanceColor * boxShade;
-  light = instanceGlow;
-  patternUv = vec2(0.0);
-  hazeAmount = 0.0;
-  worldPosition = position;
-  strobeId = instanceStrobe;
-}
-`
-
-const characterBoxFragment = `#version 300 es
-precision highp float;
-
-uniform int renderZone;
-
-in vec3 shade;
-in float light;
-in vec2 patternUv;
-in float hazeAmount;
-in vec3 worldPosition;
-flat in float strobeId;
-
-out vec4 pixel;
-
-bool sceneVisible() {
-  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
-  bool shell = (
-    abs(worldPosition.z - 4.0) < 0.18
-    || abs(worldPosition.z + 24.0) < 0.18
-    || abs(worldPosition.x - 7.0) < 0.18
-    || abs(worldPosition.x + 7.0) < 0.18
-  ) && worldPosition.y > -2.15 && worldPosition.y < 5.15;
-  bool door = abs(worldPosition.z - 4.0) < 0.22
-    && worldPosition.x > -5.75 && worldPosition.x < -3.75
-    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
-
-  if (renderZone == 0) {
-    return !outsidePoint || door;
-  }
-
-  return outsidePoint || (shell && light < 0.12) || door;
-}
-
-void main() {
-  if (!sceneVisible()) {
-    discard;
-  }
-
-  pixel = vec4(shade + shade * light * 2.2, 1.0);
-}
-`
-
-const fragment = `#version 300 es
-precision highp float;
-
-uniform float time;
-uniform vec3 cameraEye;
-uniform int renderZone;
-uniform sampler2D treeShadowMap;
-
-in vec3 shade;
-in float light;
-in vec2 patternUv;
-in float hazeAmount;
-in vec3 worldPosition;
-flat in float strobeId;
-
-out vec4 pixel;
-
-bool sceneVisible() {
-  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
-  bool shell = (
-    abs(worldPosition.z - 4.0) < 0.18
-    || abs(worldPosition.z + 24.0) < 0.18
-    || abs(worldPosition.x - 7.0) < 0.18
-    || abs(worldPosition.x + 7.0) < 0.18
-  ) && worldPosition.y > -2.15 && worldPosition.y < 5.15;
-  bool door = abs(worldPosition.z - 4.0) < 0.22
-    && worldPosition.x > -5.75 && worldPosition.x < -3.75
-    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
-
-  if (renderZone == 0) {
-    return !outsidePoint || door;
-  }
-
-  return outsidePoint || (shell && light < 0.12) || door;
-}
-
-float hash(vec2 point) {
-  return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float noise(vec2 point) {
-  vec2 cell = floor(point);
-  vec2 local = fract(point);
-  vec2 curve = local * local * (3.0 - 2.0 * local);
-  float a = hash(cell);
-  float b = hash(cell + vec2(1.0, 0.0));
-  float c = hash(cell + vec2(0.0, 1.0));
-  float d = hash(cell + vec2(1.0, 1.0));
-
-  return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y);
-}
-
-vec3 grassColor() {
-  vec2 field = worldPosition.xz * 0.11;
-  vec2 shadowUv = vec2(
-    (worldPosition.x + 72.0) / 144.0,
-    (worldPosition.z + 84.0) / 172.0
-  );
-  float cameraDistance = length(worldPosition.xz - cameraEye.xz);
-  float detail = noise(worldPosition.xz * 2.6) * 0.10 + noise(worldPosition.xz * 0.55) * 0.16;
-  float band = sin(field.x * 2.7 + noise(field * 2.0) * 2.4) * 0.5 + 0.5;
-  float hill = smoothstep(0.22, 0.92, noise(field + vec2(4.0, 9.0)) * 0.7 + band * 0.3);
-  float far = smoothstep(10.0, 55.0, cameraDistance);
-  float horizon = smoothstep(34.0, 60.0, cameraDistance);
-  float shadow = texture(treeShadowMap, shadowUv).a;
-  vec3 closeGrass = shade * (0.82 + detail);
-  vec3 distantGrass = mix(vec3(${outsideMotif === 'night' ? '0.008, 0.055, 0.025' : '0.035, 0.20, 0.055'}), vec3(${
-  outsideMotif === 'night' ? '0.025, 0.13, 0.055' : '0.08, 0.34, 0.095'
-}), hill);
-  vec3 hillGrass = mix(vec3(${outsideMotif === 'night' ? '0.004, 0.035, 0.018' : '0.018, 0.12, 0.035'}), vec3(${
-  outsideMotif === 'night' ? '0.018, 0.095, 0.04' : '0.065, 0.25, 0.06'
-}), hill);
-  vec3 grass = mix(mix(closeGrass, distantGrass, far), hillGrass, horizon * 0.55);
-
-  return grass * ${outsideMotif === 'night' ? '0.45' : '1.0'} * mix(1.0, ${
-  outsideMotif === 'night' ? '1.0' : '0.25'
-}, shadow);
-}
-
-void main() {
-  if (!sceneVisible()) {
-    discard;
-  }
-
-  float white = step(0.3, min(shade.r, min(shade.g, shade.b)));
-  float random = fract(sin(strobeId * 17.13 + time * 9.27) * 43758.5453);
-  float strobe = mix(1.0, step(0.82, random), white);
-  float receiverShadow = texture(treeShadowMap, patternUv).a;
-
-  if (hazeAmount > 4.5) {
-    if (receiverShadow < 0.01) {
-      discard;
-    }
-
-    pixel = vec4(vec3(0.002, 0.018, 0.004), receiverShadow * 0.42);
-    return;
-  }
-
-  vec3 base = hazeAmount > 1.5 ? grassColor() : shade;
-  vec3 emissive = shade * light * 2.2 * strobe;
-  float alpha = hazeAmount > 3.5 ? 0.34 : 1.0;
-
-  pixel = vec4(base + emissive, alpha);
-}
-`
-
-const lightFragment = `#version 300 es
-precision highp float;
-
-uniform float time;
-uniform sampler2D smokeMap;
-uniform int renderZone;
-
-in vec3 shade;
-in float light;
-in vec2 patternUv;
-in float hazeAmount;
-in vec3 worldPosition;
-flat in float strobeId;
-
-out vec4 pixel;
-
-bool sceneVisible() {
-  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
-  bool door = abs(worldPosition.z - 4.0) < 0.22
-    && worldPosition.x > -5.75 && worldPosition.x < -3.75
-    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
-
-  return renderZone == 0 ? (!outsidePoint || door) : (outsidePoint || door);
-}
-
-float smokeDensity(vec2 uv) {
-  vec2 drift = vec2(strobeId * 0.173, time * 0.0018);
-  float cloud = texture(smokeMap, uv * vec2(1.0, 1.75) + drift).r;
-  float detail = texture(smokeMap, uv * vec2(2.7, 4.8) + drift * 0.37 + vec2(0.31, 0.17)).r;
-  float smoke = smoothstep(0.28, 0.74, cloud * 0.78 + detail * 0.22);
-  float body = smoothstep(0.03, 0.18, uv.y) * (1.0 - smoothstep(0.94, 1.0, uv.y));
-
-  return (0.26 + smoke * 0.9) * body;
-}
-
-void main() {
-  if (!sceneVisible()) {
-    discard;
-  }
-
-  float white = step(0.3, min(shade.r, min(shade.g, shade.b)));
-  float red = step(0.45, shade.r) * (1.0 - step(0.14, shade.g)) * (1.0 - step(0.1, shade.b));
-  float random = fract(sin(strobeId * 17.13 + time * 9.27) * 43758.5453);
-  float redRandom = fract(sin(strobeId * 31.7 + floor(time / 90.0) * 13.11) * 43758.5453);
-  float redControlled = red * step(0.5, strobeId);
-  float redGate = step(0.28, redRandom);
-  float beam = step(0.5, hazeAmount);
-  float beamGate = step(0.56, random);
-  float strobe = mix(1.0, step(0.82, random), white) * mix(1.0, redGate, redControlled) * mix(1.0, beamGate, beam);
-  float density = 1.0;
-
-  if (hazeAmount > 0.5) {
-    density = smokeDensity(patternUv);
-  }
-
-  pixel = vec4(shade + shade * light * 2.2 * strobe * density, clamp(light * strobe * density, 0.0, 1.0));
-}
-`
-
-const hairVertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec3 localPosition;
-layout(location = 1) in vec3 instanceCenter;
-layout(location = 2) in vec3 instanceSide;
-layout(location = 3) in vec3 instanceUp;
-layout(location = 4) in vec3 instanceForward;
-layout(location = 5) in vec3 instanceColor;
-
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
-
-out vec3 shade;
-out vec3 worldPosition;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
-void main() {
-  vec3 position = instanceCenter
-    + instanceSide * localPosition.x
-    + instanceUp * localPosition.y
-    + instanceForward * localPosition.z;
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-
-  gl_Position = projection * camera * vec4(position, 1.0);
-  shade = instanceColor;
-  worldPosition = position;
-}
-`
-
-const hairFragment = `#version 300 es
-precision highp float;
-
-uniform int renderZone;
-
-in vec3 shade;
-in vec3 worldPosition;
-
-out vec4 pixel;
-
-bool sceneVisible() {
-  bool outsidePoint = worldPosition.x < -7.05 || worldPosition.x > 7.05 || worldPosition.z < -24.05 || worldPosition.z > 4.05;
-  bool door = abs(worldPosition.z - 4.0) < 0.22
-    && worldPosition.x > -5.75 && worldPosition.x < -3.75
-    && worldPosition.y > -2.15 && worldPosition.y < 0.75;
-
-  return renderZone == 0 ? (!outsidePoint || door) : (outsidePoint || door);
-}
-
-void main() {
-  if (!sceneVisible()) {
-    discard;
-  }
-
-  pixel = vec4(shade, 1.0);
-}
-`
-
-const strobeVertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec4 local;
-layout(location = 1) in vec4 paint;
-layout(location = 2) in vec3 instanceTop;
-layout(location = 3) in vec3 instanceHit;
-layout(location = 4) in vec3 instanceBeamRadius;
-layout(location = 5) in vec3 instanceColor;
-layout(location = 6) in vec2 instanceMeta;
-
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
-
-out vec3 shade;
-out float light;
-out vec2 patternUv;
-out float hazeAmount;
-out vec3 worldPosition;
-flat out float strobeId;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
-void main() {
-  float pool = step(0.5, local.w);
-  vec3 beamTop = instanceTop + vec3(local.x * instanceBeamRadius.x, 0.0, local.y * instanceBeamRadius.x);
-  vec3 beamBottom = instanceHit + vec3(local.x * instanceBeamRadius.y, 0.0, local.y * instanceBeamRadius.z);
-  vec3 beamPosition = mix(beamTop, beamBottom, local.z);
-  vec3 poolPosition = instanceHit + vec3(local.x, 0.02, local.y);
-  vec3 position = mix(beamPosition, poolPosition, pool);
-  float glow = mix(instanceMeta.y * paint.z, paint.z, pool);
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
-  shade = instanceColor;
-  light = glow;
-  patternUv = paint.xy;
-  hazeAmount = paint.w;
-  worldPosition = position;
-  strobeId = instanceMeta.x;
-}
-`
-
-const smokeVertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec3 center;
-layout(location = 1) in vec3 offset;
-layout(location = 3) in float seed;
-layout(location = 4) in vec2 pattern;
-
-uniform float time;
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
-
-out vec2 patternUv;
-out vec2 localUv;
-out float opacity;
-out float patchSeed;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
-void main() {
-  vec3 viewForward = normalize(cameraCenter - cameraEye);
-  vec3 right = normalize(cross(viewForward, vec3(0.0, 1.0, 0.0)));
-  vec3 up = normalize(cross(right, viewForward));
-  float cycle = fract(time * 0.018 + seed * 0.137 + center.y * 0.19);
-  float fade = smoothstep(0.0, 0.18, cycle) * (1.0 - smoothstep(0.78, 1.0, cycle));
-  vec2 drift = vec2(sin(seed * 2.41), cos(seed * 3.17));
-  vec3 place = center;
-
-  place.y = -1.45 + pow(cycle, 1.45) * 4.8;
-  place.x += drift.x * (cycle - 0.5) * 1.45 + sin(time * 0.11 + seed * 6.1) * 0.22;
-  place.z += drift.y * (cycle - 0.5) * 1.9 + cos(time * 0.09 + seed * 4.7) * 0.28;
-
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec3 position = place + right * offset.x + up * offset.y;
-
-  gl_Position = projection * camera * vec4(position, 1.0);
-  localUv = pattern;
-  patternUv = pattern + vec2(seed * 0.071 + time * 0.012, time * 0.026);
-  opacity = offset.z * fade;
-  patchSeed = seed;
-}
-`
-
-const smokeFragment = `#version 300 es
-precision highp float;
-
-uniform float time;
-uniform sampler2D smokeMap;
-
-in vec2 patternUv;
-in vec2 localUv;
-in float opacity;
-in float patchSeed;
-
-out vec4 pixel;
-
-void main() {
-  float swirl = time * 0.42 + patchSeed * 1.71;
-  vec2 local = localUv - 0.5;
-  vec2 warp = vec2(
-    sin(local.y * 9.0 + swirl) * 0.11 + sin(local.x * 5.0 - swirl * 0.7) * 0.06,
-    cos(local.x * 8.0 - swirl * 0.83) * 0.1 + sin(local.y * 6.0 + swirl * 0.51) * 0.06
-  );
-  vec2 uv = patternUv + warp;
-  float edgeNoise = texture(smokeMap, uv * vec2(1.9, 1.3) + vec2(time * 0.018, patchSeed * 0.013)).r;
-  float radius = 0.38 + (edgeNoise - 0.5) * 0.18;
-  float edge = 1.0 - smoothstep(radius * 0.55, radius, length(local + warp * 0.32));
-  float cloudA = texture(smokeMap, uv * vec2(1.5, 1.1)).r;
-  float cloudB = texture(smokeMap, uv * vec2(3.6, 2.4) + vec2(patchSeed * 0.037, -time * 0.031)).r;
-  float cloud = cloudA * 0.7 + cloudB * 0.3;
-  float body = (0.22 + smoothstep(0.16, 0.72, cloud) * 0.78) * edge;
-  float alpha = body * opacity;
-
-  pixel = vec4(vec3(0.58, 0.55, 0.5), alpha);
-}
-`
-
-const postVertex = `#version 300 es
-precision highp float;
-
-layout(location = 0) in vec2 position;
-
-out vec2 uv;
-
-void main() {
-  uv = position * 0.5 + 0.5;
-  gl_Position = vec4(position, 0.0, 1.0);
-}
-`
-
-const postFragment = `#version 300 es
-precision highp float;
-
-uniform sampler2D scene;
-uniform sampler2D bloom;
-uniform vec2 bloomResolution;
-
-in vec2 uv;
-
-out vec4 pixel;
-
-vec3 bright(vec4 texel) {
-  float redGlow = texel.a * smoothstep(0.58, 1.0, texel.r);
-  float blueGlow = texel.a * smoothstep(0.045, 0.24, texel.b) * step(texel.r * 1.4, texel.b);
-
-  return redGlow * vec3(1.0, 0.035, 0.012) + blueGlow * vec3(0.0, 0.067, 1.0);
-}
-
-vec3 afternoonSky(vec2 point) {
-  vec3 horizon = vec3(0.96, 0.36, 0.2);
-  vec3 peach = vec3(0.9, 0.54, 0.34);
-  vec3 blue = vec3(0.28, 0.52, 0.86);
-  float lift = smoothstep(0.28, 0.92, point.y);
-  float warmth = 1.0 - smoothstep(0.18, 0.55, point.y);
-
-  return mix(mix(peach, blue, lift), horizon, warmth * 0.72);
-}
-
-vec3 nightSky(vec2 point) {
-  float starCell = 150.0;
-  vec2 cell = floor(point * vec2(starCell, starCell * 0.62));
-  vec2 local = fract(point * vec2(starCell, starCell * 0.62)) - 0.5;
-  float seed = fract(sin(dot(cell, vec2(41.7, 289.3))) * 37158.5453);
-  float star = step(0.985, seed) * smoothstep(0.055, 0.0, length(local));
-  vec3 low = vec3(0.015, 0.01, 0.035);
-  vec3 high = vec3(0.0, 0.0, 0.012);
-
-  return mix(low, high, smoothstep(0.0, 1.0, point.y)) + vec3(star);
-}
-
-void main() {
-  vec4 source = texture(scene, uv);
-  vec3 base = source.rgb;
-  float sky = 1.0 - smoothstep(0.02, 0.12, distance(base, vec3(0.28, 0.55, 0.92)));
-  vec2 texel = 1.0 / bloomResolution;
-  vec2 near = texel * 3.2;
-  vec2 far = texel * 7.0;
-  vec3 glow = bright(texture(bloom, uv)) * 0.72;
-
-  base = mix(base, ${outsideMotif === 'night' ? 'nightSky(uv)' : 'afternoonSky(uv)'}, sky);
-
-  glow += bright(texture(bloom, uv + vec2(near.x, 0.0))) * 0.18;
-  glow += bright(texture(bloom, uv - vec2(near.x, 0.0))) * 0.18;
-  glow += bright(texture(bloom, uv + vec2(0.0, near.y))) * 0.15;
-  glow += bright(texture(bloom, uv - vec2(0.0, near.y))) * 0.15;
-  glow += bright(texture(bloom, uv + vec2(far.x, 0.0))) * 0.09;
-  glow += bright(texture(bloom, uv - vec2(far.x, 0.0))) * 0.09;
-  glow += bright(texture(bloom, uv + vec2(0.0, far.y))) * 0.07;
-  glow += bright(texture(bloom, uv - vec2(0.0, far.y))) * 0.07;
-
-  vec3 color = base + glow * 4.4;
-  color = vec3(1.0) - exp(-color * 1.05);
-  color *= vec3(1.02, 0.98, 0.96);
-
-  pixel = vec4(pow(color, vec3(0.9)), 1.0);
-}
-`
 
 const vertices: Vertex[] = []
 const lights: Vertex[] = []
@@ -1131,7 +305,8 @@ let strobeInstanceCount = 0
 if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !characterBoxResolution
   || !characterBoxCameraEye || !characterBoxCameraCenter || !characterBoxRenderZone || !lightTime || !lightSmokeMap
   || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !strobeTime || !strobeSmokeMap
-  || !strobeRenderZone || !strobeResolution || !strobeCameraEye || !strobeCameraCenter || !hairResolution || !hairCameraEye
+  || !strobeRenderZone || !strobeResolution || !strobeCameraEye || !strobeCameraCenter || !hairResolution
+  || !hairCameraEye
   || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
   || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
@@ -1616,11 +791,20 @@ function updateStrobeInstances(time: number) {
     const outside = light.zone === 'outside'
 
     strobeInstances.push(
-      light.x, light.top, light.z,
-      hit[0], light.floor, hit[2],
-      0.07, outside ? 1.35 : 0.5, outside ? 1.85 : 0.68,
-      light.color[0], light.color[1], light.color[2],
-      light.id, outside ? 0.7 : 0.42,
+      light.x,
+      light.top,
+      light.z,
+      hit[0],
+      light.floor,
+      hit[2],
+      0.07,
+      outside ? 1.35 : 0.5,
+      outside ? 1.85 : 0.68,
+      light.color[0],
+      light.color[1],
+      light.color[2],
+      light.id,
+      outside ? 0.7 : 0.42,
     )
   }
 
@@ -1639,67 +823,6 @@ function drawStrobes(camera: ReturnType<typeof getCamera>, width: number, height
   gl.drawArraysInstanced(gl.TRIANGLES, 0, strobeGeometry.count, strobeInstanceCount)
 }
 
-const characterBones: [string, string][] = [
-  ['mixamorig:Hips', 'mixamorig:Spine'],
-  ['mixamorig:Spine', 'mixamorig:Spine1'],
-  ['mixamorig:Spine1', 'mixamorig:Spine2'],
-  ['mixamorig:Spine2', 'mixamorig:Neck'],
-  ['mixamorig:Neck', 'mixamorig:Head'],
-  ['mixamorig:Head', 'mixamorig:HeadTop_End'],
-  ['mixamorig:Spine2', 'mixamorig:LeftShoulder'],
-  ['mixamorig:LeftShoulder', 'mixamorig:LeftArm'],
-  ['mixamorig:LeftArm', 'mixamorig:LeftForeArm'],
-  ['mixamorig:LeftForeArm', 'mixamorig:LeftHand'],
-  ['mixamorig:Spine2', 'mixamorig:RightShoulder'],
-  ['mixamorig:RightShoulder', 'mixamorig:RightArm'],
-  ['mixamorig:RightArm', 'mixamorig:RightForeArm'],
-  ['mixamorig:RightForeArm', 'mixamorig:RightHand'],
-  ['mixamorig:Hips', 'mixamorig:LeftUpLeg'],
-  ['mixamorig:LeftUpLeg', 'mixamorig:LeftLeg'],
-  ['mixamorig:LeftLeg', 'mixamorig:LeftFoot'],
-  ['mixamorig:LeftFoot', 'mixamorig:LeftToeBase'],
-  ['mixamorig:LeftToeBase', 'mixamorig:LeftToe_End'],
-  ['mixamorig:Hips', 'mixamorig:RightUpLeg'],
-  ['mixamorig:RightUpLeg', 'mixamorig:RightLeg'],
-  ['mixamorig:RightLeg', 'mixamorig:RightFoot'],
-  ['mixamorig:RightFoot', 'mixamorig:RightToeBase'],
-  ['mixamorig:RightToeBase', 'mixamorig:RightToe_End'],
-]
-
-const characterGroundJoints = [
-  'mixamorig:LeftFoot',
-  'mixamorig:LeftToeBase',
-  'mixamorig:LeftToe_End',
-  'mixamorig:RightFoot',
-  'mixamorig:RightToeBase',
-  'mixamorig:RightToe_End',
-]
-const characterScale = 0.007
-const characterFloor = -1.95
-const shirt: Vec3 = [0.035, 0.04, 0.052]
-const shirtLight: Vec3 = [0.055, 0.07, 0.09]
-const pants: Vec3 = [0.035, 0.04, 0.052]
-const skin: Vec3 = [0.86, 0.58, 0.38]
-const shoe: Vec3 = [0.018, 0.018, 0.02]
-const jewelPalette: Vec3[] = [
-  [0.018, 0.018, 0.02],
-  [0.14, 0.145, 0.16],
-  [0.78, 0.76, 0.72],
-  [0.8, 0.03, 0.12],
-  [0.05, 0.52, 0.9],
-  [0.02, 0.72, 0.42],
-  [0.72, 0.08, 0.92],
-  [0.98, 0.72, 0.05],
-  [0.0, 0.82, 0.82],
-]
-const hairPalette: Vec3[] = [
-  [0.025, 0.018, 0.014],
-  [0.18, 0.09, 0.035],
-  [0.78, 0.62, 0.34],
-  [0.62, 0.12, 0.035],
-  [0.86, 0.84, 0.78],
-  ...jewelPalette.slice(3),
-]
 let shirtColorIndex = 1
 let topStyleIndex = 1
 let topMode: TopMode = 'shirt'
@@ -1778,9 +901,9 @@ async function loadCharacterRig(): Promise<CharacterRig> {
     },
   }
 
-  validateCharacterRig(rig.root)
+  validateCharacterRig(rig.root, characterBones)
   characterHairMeshes = [...createHairMeshes(manHair, 'man'), ...createHairMeshes(womanHair, 'woman')]
-  hairRenderMeshes = createHairRenderMeshes(characterHairMeshes)
+  hairRenderMeshes = createHairRenderMeshes(gl, characterHairMeshes)
   characterHairIndex = normalizeIndex(characterHairIndex, characterHairMeshes.length + 1)
   setCharacterHair()
   logCurrentHair()
@@ -2040,152 +1163,6 @@ function projectTreeShadow(point: Vec3, light: Vec3, ground: number): Vec3 {
   ]
 }
 
-function createHairMeshes(scene: AssimpScene, source: string): HairMesh[] {
-  const meshes = scene.meshes!.filter(mesh => mesh.name.toLowerCase().includes('hair'))
-    .filter((_, index) => !removedHairStyles.has(`${source}:${index}`))
-    .map(mesh => createHairMesh(mesh, source))
-
-  if (meshes.length === 0) {
-    throw new Error('Hair FBX has no hair meshes')
-  }
-
-  return meshes
-}
-
-const removedHairStyles = new Set([
-  'man:1',
-  'man:2',
-  'man:5',
-  'woman:2',
-])
-
-function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
-  const points: Vec3[] = []
-  const turnRightSideForward = source === 'man' && mesh.name === 'Wolf3D_Hair.009'
-
-  for (let i = 0; i < mesh.vertices.length; i += 3) {
-    points.push([mesh.vertices[i]!, mesh.vertices[i + 1]!, mesh.vertices[i + 2]!])
-  }
-
-  return {
-    name: `${source}:${mesh.name}`,
-    points: normalizeHairPoints(points, turnRightSideForward),
-    faces: mesh.faces.filter(face => face.length === 3),
-  }
-}
-
-function createHairRenderMeshes(meshes: HairMesh[]) {
-  return meshes.map(mesh => createHairRenderMesh(mesh))
-}
-
-function createHairRenderMesh(mesh: HairMesh): HairRenderMesh {
-  const array = gl.createVertexArray()
-  const vertexBuffer = gl.createBuffer()
-  const instanceBuffer = gl.createBuffer()
-
-  if (!array || !vertexBuffer || !instanceBuffer) {
-    throw new Error('Failed to create hair render mesh')
-  }
-
-  const data: number[] = []
-
-  for (const face of mesh.faces) {
-    const a = hairLocalPoint(mesh.points[face[0]!]!)
-    const b = hairLocalPoint(mesh.points[face[1]!]!)
-    const c = hairLocalPoint(mesh.points[face[2]!]!)
-
-    data.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
-  }
-
-  gl.bindVertexArray(array)
-  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW)
-  gl.enableVertexAttribArray(0)
-  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0)
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW)
-
-  for (let i = 0; i < 5; i++) {
-    const location = i + 1
-
-    gl.enableVertexAttribArray(location)
-    gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 15 * Float32Array.BYTES_PER_ELEMENT,
-      i * 3 * Float32Array.BYTES_PER_ELEMENT)
-    gl.vertexAttribDivisor(location, 1)
-  }
-
-  gl.bindVertexArray(null)
-
-  return {
-    array,
-    vertexBuffer,
-    instanceBuffer,
-    vertexCount: data.length / 3,
-    instanceCount: 0,
-  }
-}
-
-function hairLocalPoint(point: Vec3): Vec3 {
-  const scaleAmount = 1.4
-  const x = point[0] * scaleAmount
-  const z = -(point[2] - 0.02) * scaleAmount - 0.055
-  const y = (point[1] + 0.08) * scaleAmount - Math.max(0, z) * 0.28
-
-  return [x, y, z]
-}
-
-function updateNpcHairInstances() {
-  const grouped = Array.from({ length: hairRenderMeshes.length }, () => [] as number[])
-
-  for (const instance of hairInstances) {
-    const data = grouped[instance.meshIndex]!
-
-    data.push(
-      instance.center[0], instance.center[1], instance.center[2],
-      instance.side[0], instance.side[1], instance.side[2],
-      instance.up[0], instance.up[1], instance.up[2],
-      instance.forward[0], instance.forward[1], instance.forward[2],
-      instance.color[0], instance.color[1], instance.color[2],
-    )
-  }
-
-  for (let i = 0; i < hairRenderMeshes.length; i++) {
-    const mesh = hairRenderMeshes[i]!
-    const data = grouped[i]!
-
-    mesh.instanceCount = data.length / 15
-    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.instanceBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW)
-  }
-}
-
-function normalizeHairPoints(points: Vec3[], turnRightSideForward: boolean): Vec3[] {
-  const min: Vec3 = [Infinity, Infinity, Infinity]
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-
-  for (const point of points) {
-    for (let i = 0; i < 3; i++) {
-      min[i] = Math.min(min[i], point[i])
-      max[i] = Math.max(max[i], point[i])
-    }
-  }
-
-  const center: Vec3 = [
-    (min[0] + max[0]) * 0.5,
-    (min[1] + max[1]) * 0.5,
-    (min[2] + max[2]) * 0.5,
-  ]
-  const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2])
-  const amount = Math.min(1, 0.45 / span)
-
-  return points.map(point => {
-    const next = scale(subtract(point, center), amount)
-
-    return turnRightSideForward ? [-next[2], -next[1], next[0]] : next
-  })
-}
-
 async function loadAssimpScene(
   ajs: Awaited<ReturnType<typeof assimpjs>>,
   path: string,
@@ -2210,64 +1187,9 @@ async function loadAssimpScene(
   return JSON.parse(new TextDecoder().decode(result.GetFile(0).GetContent())) as AssimpScene
 }
 
-function createCharacterClip(scene: AssimpScene, name: string): CharacterClip {
-  const animation = scene.animations?.[0]
 
-  if (!animation) {
-    throw new Error(`${name} has no animation`)
-  }
 
-  return {
-    duration: animation.duration ?? 1,
-    ticksPerSecond: animation.tickspersecond ?? 30,
-    channels: new Map((animation.channels ?? []).map(channel => [channel.name, channel])),
-  }
-}
 
-function validateCharacterRig(root: AssimpNode) {
-  const names = collectNodeNames(root, new Set<string>())
-
-  for (const [from, to] of characterBones) {
-    if (!names.has(from) || !names.has(to)) {
-      throw new Error(`Missing skeleton bone ${from} -> ${to}`)
-    }
-  }
-}
-
-function collectNodeNames(node: AssimpNode, names: Set<string>) {
-  names.add(node.name)
-
-  for (const child of node.children ?? []) {
-    collectNodeNames(child, names)
-  }
-
-  return names
-}
-
-function createRigNodes(root: AssimpNode) {
-  const nodes: RigNode[] = []
-  const add = (node: AssimpNode, parent: number) => {
-    const transform = nodeTransform(node)
-    const index = nodes.length
-    const helper = isAssimpHelper(node)
-
-    nodes.push({
-      name: node.name,
-      parent,
-      helper,
-      transform,
-      origin: transformOrigin(transform),
-    })
-
-    for (const child of node.children ?? []) {
-      add(child, index)
-    }
-  }
-
-  add(root, -1)
-
-  return nodes
-}
 
 function updateCharacterMesh(time: number) {
   if (!characterRig) {
@@ -2290,7 +1212,7 @@ function updateCharacterMesh(time: number) {
   }, time, true)
 
   const view = playerView()
-  const npcPose = sampleBasePose(characterRig, time)
+  const npcPose = sampleBasePose(characterRig, time, characterPoseJointSet)
   const npcBlendCache: PoseBlendCache = new Map()
 
   for (const player of players) {
@@ -2299,7 +1221,7 @@ function updateCharacterMesh(time: number) {
     }
   }
 
-  updateNpcHairInstances()
+  updateHairInstances(gl, hairRenderMeshes, hairInstances)
   updateCharacterBoxInstances()
   const data = flattenVertices(target)
 
@@ -2407,7 +1329,7 @@ function addRenderedCharacter(
   basePose?: SampledPose,
   blendCache?: PoseBlendCache,
 ) {
-  const pose = sampleCharacterPose(characterRig!, time, player, basePose, blendCache)
+  const pose = sampleCharacterPose(characterRig!, time, player, characterPoseJoints, characterPoseJointSet, characterGroundJoints, characterScale, basePose, blendCache)
   const style = player.resolvedStyle ?? playerStyle(player.style)
   const localReflection = detailedHair
 
@@ -2448,125 +1370,6 @@ function addNpcHairInstance(pose: Map<string, Vec3>, hair: HairMesh, player: { t
     forward: [Math.sin(player.turn), 0, Math.cos(player.turn)],
     color,
   })
-}
-
-function sampleCharacterPose(
-  rig: CharacterRig,
-  time: number,
-  player: { position: Vec3; turn: number; motionBlend: number },
-  basePose = sampleBasePose(rig, time),
-  blendCache?: PoseBlendCache,
-) {
-  const blendKey = Math.round(player.motionBlend * 60)
-  const blend = blendCache ? blendKey / 60 : player.motionBlend
-  const cached = blendCache?.get(blendKey)
-
-  if (cached) {
-    return placeCharacterPose(cached, player.position, player.turn)
-  }
-
-  const { stand, run } = basePose
-  const pose = new Map<string, Vec3>()
-
-  for (const name of characterPoseJoints) {
-    const point = stand.get(name)!
-    const next = run.get(name)!
-
-    pose.set(name, [
-      mix(point[0], next[0], blend),
-      mix(point[1], next[1], blend),
-      mix(point[2], next[2], blend),
-    ])
-  }
-
-  blendCache?.set(blendKey, pose)
-
-  return placeCharacterPose(pose, player.position, player.turn)
-}
-
-function sampleBasePose(rig: CharacterRig, time: number): SampledPose {
-  return {
-    stand: sampleClipPose(rig, rig.clips.stand, time),
-    run: sampleClipPose(rig, rig.clips.run, time),
-  }
-}
-
-function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number) {
-  const tick = (time * clip.ticksPerSecond) % clip.duration
-  const pose = new Map<string, Vec3>()
-  const world = new Array<Mat4>(rig.nodes.length)
-
-  for (let i = 0; i < rig.nodes.length; i++) {
-    const node = rig.nodes[i]!
-    const parent = node.parent < 0 ? identity() : world[node.parent]!
-    const channel = clip.channels.get(node.name)
-    const local = channel ? sampleChannelTransform(node, channel, tick) : node.transform
-    const matrix = node.helper ? parent : multiply(parent, local)
-
-    world[i] = matrix
-
-    if (!node.helper && characterPoseJointSet.has(node.name)) {
-      pose.set(node.name, transformOrigin(matrix))
-    }
-  }
-
-  return pose
-}
-
-function sampleChannelTransform(node: RigNode, channel: AssimpChannel, tick: number) {
-  return compose(
-    sampleVec3(channel.positionkeys, tick, node.origin),
-    sampleQuat(channel.rotationkeys, tick, [1, 0, 0, 0]),
-    sampleVec3(channel.scalingkeys, tick, [1, 1, 1]),
-  )
-}
-
-function sampleVec3(keys: [number, Vec3][] | undefined, tick: number, fallback: Vec3): Vec3 {
-  if (!keys?.length) {
-    return fallback
-  }
-
-  if (keys.length === 1 || tick <= keys[0]![0]) {
-    return [...keys[0]![1]]
-  }
-
-  for (let i = 0; i < keys.length - 1; i++) {
-    const from = keys[i]!
-    const to = keys[i + 1]!
-
-    if (tick <= to[0]) {
-      const t = (tick - from[0]) / (to[0] - from[0])
-
-      return [
-        mix(from[1][0], to[1][0], t),
-        mix(from[1][1], to[1][1], t),
-        mix(from[1][2], to[1][2], t),
-      ]
-    }
-  }
-
-  return [...keys[keys.length - 1]![1]]
-}
-
-function sampleQuat(keys: [number, Quat][] | undefined, tick: number, fallback: Quat): Quat {
-  if (!keys?.length) {
-    return fallback
-  }
-
-  if (keys.length === 1 || tick <= keys[0]![0]) {
-    return normalizeQuat(keys[0]![1])
-  }
-
-  for (let i = 0; i < keys.length - 1; i++) {
-    const from = keys[i]!
-    const to = keys[i + 1]!
-
-    if (tick <= to[0]) {
-      return slerp(from[1], to[1], (tick - from[0]) / (to[0] - from[0]))
-    }
-  }
-
-  return normalizeQuat(keys[keys.length - 1]![1])
 }
 
 function addCharacterPart(
@@ -2683,7 +1486,9 @@ function addCharacterSkirt(
   addCharacterQuad(target, e, f, g, h, scale(style.pants, 0.68), 0.02, localReflection)
 }
 
-function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh, player: { turn: number }, color: Vec3) {
+function addCharacterHair(target: Vertex[], pose: Map<string, Vec3>, mesh: HairMesh, player: { turn: number },
+  color: Vec3)
+{
   const head = pose.get('mixamorig:Head')!
   const top = pose.get('mixamorig:HeadTop_End')!
   const up = normalize(subtract(top, head))
@@ -2859,11 +1664,21 @@ function addCharacterBoxInstance(
   strobe: number,
 ) {
   characterBoxInstances.push(
-    a[0], a[1], a[2],
-    b[0], b[1], b[2],
-    side[0], side[1], side[2],
-    up[0], up[1], up[2],
-    color[0], color[1], color[2],
+    a[0],
+    a[1],
+    a[2],
+    b[0],
+    b[1],
+    b[2],
+    side[0],
+    side[1],
+    side[2],
+    up[0],
+    up[1],
+    up[2],
+    color[0],
+    color[1],
+    color[2],
     glow,
     strobe,
   )
@@ -3096,239 +1911,7 @@ function outsideStrobeTarget(light: StrobeLight, time: number): Vec3 {
   return [clamp(x, light.minX, light.maxX), light.floor, clamp(z, light.minZ, light.maxZ)]
 }
 
-function placeCharacterPose(pose: Map<string, Vec3>, position: Vec3, turn: number) {
-  const ground = Math.min(...characterGroundJoints.map(name => pose.get(name)![1]))
-  const next = new Map<string, Vec3>()
-  const sin = Math.sin(turn)
-  const cos = Math.cos(turn)
 
-  for (const name of characterPoseJoints) {
-    const point = pose.get(name)!
-    const x = point[0] * characterScale
-    const y = (point[1] - ground) * characterScale
-    const z = point[2] * characterScale
-
-    next.set(name, [
-      position[0] + x * cos + z * sin,
-      position[1] + y,
-      position[2] - x * sin + z * cos,
-    ])
-  }
-
-  return next
-}
-
-function isAssimpHelper(node: AssimpNode) {
-  return node.name.includes('$AssimpFbx$')
-}
-
-function identity(): Mat4 {
-  return [
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    1,
-  ]
-}
-
-function nodeTransform(node: AssimpNode): Mat4 {
-  if (!node.transformation) {
-    return identity()
-  }
-
-  if (node.transformation.length !== 16) {
-    throw new Error(`Invalid transform for ${node.name}`)
-  }
-
-  return node.transformation as Mat4
-}
-
-function compose(position: Vec3, rotation: Quat, nextScale: Vec3): Mat4 {
-  return multiply(translate(position), multiply(rotate(rotation), scaleMatrix(nextScale)))
-}
-
-function translate([x, y, z]: Vec3): Mat4 {
-  return [
-    1,
-    0,
-    0,
-    x,
-    0,
-    1,
-    0,
-    y,
-    0,
-    0,
-    1,
-    z,
-    0,
-    0,
-    0,
-    1,
-  ]
-}
-
-function scaleMatrix([x, y, z]: Vec3): Mat4 {
-  return [
-    x,
-    0,
-    0,
-    0,
-    0,
-    y,
-    0,
-    0,
-    0,
-    0,
-    z,
-    0,
-    0,
-    0,
-    0,
-    1,
-  ]
-}
-
-function rotate(quat: Quat): Mat4 {
-  const [w, x, y, z] = normalizeQuat(quat)
-  const xx = x * x
-  const yy = y * y
-  const zz = z * z
-  const xy = x * y
-  const xz = x * z
-  const yz = y * z
-  const wx = w * x
-  const wy = w * y
-  const wz = w * z
-
-  return [
-    1 - 2 * (yy + zz),
-    2 * (xy - wz),
-    2 * (xz + wy),
-    0,
-    2 * (xy + wz),
-    1 - 2 * (xx + zz),
-    2 * (yz - wx),
-    0,
-    2 * (xz - wy),
-    2 * (yz + wx),
-    1 - 2 * (xx + yy),
-    0,
-    0,
-    0,
-    0,
-    1,
-  ]
-}
-
-function multiply(a: Mat4, b: Mat4): Mat4 {
-  const next = Array.from({ length: 16 }, () => 0) as Mat4
-
-  for (let row = 0; row < 4; row++) {
-    for (let column = 0; column < 4; column++) {
-      next[row * 4 + column] = a[row * 4] * b[column]
-        + a[row * 4 + 1] * b[4 + column]
-        + a[row * 4 + 2] * b[8 + column]
-        + a[row * 4 + 3] * b[12 + column]
-    }
-  }
-
-  return next
-}
-
-function transformOrigin(matrix: Mat4): Vec3 {
-  return [matrix[3], matrix[7], matrix[11]]
-}
-
-function normalizeQuat([w, x, y, z]: Quat): Quat {
-  const length = Math.hypot(w, x, y, z)
-
-  return [w / length, x / length, y / length, z / length]
-}
-
-function slerp(a: Quat, b: Quat, t: number): Quat {
-  let [bw, bx, by, bz] = b
-  let dot = a[0] * bw + a[1] * bx + a[2] * by + a[3] * bz
-
-  if (dot < 0) {
-    dot = -dot
-    bw = -bw
-    bx = -bx
-    by = -by
-    bz = -bz
-  }
-
-  if (dot > 0.9995) {
-    return normalizeQuat([
-      mix(a[0], bw, t),
-      mix(a[1], bx, t),
-      mix(a[2], by, t),
-      mix(a[3], bz, t),
-    ])
-  }
-
-  const theta = Math.acos(dot)
-  const sinTheta = Math.sin(theta)
-  const from = Math.sin((1 - t) * theta) / sinTheta
-  const to = Math.sin(t * theta) / sinTheta
-
-  return [
-    a[0] * from + bw * to,
-    a[1] * from + bx * to,
-    a[2] * from + by * to,
-    a[3] * from + bz * to,
-  ]
-}
-
-function add(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-
-function subtract(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-function scale(vector: Vec3, amount: number): Vec3 {
-  return [vector[0] * amount, vector[1] * amount, vector[2] * amount]
-}
-
-function cross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
-
-function dot(a: Vec3, b: Vec3) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function normalize(vector: Vec3): Vec3 {
-  const length = Math.hypot(vector[0], vector[1], vector[2])
-
-  if (length === 0) {
-    throw new Error('Cannot normalize zero vector')
-  }
-
-  return [vector[0] / length, vector[1] / length, vector[2] / length]
-}
-
-function normalizeIndex(index: number, length: number) {
-  return (index % length + length) % length
-}
 
 function restoreState() {
   const state = JSON.parse(localStorage.getItem(saveKey) ?? 'null') as {
@@ -3569,7 +2152,8 @@ function playerDestination(seed: number, step: number): PlayerDestination {
   const jitterZ = seededRange(seed, step + 102, -1.4, 1.4)
 
   if (choice === 0) {
-    return { position: [jitterX, characterFloor, djBooth.z + 2.2 + jitterZ], lookAt: [djBooth.x, characterFloor, djBooth.z] }
+    return { position: [jitterX, characterFloor, djBooth.z + 2.2 + jitterZ],
+      lookAt: [djBooth.x, characterFloor, djBooth.z] }
   }
 
   if (choice === 1) {
@@ -3581,8 +2165,8 @@ function playerDestination(seed: number, step: number): PlayerDestination {
   }
 
   if (choice === 3) {
-    return { position: [outsideTree.x + jitterX, characterFloor, outsideTree.z - 2.4 + jitterZ], lookAt: [outsideTree.x,
-      characterFloor, outsideTree.z] }
+    return { position: [outsideTree.x + jitterX, characterFloor, outsideTree.z - 2.4 + jitterZ],
+      lookAt: [outsideTree.x, characterFloor, outsideTree.z] }
   }
 
   if (choice === 4) {
@@ -3590,8 +2174,10 @@ function playerDestination(seed: number, step: number): PlayerDestination {
       lookAt: [outsideDjBooth.x, characterFloor, outsideDjBooth.z] }
   }
 
-  return { position: [seededRange(seed, step + 103, roomBounds.left + 1.2, roomBounds.right - 1.2), characterFloor,
-    seededRange(seed, step + 104, roomBounds.back + 2.2, roomBounds.front - 2.0)] }
+  return {
+    position: [seededRange(seed, step + 103, roomBounds.left + 1.2, roomBounds.right - 1.2), characterFloor,
+      seededRange(seed, step + 104, roomBounds.back + 2.2, roomBounds.front - 2.0)],
+  }
 }
 
 function seededRange(seed: number, salt: number, min: number, max: number) {
@@ -3766,15 +2352,15 @@ function playerStyle(style: PlayerStyle) {
   const shirtIndex = topIndex < jewelPalette.length
     ? topIndex
     : topIndex < jewelPalette.length * 2
-      ? topIndex - jewelPalette.length
-      : 0
+    ? topIndex - jewelPalette.length
+    : 0
   const topMode = topIndex < jewelPalette.length
     ? 'shirt'
     : topIndex < jewelPalette.length * 2
-      ? 'sleeveless'
-      : topIndex === jewelPalette.length * 2
-        ? 'skin'
-        : 'chest'
+    ? 'sleeveless'
+    : topIndex === jewelPalette.length * 2
+    ? 'skin'
+    : 'chest'
   const bottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
   const pantsColor = jewelPalette[bottomIndex % jewelPalette.length]!
 
@@ -3798,7 +2384,8 @@ function playerHair(index: number) {
 }
 
 function updateChatOverlay(camera: ReturnType<typeof getCamera>, stamp: number) {
-  const point = projectWallPoint([characterPosition[0], characterPosition[1] + 1.05, characterPosition[2]], camera)
+  const point = projectWallPoint([characterPosition[0], characterPosition[1] + 1.05, characterPosition[2]], camera,
+    canvas)
   const x = Math.round(point.x)
   const y = Math.round(point.y - 68)
 
@@ -3832,16 +2419,16 @@ function updateDjVideo(camera: ReturnType<typeof getCamera>) {
   const top = wall.y + wall.height / 2
   const points = wall.normal[2] < 0
     ? [
-      projectWallPoint([right, bottom, wall.z], camera),
-      projectWallPoint([left, bottom, wall.z], camera),
-      projectWallPoint([left, top, wall.z], camera),
-      projectWallPoint([right, top, wall.z], camera),
+      projectWallPoint([right, bottom, wall.z], camera, canvas),
+      projectWallPoint([left, bottom, wall.z], camera, canvas),
+      projectWallPoint([left, top, wall.z], camera, canvas),
+      projectWallPoint([right, top, wall.z], camera, canvas),
     ]
     : [
-      projectWallPoint([left, bottom, wall.z], camera),
-      projectWallPoint([right, bottom, wall.z], camera),
-      projectWallPoint([right, top, wall.z], camera),
-      projectWallPoint([left, top, wall.z], camera),
+      projectWallPoint([left, bottom, wall.z], camera, canvas),
+      projectWallPoint([right, bottom, wall.z], camera, canvas),
+      projectWallPoint([right, top, wall.z], camera, canvas),
+      projectWallPoint([left, top, wall.z], camera, canvas),
     ]
 
   djVideo.style.opacity = '0.74'
@@ -3934,134 +2521,6 @@ function djVideoFacesCamera(
   const forward = subtract(camera.center, camera.eye)
 
   return dot(wall.normal, toCamera) > 0 && dot(forward, toVideo) > 0
-}
-
-function projectedQuadTransform(width: number, height: number, points: ReturnType<typeof projectWallPoint>[]) {
-  const from = [
-    { x: 0, y: height },
-    { x: width, y: height },
-    { x: width, y: 0 },
-    { x: 0, y: 0 },
-  ]
-  const to = points.map(point => ({ x: point.x, y: point.y }))
-  const matrix = multiplyProjective(quadBasis(to), invertProjective(quadBasis(from)))
-
-  return `matrix3d(${
-    [
-      matrix[0],
-      matrix[3],
-      0,
-      matrix[6],
-      matrix[1],
-      matrix[4],
-      0,
-      matrix[7],
-      0,
-      0,
-      1,
-      0,
-      matrix[2],
-      matrix[5],
-      0,
-      matrix[8],
-    ].join(',')
-  })`
-}
-
-function quadBasis(points: { x: number; y: number }[]) {
-  const [a, b, c, d] = points
-  const matrix = [
-    a!.x,
-    b!.x,
-    c!.x,
-    a!.y,
-    b!.y,
-    c!.y,
-    1,
-    1,
-    1,
-  ]
-  const scale = multiplyProjectiveVector(invertProjective(matrix), [d!.x, d!.y, 1])
-
-  return [
-    matrix[0]! * scale[0],
-    matrix[1]! * scale[1],
-    matrix[2]! * scale[2],
-    matrix[3]! * scale[0],
-    matrix[4]! * scale[1],
-    matrix[5]! * scale[2],
-    matrix[6]! * scale[0],
-    matrix[7]! * scale[1],
-    matrix[8]! * scale[2],
-  ]
-}
-
-function multiplyProjective(a: number[], b: number[]) {
-  return [
-    a[0]! * b[0]! + a[1]! * b[3]! + a[2]! * b[6]!,
-    a[0]! * b[1]! + a[1]! * b[4]! + a[2]! * b[7]!,
-    a[0]! * b[2]! + a[1]! * b[5]! + a[2]! * b[8]!,
-    a[3]! * b[0]! + a[4]! * b[3]! + a[5]! * b[6]!,
-    a[3]! * b[1]! + a[4]! * b[4]! + a[5]! * b[7]!,
-    a[3]! * b[2]! + a[4]! * b[5]! + a[5]! * b[8]!,
-    a[6]! * b[0]! + a[7]! * b[3]! + a[8]! * b[6]!,
-    a[6]! * b[1]! + a[7]! * b[4]! + a[8]! * b[7]!,
-    a[6]! * b[2]! + a[7]! * b[5]! + a[8]! * b[8]!,
-  ]
-}
-
-function multiplyProjectiveVector(matrix: number[], vector: Vec3): Vec3 {
-  return [
-    matrix[0]! * vector[0] + matrix[1]! * vector[1] + matrix[2]! * vector[2],
-    matrix[3]! * vector[0] + matrix[4]! * vector[1] + matrix[5]! * vector[2],
-    matrix[6]! * vector[0] + matrix[7]! * vector[1] + matrix[8]! * vector[2],
-  ]
-}
-
-function invertProjective(matrix: number[]) {
-  const a = matrix[0]!
-  const b = matrix[1]!
-  const c = matrix[2]!
-  const d = matrix[3]!
-  const e = matrix[4]!
-  const f = matrix[5]!
-  const g = matrix[6]!
-  const h = matrix[7]!
-  const i = matrix[8]!
-  const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
-
-  return [
-    (e * i - f * h) / determinant,
-    (c * h - b * i) / determinant,
-    (b * f - c * e) / determinant,
-    (f * g - d * i) / determinant,
-    (a * i - c * g) / determinant,
-    (c * d - a * f) / determinant,
-    (d * h - e * g) / determinant,
-    (b * g - a * h) / determinant,
-    (a * e - b * d) / determinant,
-  ]
-}
-
-function projectWallPoint(point: Vec3, camera: ReturnType<typeof getCamera>) {
-  const forward = normalize(subtract(camera.center, camera.eye))
-  const cameraZ = scale(forward, -1)
-  const cameraX = normalize(cross([0, 1, 0], cameraZ))
-  const cameraY = cross(cameraZ, cameraX)
-  const relative = subtract(point, camera.eye)
-  const viewX = dot(cameraX, relative)
-  const viewY = dot(cameraY, relative)
-  const viewZ = dot(cameraZ, relative)
-  const f = 1 / Math.tan(1.08 * 0.5)
-  const aspect = canvas.width / canvas.height
-  const depth = -viewZ
-  const ndcX = (viewX * f / aspect) / depth
-  const ndcY = (viewY * f) / depth
-
-  return {
-    x: (ndcX * 0.5 + 0.5) * canvas.clientWidth,
-    y: (0.5 - ndcY * 0.5) * canvas.clientHeight,
-  }
 }
 
 function walkHeight(_x: number, _y: number, _z: number) {
@@ -4196,145 +2655,6 @@ function collideCircle(position: Vec3, bounds: CircleBounds) {
   }
 }
 
-function smoothAngle(from: number, to: number, lambda: number, delta: number) {
-  const angle = Math.atan2(Math.sin(to - from), Math.cos(to - from))
-
-  return from + angle * (1 - Math.exp(-lambda * delta))
-}
-
-function setVec3(target: Vec3, value: Vec3) {
-  target[0] = value[0]
-  target[1] = value[1]
-  target[2] = value[2]
-}
-
-function lerpVec3(target: Vec3, value: Vec3, t: number) {
-  target[0] = mix(target[0], value[0], t)
-  target[1] = mix(target[1], value[1], t)
-  target[2] = mix(target[2], value[2], t)
-}
-
-function lengthSq(vector: Vec3) {
-  return vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]
-}
-
-function normalizeInto(vector: Vec3) {
-  const length = Math.hypot(vector[0], vector[1], vector[2])
-
-  vector[0] /= length
-  vector[1] /= length
-  vector[2] /= length
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
-
-function createTarget(context: WebGL2RenderingContext, width: number, height: number) {
-  const frame = context.createFramebuffer()
-  const color = context.createTexture()
-  const depth = context.createRenderbuffer()
-
-  if (!frame || !color || !depth) {
-    throw new Error('Failed to create render target')
-  }
-
-  context.bindTexture(context.TEXTURE_2D, color)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE)
-
-  context.bindFramebuffer(context.FRAMEBUFFER, frame)
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, color, 0)
-  context.bindRenderbuffer(context.RENDERBUFFER, depth)
-  context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, depth)
-  const target = { frame, color, depth, width: 0, height: 0 }
-
-  resizeTarget(context, target, width, height)
-  context.bindFramebuffer(context.FRAMEBUFFER, null)
-
-  return target
-}
-
-function createSmokeMap(context: WebGL2RenderingContext) {
-  const width = 128
-  const height = 256
-  const texture = context.createTexture()
-  const data = new Uint8Array(width * height * 4)
-  const fade = (value: number) => value * value * (3 - 2 * value)
-  const random = (x: number, y: number, seed: number) => {
-    const value = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453123
-
-    return value - Math.floor(value)
-  }
-  const noise = (x: number, y: number, cellsX: number, cellsY: number, seed: number) => {
-    const gx = (x / width) * cellsX
-    const gy = (y / height) * cellsY
-    const x0 = Math.floor(gx)
-    const y0 = Math.floor(gy)
-    const x1 = (x0 + 1) % cellsX
-    const y1 = (y0 + 1) % cellsY
-    const tx = fade(gx - x0)
-    const ty = fade(gy - y0)
-    const a = random(x0 % cellsX, y0 % cellsY, seed)
-    const b = random(x1, y0 % cellsY, seed)
-    const c = random(x0 % cellsX, y1, seed)
-    const d = random(x1, y1, seed)
-    const top = a + (b - a) * tx
-    const bottom = c + (d - c) * tx
-
-    return top + (bottom - top) * ty
-  }
-
-  if (!texture) {
-    throw new Error('Failed to create smoke texture')
-  }
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const cloud = noise(x, y, 4, 8, 1) * 0.5
-        + noise(x, y, 8, 16, 2) * 0.32
-        + noise(x, y, 16, 32, 3) * 0.18
-      const soft = clamp((cloud - 0.22) / 0.78, 0, 1)
-      const value = Math.floor((0.32 + soft * 0.68) * 255)
-      const index = (y * width + x) * 4
-
-      data[index] = value
-      data[index + 1] = value
-      data[index + 2] = value
-      data[index + 3] = 255
-    }
-  }
-
-  context.bindTexture(context.TEXTURE_2D, texture)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.REPEAT)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.REPEAT)
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, data)
-
-  return texture
-}
-
-function createTreeShadowMap(context: WebGL2RenderingContext) {
-  const texture = context.createTexture()
-  const data = new Uint8Array([0, 0, 0, 0])
-
-  if (!texture) {
-    throw new Error('Failed to create tree shadow texture')
-  }
-
-  context.bindTexture(context.TEXTURE_2D, texture)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE)
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE)
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, data)
-
-  return texture
-}
-
 function uploadTreeShadowMap(meshes: TreeMesh[], position: Vec3) {
   const size = 512
   const canvas = document.createElement('canvas')
@@ -4393,24 +2713,6 @@ function shadowTexturePoint(point: Vec3, size: number): [number, number] {
     ((point[0] - landscapeBounds.left) / (landscapeBounds.right - landscapeBounds.left)) * size,
     (1 - (point[2] - landscapeBounds.back) / (landscapeBounds.front - landscapeBounds.back)) * size,
   ]
-}
-
-function resizeTarget(context: WebGL2RenderingContext, target: Target, width: number, height: number) {
-  if (target.width === width && target.height === height) {
-    return
-  }
-
-  target.width = width
-  target.height = height
-  context.bindTexture(context.TEXTURE_2D, target.color)
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, null)
-  context.bindRenderbuffer(context.RENDERBUFFER, target.depth)
-  context.renderbufferStorage(context.RENDERBUFFER, context.DEPTH_COMPONENT24, width, height)
-  context.bindFramebuffer(context.FRAMEBUFFER, target.frame)
-
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
-    throw new Error('Render target is incomplete')
-  }
 }
 
 function addRoom(target: Vertex[]) {
@@ -4911,16 +3213,6 @@ function smokeRandom(seed: number) {
   return value - Math.floor(value)
 }
 
-function mix(a: number, b: number, t: number) {
-  return a + (b - a) * t
-}
-
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1)
-
-  return t * t * (3 - 2 * t)
-}
-
 function addCeilingBeams(target: Vertex[], time: number) {
   for (const light of strobeLights) {
     if (light.zone !== videoZone) {
@@ -5060,134 +3352,4 @@ function packSmoke(
   v: number,
 ): Vertex {
   return [center[0], center[1], center[2], x, y, opacity, 0, seed, u, v, 0]
-}
-
-function createCharacterBoxGeometry(): CharacterBoxGeometry {
-  const vertices: number[] = []
-  const add = (a: Vec3, b: Vec3, c: Vec3, d: Vec3, shade: number) => {
-    vertices.push(
-      a[0], a[1], a[2], shade,
-      b[0], b[1], b[2], shade,
-      c[0], c[1], c[2], shade,
-      a[0], a[1], a[2], shade,
-      c[0], c[1], c[2], shade,
-      d[0], d[1], d[2], shade,
-    )
-  }
-  const a0: Vec3 = [-1, -1, 0]
-  const a1: Vec3 = [1, -1, 0]
-  const a2: Vec3 = [1, 1, 0]
-  const a3: Vec3 = [-1, 1, 0]
-  const b0: Vec3 = [-1, -1, 1]
-  const b1: Vec3 = [1, -1, 1]
-  const b2: Vec3 = [1, 1, 1]
-  const b3: Vec3 = [-1, 1, 1]
-
-  add(a0, a1, b1, b0, 0.65)
-  add(a1, a2, b2, b1, 1)
-  add(a2, a3, b3, b2, 0.82)
-  add(a3, a0, b0, b3, 0.65)
-  add(a3, a2, a1, a0, 0.82)
-  add(b0, b1, b2, b3, 0.82)
-
-  return {
-    data: new Float32Array(vertices),
-    count: vertices.length / 4,
-  }
-}
-
-function createStrobeGeometry(): CharacterBoxGeometry {
-  const vertices: number[] = []
-  const add = (localX: number, localZ: number, localY: number, kind: number, u: number, v: number, glow: number,
-    haze: number) =>
-  {
-    vertices.push(localX, localZ, localY, kind, u, v, glow, haze)
-  }
-  const addBeam = (a: number, b: number, uA: number, uB: number) => {
-    add(Math.cos(a), Math.sin(a), 0, 0, uA, 0, 0.18, 1)
-    add(Math.cos(b), Math.sin(b), 0, 0, uB, 0, 0.18, 1)
-    add(Math.cos(b), Math.sin(b), 1, 0, uB, 1, 1, 1)
-    add(Math.cos(a), Math.sin(a), 0, 0, uA, 0, 0.18, 1)
-    add(Math.cos(b), Math.sin(b), 1, 0, uB, 1, 1, 1)
-    add(Math.cos(a), Math.sin(a), 1, 0, uA, 1, 1, 1)
-  }
-  const addPool = (x: number, z: number, glow: number) => add(x, z, 0, 1, 0, 0, glow, 0)
-  const beamSegments = 20
-  const poolSegments = 32
-  const innerRadius = 0.82
-  const outerRadiusX = 1.75
-  const outerRadiusZ = 2.2
-
-  for (let i = 0; i < beamSegments; i++) {
-    addBeam((i / beamSegments) * Math.PI * 2, ((i + 1) / beamSegments) * Math.PI * 2, i / beamSegments,
-      (i + 1) / beamSegments)
-  }
-
-  for (let i = 0; i < poolSegments; i++) {
-    const a = (i / poolSegments) * Math.PI * 2
-    const b = ((i + 1) / poolSegments) * Math.PI * 2
-    const innerAX = Math.cos(a) * innerRadius
-    const innerAZ = Math.sin(a) * innerRadius
-    const innerBX = Math.cos(b) * innerRadius
-    const innerBZ = Math.sin(b) * innerRadius
-    const edgeAX = Math.cos(a) * outerRadiusX
-    const edgeAZ = Math.sin(a) * outerRadiusZ
-    const edgeBX = Math.cos(b) * outerRadiusX
-    const edgeBZ = Math.sin(b) * outerRadiusZ
-
-    addPool(0, 0, 1.08)
-    addPool(innerAX, innerAZ, 0.9)
-    addPool(innerBX, innerBZ, 0.9)
-    addPool(innerAX, innerAZ, 0.34)
-    addPool(edgeAX, edgeAZ, 0.08)
-    addPool(edgeBX, edgeBZ, 0.08)
-    addPool(innerAX, innerAZ, 0.34)
-    addPool(edgeBX, edgeBZ, 0.08)
-    addPool(innerBX, innerBZ, 0.34)
-  }
-
-  return {
-    data: new Float32Array(vertices),
-    count: vertices.length / 8,
-  }
-}
-
-function createProgram(context: WebGL2RenderingContext, sourceVertex: string, sourceFragment: string) {
-  const shaderVertex = createShader(context, context.VERTEX_SHADER, sourceVertex)
-  const shaderFragment = createShader(context, context.FRAGMENT_SHADER, sourceFragment)
-  const next = context.createProgram()
-
-  if (!next) {
-    throw new Error('Failed to create WebGL program')
-  }
-
-  context.attachShader(next, shaderVertex)
-  context.attachShader(next, shaderFragment)
-  context.linkProgram(next)
-
-  if (!context.getProgramParameter(next, context.LINK_STATUS)) {
-    throw new Error(context.getProgramInfoLog(next) ?? 'Failed to link WebGL program')
-  }
-
-  context.deleteShader(shaderVertex)
-  context.deleteShader(shaderFragment)
-
-  return next
-}
-
-function createShader(context: WebGL2RenderingContext, type: number, source: string) {
-  const shader = context.createShader(type)
-
-  if (!shader) {
-    throw new Error('Failed to create WebGL shader')
-  }
-
-  context.shaderSource(shader, source)
-  context.compileShader(shader)
-
-  if (!context.getShaderParameter(shader, context.COMPILE_STATUS)) {
-    throw new Error(context.getShaderInfoLog(shader) ?? 'Failed to compile WebGL shader')
-  }
-
-  return shader
 }
