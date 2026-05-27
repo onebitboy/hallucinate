@@ -4,6 +4,8 @@ import { outsideBounds, roomBounds } from './scene-data.ts'
 import { collideBuildingWalls, isOutside, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
+const insideCameraFront = roomBounds.front - 0.2
+
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {
   const position: Vec3 = [-2.2, 0.15, -9.0]
   const target: Vec3 = [-2.2, -0.75, -6.8]
@@ -93,8 +95,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       target[1] = characterPosition[1] + 1.2
       target[2] = characterPosition[2]
       const outside = isOutside(characterPosition)
+      const cameraOutside = isOutside(position)
+      const crossingOutside = moving && outside && !cameraOutside
       const time = performance.now() * 0.001
-      const distance = outside ? 2.2 : cameraDanceDistance(time)
+      const distance = crossingOutside
+        ? clamp(characterPosition[2] - insideCameraFront, 0.35, 2.2)
+        : outside ? 2.2 : cameraDanceDistance(time)
       const bounce = outside ? 0 : cameraDanceBounce(time)
       const ideal: Vec3 = [
         characterPosition[0] - Math.sin(turn) * distance,
@@ -108,14 +114,23 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       ideal[1] = clamp(ideal[1], characterFloor + 0.35, 4.3)
       ideal[2] = outside
         ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
-        : clamp(ideal[2], roomBounds.back + 0.2, roomBounds.front - 0.2)
+        : clamp(ideal[2], roomBounds.back + 0.2, insideCameraFront)
 
-      if (outside) {
+      if (crossingOutside) {
+        ideal[2] = Math.max(ideal[2], insideCameraFront)
+      }
+
+      const crossing = moving && outside !== cameraOutside
+      const cameraCollides = outside && !crossing
+
+      if (cameraCollides) {
         collideBuildingWalls(ideal, 0.65)
       }
 
-      lerpVec3(position, ideal, 1 - Math.pow(0.015, delta))
-      if (outside) {
+      const follow = crossingOutside ? 1 - Math.pow(0.0002, delta) : 1 - Math.pow(0.015, delta)
+
+      lerpVec3(position, ideal, follow)
+      if (cameraCollides) {
         collideBuildingWalls(position, 0.65)
       }
 

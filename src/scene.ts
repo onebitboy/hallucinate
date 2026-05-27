@@ -26,8 +26,8 @@ export function walkHeight(_x: number, _y: number, _z: number) {
   return characterFloor
 }
 
-function isAtBackDoor(position: Vec3) {
-  return Math.abs(position[0] - backDoor.x) < backDoor.width * 0.5
+function isAtBackDoor(position: Vec3, padding = 0) {
+  return Math.abs(position[0] - backDoor.x) < backDoor.width * 0.5 + padding
 }
 
 export function isOutside(position: Vec3) {
@@ -82,7 +82,7 @@ export function collideBuildingWalls(position: Vec3, padding: number) {
   const front = roomBounds.front + padding
 
   if (position[0] > left && position[0] < right && position[2] > back && position[2] < front) {
-    if (isAtBackDoor(position) && position[2] > roomBounds.front - 0.8) {
+    if (isAtBackDoor(position, padding) && position[2] > roomBounds.front - 0.8) {
       return
     }
 
