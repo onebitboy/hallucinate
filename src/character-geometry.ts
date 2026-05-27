@@ -9,6 +9,16 @@ export type VertexWriter = VertexBufferCache
 
 const lightPoint: Vec3 = [0, 0, 0]
 const lightNormal: Vec3 = [0, 1, 0]
+const boxA0: Vec3 = [0, 0, 0]
+const boxA1: Vec3 = [0, 0, 0]
+const boxA2: Vec3 = [0, 0, 0]
+const boxA3: Vec3 = [0, 0, 0]
+const boxB0: Vec3 = [0, 0, 0]
+const boxB1: Vec3 = [0, 0, 0]
+const boxB2: Vec3 = [0, 0, 0]
+const boxB3: Vec3 = [0, 0, 0]
+const shadeA: Vec3 = [0, 0, 0]
+const shadeB: Vec3 = [0, 0, 0]
 
 export function resetVertexWriter(writer: VertexWriter) {
   writer.length = 0
@@ -16,6 +26,10 @@ export function resetVertexWriter(writer: VertexWriter) {
 
 export function vertexWriterData(writer: VertexWriter) {
   return writer.data.length === writer.length ? writer.data : writer.data.subarray(0, writer.length)
+}
+
+function reserveVertices(writer: VertexWriter, vertices: number) {
+  resizeVertexBuffer(writer, writer.length + vertices * 11)
 }
 
 function resizeVertexBuffer(cache: VertexBufferCache, size: number) {
@@ -108,23 +122,33 @@ export function addCharacterBox(
     return
   }
 
-  const a0: Vec3 = [a[0] - sideX - upX, a[1] - sideY - upY, a[2] - sideZ - upZ]
-  const a1: Vec3 = [a[0] + sideX - upX, a[1] + sideY - upY, a[2] + sideZ - upZ]
-  const a2: Vec3 = [a[0] + sideX + upX, a[1] + sideY + upY, a[2] + sideZ + upZ]
-  const a3: Vec3 = [a[0] - sideX + upX, a[1] - sideY + upY, a[2] - sideZ + upZ]
-  const b0: Vec3 = [b[0] - sideX - upX, b[1] - sideY - upY, b[2] - sideZ - upZ]
-  const b1: Vec3 = [b[0] + sideX - upX, b[1] + sideY - upY, b[2] + sideZ - upZ]
-  const b2: Vec3 = [b[0] + sideX + upX, b[1] + sideY + upY, b[2] + sideZ + upZ]
-  const b3: Vec3 = [b[0] - sideX + upX, b[1] - sideY + upY, b[2] - sideZ + upZ]
-  const shadeA: Vec3 = [color[0] * 0.65, color[1] * 0.65, color[2] * 0.65]
-  const shadeB: Vec3 = [color[0] * 0.82, color[1] * 0.82, color[2] * 0.82]
+  setBoxPoint(boxA0, a, -sideX - upX, -sideY - upY, -sideZ - upZ)
+  setBoxPoint(boxA1, a, sideX - upX, sideY - upY, sideZ - upZ)
+  setBoxPoint(boxA2, a, sideX + upX, sideY + upY, sideZ + upZ)
+  setBoxPoint(boxA3, a, -sideX + upX, -sideY + upY, -sideZ + upZ)
+  setBoxPoint(boxB0, b, -sideX - upX, -sideY - upY, -sideZ - upZ)
+  setBoxPoint(boxB1, b, sideX - upX, sideY - upY, sideZ - upZ)
+  setBoxPoint(boxB2, b, sideX + upX, sideY + upY, sideZ + upZ)
+  setBoxPoint(boxB3, b, -sideX + upX, -sideY + upY, -sideZ + upZ)
+  shadeA[0] = color[0] * 0.65
+  shadeA[1] = color[1] * 0.65
+  shadeA[2] = color[2] * 0.65
+  shadeB[0] = color[0] * 0.82
+  shadeB[1] = color[1] * 0.82
+  shadeB[2] = color[2] * 0.82
 
-  addCharacterQuad(target, a0, a1, b1, b0, shadeA, glow, localReflection, light)
-  addCharacterQuad(target, a1, a2, b2, b1, color, glow, localReflection, light)
-  addCharacterQuad(target, a2, a3, b3, b2, shadeB, glow, localReflection, light)
-  addCharacterQuad(target, a3, a0, b0, b3, shadeA, glow, localReflection, light)
-  addCharacterQuad(target, a3, a2, a1, a0, shadeB, glow, localReflection, light)
-  addCharacterQuad(target, b0, b1, b2, b3, shadeB, glow, localReflection, light)
+  addCharacterQuad(target, boxA0, boxA1, boxB1, boxB0, shadeA, glow, localReflection, light)
+  addCharacterQuad(target, boxA1, boxA2, boxB2, boxB1, color, glow, localReflection, light)
+  addCharacterQuad(target, boxA2, boxA3, boxB3, boxB2, shadeB, glow, localReflection, light)
+  addCharacterQuad(target, boxA3, boxA0, boxB0, boxB3, shadeA, glow, localReflection, light)
+  addCharacterQuad(target, boxA3, boxA2, boxA1, boxA0, shadeB, glow, localReflection, light)
+  addCharacterQuad(target, boxB0, boxB1, boxB2, boxB3, shadeB, glow, localReflection, light)
+}
+
+function setBoxPoint(target: Vec3, origin: Vec3, x: number, y: number, z: number) {
+  target[0] = origin[0] + x
+  target[1] = origin[1] + y
+  target[2] = origin[2] + z
 }
 
 export function addCharacterQuad(
@@ -195,6 +219,25 @@ export function addFlatTriangle(
   glow: number,
   strobe = 0,
 ) {
+  reserveVertices(target, 3)
+  addReservedFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, color, glow, strobe)
+}
+
+function addReservedFlatTriangle(
+  target: VertexWriter,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  color: Vec3,
+  glow: number,
+  strobe = 0,
+) {
   addFlatVertex(target, ax, ay, az, color, glow, strobe)
   addFlatVertex(target, bx, by, bz, color, glow, strobe)
   addFlatVertex(target, cx, cy, cz, color, glow, strobe)
@@ -210,8 +253,9 @@ function addFlatQuad(
   glow: number,
   strobe = 0,
 ) {
-  addFlatTriangle(target, a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], color, glow, strobe)
-  addFlatTriangle(target, a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2], color, glow, strobe)
+  reserveVertices(target, 6)
+  addReservedFlatTriangle(target, a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], color, glow, strobe)
+  addReservedFlatTriangle(target, a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2], color, glow, strobe)
 }
 
 function addFlatVertex(
@@ -223,7 +267,7 @@ function addFlatVertex(
   glow: number,
   strobe: number,
 ) {
-  const data = resizeVertexBuffer(target, target.length + 11)
+  const data = target.data
   let offset = target.length
 
   data[offset++] = x
