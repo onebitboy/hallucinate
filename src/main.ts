@@ -22,6 +22,8 @@ import {
   validateCharacterRig,
 } from './character-rig.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
+import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
+import { addQuad } from './geometry.ts'
 import {
   add,
   clamp,
@@ -41,6 +43,21 @@ import {
 } from './math.ts'
 import { projectedQuadTransform, projectWallPoint } from './projection.ts'
 import {
+  backDoor,
+  bartenderBar,
+  bartenderStools,
+  djBooth,
+  djSpeakers,
+  djVideoWall,
+  landscapeBounds,
+  outsideBounds,
+  outsideDjBooth,
+  outsideDjSpeakers,
+  outsideVideoWall,
+  roomBounds,
+  videoTracks,
+} from './scene-data.ts'
+import {
   characterBoxFragment,
   characterBoxVertex,
   fragment,
@@ -54,6 +71,8 @@ import {
   strobeVertex,
   vertex,
 } from './shaders.ts'
+import { createStrobeLights, strobeLightAmount, strobeRandom, strobeTarget } from './strobe-object.ts'
+import { addTreeShadowReceiver, createTreeMeshes, treeCollision, uploadTreeShadowMap } from './tree-object.ts'
 import type {
   AssimpScene,
   BottomMode,
@@ -172,37 +191,10 @@ const direction: Vec3 = [0, 0, 0]
 const characterPosition: Vec3 = [-2.2, -1.95, -6.8]
 const cameraPosition: Vec3 = [-2.2, 0.15, -9.0]
 const cameraTarget: Vec3 = [-2.2, -0.75, -6.8]
-const djBooth: Bounds = { x: 0, z: -21.55, width: 3.6, depth: 1.24 }
-const djSpeakers: Bounds[] = [
-  { x: -4.16, z: -21.63, width: 0.71, depth: 0.79 },
-  { x: 4.16, z: -21.63, width: 0.71, depth: 0.79 },
-]
-const bartenderBar: Bounds = { x: 2.25, z: 2.42, width: 5.2, depth: 0.7 }
-const bartenderStools: Bounds[] = [-2.05, -1.15, -0.25, 0.65, 1.55, 2.25].map(offset => ({
-  x: bartenderBar.x + offset,
-  z: bartenderBar.z - 1.15,
-  width: 0.34,
-  depth: 0.34,
-}))
-const outsideDjBooth: Bounds = { x: 0, z: 29, width: 3.6, depth: 1.24 }
-const outsideDjSpeakers: Bounds[] = [
-  { x: -4.16, z: 29.08, width: 0.71, depth: 0.79 },
-  { x: 4.16, z: 29.08, width: 0.71, depth: 0.79 },
-]
-const djVideoWall = { x: 0, y: .25, z: -23.96, width: 5.5, height: 3.0625, normal: [0, 0, 1] as Vec3 }
-const outsideVideoWall = { x: 0, y: .25, z: 31.41, width: 5.5, height: 3.0625, normal: [0, 0, -1] as Vec3 }
-const videoTracks: Record<VideoZone, string> = {
-  inside: '0oB97YhEukw',
-  outside: 'HIn1BxT38mE',
-}
 const videoTimes: Record<VideoZone, number> = {
   inside: 0,
   outside: 0,
 }
-const backDoor = { x: -4.75, z: 4, width: 1.45, height: 2.55 }
-const roomBounds = { left: -7, right: 7, back: -24, front: 4 }
-const outsideBounds = { left: -24, right: 24, back: -32, front: 34 }
-const landscapeBounds = { left: -72, right: 72, back: -84, front: 88 }
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let cameraTurn = 0
 let cameraDragX = 0
@@ -925,90 +917,17 @@ async function loadOutsideTree() {
   addTreeToWorld(createTreeMeshes(trees))
 }
 
-function createTreeMeshes(scene: AssimpScene): TreeMesh[] {
-  const meshes = scene.meshes!.map((mesh, index) => {
-    const points: Vec3[] = []
 
-    for (let i = 0; i < mesh.vertices.length; i += 3) {
-      points.push([mesh.vertices[i]!, mesh.vertices[i + 1]!, mesh.vertices[i + 2]!])
-    }
 
-    return { points, faces: mesh.faces.filter(face => face.length === 3), color: treeMeshColor(index) }
-  })
-
-  if (meshes.length === 0) {
-    throw new Error('trees.fbx has no meshes')
-  }
-
-  return normalizeTreeMeshes(meshes)
-}
-
-function normalizeTreeMeshes(meshes: TreeMesh[]): TreeMesh[] {
-  const min: Vec3 = [Infinity, Infinity, Infinity]
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-
-  for (const mesh of meshes) {
-    for (const point of mesh.points) {
-      for (let i = 0; i < 3; i++) {
-        min[i] = Math.min(min[i], point[i])
-        max[i] = Math.max(max[i], point[i])
-      }
-    }
-  }
-
-  const centerX = (min[0] + max[0]) * 0.5
-  const centerZ = (min[2] + max[2]) * 0.5
-  const height = max[1] - min[1]
-  const amount = 12.9 / height
-  const turn = Math.PI / 4
-  const turnX = Math.cos(turn)
-  const turnZ = Math.sin(turn)
-
-  return meshes.map(mesh => ({
-    points: mesh.points.map(point => {
-      const x = (point[0] - centerX) * amount
-      const y = (point[2] - centerZ) * amount
-      const z = -(point[1] - min[1]) * amount
-
-      return [
-        x * turnX - z * turnZ,
-        y,
-        x * turnZ + z * turnX,
-      ]
-    }),
-    faces: mesh.faces,
-    color: mesh.color,
-  }))
-}
-
-function treeMeshColor(index: number): Vec3 {
-  if (index === 1) {
-    return [0, 0, 0]
-  }
-
-  if (index === 2) {
-    return [0, 1, 0]
-  }
-
-  if (index === 3) {
-    return [0, 0.8, 0]
-  }
-
-  if (index === 4) {
-    return [0, 0.9, 0]
-  }
-
-  return [0.38, 0.18, 0.07]
-}
 
 function addTreeToWorld(meshes: TreeMesh[]) {
   const position: Vec3 = [outsideTree.x, characterFloor + 3.7, outsideTree.z]
 
-  setOutsideTreeCollision(meshes, position)
+  outsideTree = treeCollision(meshes, position)
 
   if (outsideMotif !== 'night') {
-    uploadTreeShadowMap(meshes, position)
-    addTreeShadowReceiver(vertices)
+    uploadTreeShadowMap(gl, treeShadowMap, meshes, position, characterFloor, landscapeBounds, roomBounds.front)
+    addTreeShadowReceiver(vertices, characterFloor, landscapeBounds)
   }
 
   for (const mesh of meshes) {
@@ -1026,142 +945,13 @@ function addTreeToWorld(meshes: TreeMesh[]) {
   refreshRoomBuffer()
 }
 
-function setOutsideTreeCollision(meshes: TreeMesh[], position: Vec3) {
-  const trunk = meshes[1]!
-  let bottom = Infinity
-  let top = -Infinity
-  let x = 0
-  let z = 0
-  let count = 0
 
-  for (const point of trunk.points) {
-    const y = position[1] + point[1]
 
-    bottom = Math.min(bottom, y)
-    top = Math.max(top, y)
-  }
 
-  for (const point of trunk.points) {
-    const world = add(position, point)
 
-    if (world[1] < bottom + (top - bottom) * 0.28) {
-      x += world[0]
-      z += world[2]
-      count++
-    }
-  }
 
-  x /= count
-  z /= count
 
-  z -= 2
-  x += .25
 
-  outsideTree = {
-    x,
-    z,
-    radius: 0.35,
-  }
-  // addTreeCollisionDebug(vertices)
-}
-
-function addTreeCollisionDebug(target: Vertex[]) {
-  const y = characterFloor + 0.05
-  const color: Vec3 = [0, 0.85, 1]
-  const left = outsideTree.x - outsideTree.radius
-  const right = outsideTree.x + outsideTree.radius
-  const back = outsideTree.z - outsideTree.radius
-  const front = outsideTree.z + outsideTree.radius
-
-  addQuad(target, [left, y, back], [right, y, back], [right, y, front], [left, y, front], color, 0.35)
-}
-
-function addTreeShadowReceiver(target: Vertex[]) {
-  const y = characterFloor + 0.026
-  const color: Vec3 = [0, 0, 0]
-  const a: Vec3 = [landscapeBounds.left, y, landscapeBounds.front]
-  const b: Vec3 = [landscapeBounds.right, y, landscapeBounds.front]
-  const c: Vec3 = [landscapeBounds.right, y, landscapeBounds.back]
-  const d: Vec3 = [landscapeBounds.left, y, landscapeBounds.back]
-
-  target.push(pack(a, color, 0, 0, 0, 0, 5), pack(b, color, 0, 0, 1, 0, 5), pack(c, color, 0, 0, 1, 1, 5))
-  target.push(pack(a, color, 0, 0, 0, 0, 5), pack(c, color, 0, 0, 1, 1, 5), pack(d, color, 0, 0, 0, 1, 5))
-}
-
-function clipGroundPolygonFront(points: Vec3[], front: number): Vec3[] {
-  const clipped: Vec3[] = []
-
-  for (let i = 0; i < points.length; i++) {
-    const current = points[i]!
-    const next = points[(i + 1) % points.length]!
-    const currentInside = current[2] >= front
-    const nextInside = next[2] >= front
-
-    if (currentInside && nextInside) {
-      clipped.push(next)
-    }
-    else if (currentInside && !nextInside) {
-      clipped.push(intersectGroundFront(current, next, front))
-    }
-    else if (!currentInside && nextInside) {
-      clipped.push(intersectGroundFront(current, next, front), next)
-    }
-  }
-
-  return clipped
-}
-
-function intersectGroundFront(a: Vec3, b: Vec3, front: number): Vec3 {
-  const amount = (front - a[2]) / (b[2] - a[2])
-
-  return [
-    mix(a[0], b[0], amount),
-    a[1],
-    front,
-  ]
-}
-
-function convexGroundHull(points: Vec3[]): Vec3[] {
-  const unique = [...new Map(points.map(point => [`${point[0].toFixed(2)}:${point[2].toFixed(2)}`, point])).values()]
-    .sort((a, b) => a[0] === b[0] ? a[2] - b[2] : a[0] - b[0])
-  const lower: Vec3[] = []
-  const upper: Vec3[] = []
-
-  for (const point of unique) {
-    while (lower.length >= 2 && groundTurn(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) {
-      lower.pop()
-    }
-
-    lower.push(point)
-  }
-
-  for (const point of [...unique].reverse()) {
-    while (upper.length >= 2 && groundTurn(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) {
-      upper.pop()
-    }
-
-    upper.push(point)
-  }
-
-  lower.pop()
-  upper.pop()
-
-  return [...lower, ...upper]
-}
-
-function groundTurn(a: Vec3, b: Vec3, c: Vec3) {
-  return (b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0])
-}
-
-function projectTreeShadow(point: Vec3, light: Vec3, ground: number): Vec3 {
-  const amount = (ground - point[1]) / light[1]
-
-  return [
-    point[0] + light[0] * amount,
-    ground,
-    point[2] + light[2] * amount,
-  ]
-}
 
 async function loadAssimpScene(
   ajs: Awaited<ReturnType<typeof assimpjs>>,
@@ -1802,114 +1592,10 @@ function activeStrobeReflectionLights() {
   return strobeReflectionLights
 }
 
-function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, target: Vec3) {
-  const top = 4.75
-  const floor = -1.96
-  const t = clamp((top - point[1]) / (top - floor), 0, 1)
-  const radiusX = mix(0.07, 0.5, t)
-  const radiusZ = mix(0.07, 0.68, t)
-  const centerX = mix(light.x, target[0], t)
-  const centerZ = mix(light.z, target[2], t)
-  const dx = (point[0] - centerX) / radiusX
-  const dz = (point[2] - centerZ) / radiusZ
-  const cone = dx * dx + dz * dz
 
-  if (cone > 1) {
-    return 0
-  }
 
-  const lx = light.x - point[0]
-  const ly = top - point[1]
-  const lz = light.z - point[2]
-  const length = Math.hypot(lx, ly, lz)
-  const facing = Math.max(0, (normal[0] * lx + normal[1] * ly + normal[2] * lz) / length)
-  const inside = Math.pow(1 - cone, 0.45)
 
-  return inside * Math.sqrt(facing) * 7.2
-}
 
-function strobeRandom(id: number, frame: number) {
-  const value = Math.sin(id * 17.13 + frame * 9.27) * 43758.5453
-
-  return value - Math.floor(value)
-}
-
-function createStrobeLights() {
-  const lights: StrobeLight[] = []
-  let id = 1
-
-  for (const x of [-3.8, 0, 3.8]) {
-    for (const z of [-5.5, -10.5, -15.5, -20.5]) {
-      lights.push({
-        id,
-        x,
-        z,
-        zone: 'inside',
-        top: 4.75,
-        floor: -1.96,
-        color: [0.9, 0.88, 0.8],
-        minX: -5.8,
-        maxX: 5.8,
-        minZ: -22.7,
-        maxZ: 3.1,
-      })
-      id++
-    }
-  }
-
-  const stageTop = characterFloor + 4.1
-  const stageZ = outsideDjBooth.z + 2.15
-  const stageHalfWidth = 3.7
-
-  for (const x of [outsideDjBooth.x - stageHalfWidth, outsideDjBooth.x + stageHalfWidth]) {
-    const side = Math.sign(x - outsideDjBooth.x)
-
-    lights.push({
-      id,
-      x,
-      z: stageZ,
-      zone: 'outside',
-      top: stageTop,
-      floor: characterFloor + 0.02,
-      color: electricNavy,
-      minX: outsideDjBooth.x - 10.5,
-      maxX: outsideDjBooth.x + 10.5,
-      minZ: roomBounds.front + 1.2,
-      maxZ: outsideDjBooth.z - 1.0,
-    })
-    id++
-  }
-
-  return lights
-}
-
-function strobeTarget(light: StrobeLight, time: number): Vec3 {
-  if (light.zone === 'outside') {
-    return outsideStrobeTarget(light, time)
-  }
-
-  const cycle = time % 16
-  const sweepTime = cycle < 5.5 ? time : time - 3
-  const speed = 1.15
-  const phase = sweepTime * speed + (light.id * 1.27)
-  const sweepX = light.x + Math.sin(phase) * 2.5 + Math.sin(phase * 1.7) * 0.8
-  const sweepZ = light.z + Math.cos(sweepTime * 1.3 + light.id * 1.43) * 3.2 + Math.sin(phase * 2.1) * 0.9
-  const vertical = smoothstep(5.5, 7.0, cycle) * (1 - smoothstep(12.5, 14.0, cycle))
-  const x = mix(sweepX, light.x, vertical)
-  const z = mix(sweepZ, light.z, vertical)
-
-  return [clamp(x, light.minX, light.maxX), light.floor, clamp(z, light.minZ, light.maxZ)]
-}
-
-function outsideStrobeTarget(light: StrobeLight, time: number): Vec3 {
-  const side = Math.sign(light.x - outsideDjBooth.x)
-  const phase = time * 0.56 + light.id * 2.17
-  const drift = time * 0.37 + light.id * 1.31
-  const x = Math.sin(phase) * 5.8 + Math.sin(drift * 1.73) * 2.6 - side * 0.9
-  const z = light.z - 6.8 - Math.cos(drift) * 3.4 - Math.sin(phase * 0.61) * 2.1
-
-  return [clamp(x, light.minX, light.maxX), light.floor, clamp(z, light.minZ, light.maxZ)]
-}
 
 
 
@@ -2655,701 +2341,37 @@ function collideCircle(position: Vec3, bounds: CircleBounds) {
   }
 }
 
-function uploadTreeShadowMap(meshes: TreeMesh[], position: Vec3) {
-  const size = 512
-  const canvas = document.createElement('canvas')
-  const blurCanvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')!
-  const blurContext = blurCanvas.getContext('2d')!
-  const light = normalize([-0.55, -1, -0.7])
-  const ground = characterFloor + 0.02
-
-  canvas.width = size
-  canvas.height = size
-  blurCanvas.width = size
-  blurCanvas.height = size
-  context.fillStyle = 'rgba(0,0,0,0.95)'
-
-  for (const mesh of meshes) {
-    for (const face of mesh.faces) {
-      const polygon = clipGroundPolygonFront([
-        projectTreeShadow(add(position, mesh.points[face[0]!]!), light, ground),
-        projectTreeShadow(add(position, mesh.points[face[1]!]!), light, ground),
-        projectTreeShadow(add(position, mesh.points[face[2]!]!), light, ground),
-      ], roomBounds.front + 0.06)
-
-      if (polygon.length >= 3) {
-        drawShadowPolygon(context, polygon, size)
-      }
-    }
-  }
-
-  blurContext.clearRect(0, 0, size, size)
-  blurContext.filter = 'blur(0.5px)'
-  blurContext.globalAlpha = 0.72
-  blurContext.drawImage(canvas, 0, 0)
-  gl.bindTexture(gl.TEXTURE_2D, treeShadowMap)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, blurCanvas)
-}
-
-function drawShadowPolygon(context: CanvasRenderingContext2D, points: Vec3[], size: number) {
-  const first = shadowTexturePoint(points[0]!, size)
-
-  context.beginPath()
-  context.moveTo(first[0], first[1])
-
-  for (const point of points.slice(1)) {
-    const next = shadowTexturePoint(point, size)
-
-    context.lineTo(next[0], next[1])
-  }
-
-  context.closePath()
-  context.fill()
-}
-
-function shadowTexturePoint(point: Vec3, size: number): [number, number] {
-  return [
-    ((point[0] - landscapeBounds.left) / (landscapeBounds.right - landscapeBounds.left)) * size,
-    (1 - (point[2] - landscapeBounds.back) / (landscapeBounds.front - landscapeBounds.back)) * size,
-  ]
-}
-
-function addRoom(target: Vertex[]) {
-  const dark: [number, number, number] = [0.032, 0.032, 0.038]
-  const wall: [number, number, number] = [0.025, 0.023, 0.028]
-  const ceiling: [number, number, number] = [0.016, 0.016, 0.02]
-  const doorLeft = backDoor.x - backDoor.width / 2
-  const doorRight = backDoor.x + backDoor.width / 2
-
-  addQuad(target, [-7, -2, 4], [7, -2, 4], [7, -2, -24], [-7, -2, -24], dark, 0)
-  addQuad(target, [-7, 5, -24], [7, 5, -24], [7, 5, 4], [-7, 5, 4], ceiling, 0)
-  addQuad(target, [-7, -2, -24], [-7, 5, -24], [-7, 5, 4], [-7, -2, 4], wall, 0)
-  addQuad(target, [7, -2, 4], [7, 5, 4], [7, 5, -24], [7, -2, -24], wall, 0)
-  addQuad(target, [-7, -2, -24], [7, -2, -24], [7, 5, -24], [-7, 5, -24], [0.028, 0.022, 0.028], 0)
-  addOutside(target)
-  addQuad(target, [doorLeft, -2, 4], [-7, -2, 4], [-7, 5, 4], [doorLeft, 5, 4], [0.028, 0.022, 0.028], 0)
-  addQuad(target, [7, -2, 4], [doorRight, -2, 4], [doorRight, 5, 4], [7, 5, 4], [0.028, 0.022, 0.028], 0)
-  addQuad(target, [doorRight, backDoor.height - 2, 4], [doorLeft, backDoor.height - 2, 4], [doorLeft, 5, 4], [doorRight,
-    5, 4], [0.028, 0.022, 0.028], 0)
-  addBox(target, doorLeft - 0.05, -2 + backDoor.height / 2, 4.035, 0.1, backDoor.height, 0.08, [0.025, 0.035, 0.023],
-    0.04)
-  addBox(target, doorRight + 0.05, -2 + backDoor.height / 2, 4.035, 0.1, backDoor.height, 0.08, [0.025, 0.035, 0.023],
-    0.04)
-  addBox(target, backDoor.x, -2 + backDoor.height + 0.05, 4.035, backDoor.width + 0.2, 0.1, 0.08, [0.025, 0.035, 0.023],
-    0.04)
-  addDoorPerimeterStripes(target)
-  addBartenderBar(target)
-  addDjBooth(target)
-}
-
-function addDoorPerimeterStripes(target: Vertex[]) {
-  const left = backDoor.x - backDoor.width / 2 - 0.14
-  const right = backDoor.x + backDoor.width / 2 + 0.14
-  const bottom = -1.82
-  const top = -2 + backDoor.height + 0.18
-  const width = right - left
-  const height = top - bottom
-  const glow = 3.2
-
-  addDoorPerimeterFrame(target, roomBounds.front - 0.08, left, right, bottom, top, width, height, electricNavy, glow)
-  addDoorPerimeterFrame(target, roomBounds.front + 0.08, left, right, bottom, top, width, height, [0.95, 0.02, 0.015],
-    glow)
-}
-
-function addDoorPerimeterFrame(
-  target: Vertex[],
-  z: number,
-  left: number,
-  right: number,
-  bottom: number,
-  top: number,
-  width: number,
-  height: number,
-  color: Vec3,
-  glow: number,
-) {
-  addBox(target, left, bottom + height / 2, z, 0.11, height, 0.06, color, glow)
-  addBox(target, right, bottom + height / 2, z, 0.11, height, 0.06, color, glow)
-  addBox(target, left + width / 2, top, z, width + 0.11, 0.11, 0.06, color, glow)
-}
-
-function addBartenderBar(target: Vertex[]) {
-  const body: Vec3 = [0.026, 0.016, 0.018]
-  const top: Vec3 = [0.006, 0.006, 0.008]
-  const metal: Vec3 = [0.055, 0.052, 0.052]
-  const seat: Vec3 = [0.014, 0.012, 0.013]
-  const bottle: Vec3 = [0.16, 0.028, 0.018]
-  const y = -2
-
-  addBox(target, bartenderBar.x, y + 0.38, bartenderBar.z, bartenderBar.width, 0.76, bartenderBar.depth, body, 0)
-  addBox(target, bartenderBar.x, y + 0.8, bartenderBar.z - 0.03, bartenderBar.width + 0.24, 0.12,
-    bartenderBar.depth + 0.32, top, 0)
-  for (const shelfY of [0.98, 1.58]) {
-    addBox(target, bartenderBar.x, y + shelfY, roomBounds.front - 0.18, bartenderBar.width + 0.12, 0.08, 0.16, top, 0)
-
-    for (let i = 0; i < 8; i++) {
-      const x = bartenderBar.x - 1.38 + i * 0.39
-      const height = 0.27 + (i % 3) * 0.07
-      addBox(target, x, y + shelfY + 0.06 + height / 2, roomBounds.front - 0.28, 0.1, height, 0.1, bottle, 0.18)
-    }
-  }
-
-  for (const stool of bartenderStools) {
-    addBox(target, stool.x, y + 0.27, stool.z, 0.06, 0.54, 0.06, metal, 0)
-    addDisc(target, [stool.x, y + 0.56, stool.z], 0.2, 0.2, 'y', seat, 0)
-    addDisc(target, [stool.x, y + 0.04, stool.z], 0.15, 0.15, 'y', metal, 0)
-  }
-}
-
-function addOutside(target: Vertex[]) {
-  const floor = -1.95
-  const horizonFloor = -2.08
-
-  addGrassHorizon(target, horizonFloor)
-
-  addGrassQuad(target, [landscapeBounds.left, floor, landscapeBounds.front], [landscapeBounds.right, floor,
-    landscapeBounds.front], [landscapeBounds.right, floor, roomBounds.front], [landscapeBounds.left, floor,
-    roomBounds.front])
-  addGrassQuad(target, [roomBounds.left, floor, roomBounds.front], [landscapeBounds.left, floor, roomBounds.front], [
-    landscapeBounds.left,
-    floor,
-    roomBounds.back,
-  ], [roomBounds.left, floor, roomBounds.back])
-  addGrassQuad(target, [landscapeBounds.right, floor, roomBounds.front], [roomBounds.right, floor, roomBounds.front], [
-    roomBounds.right,
-    floor,
-    roomBounds.back,
-  ], [landscapeBounds.right, floor, roomBounds.back])
-  addGrassQuad(target, [landscapeBounds.left, floor, roomBounds.back], [landscapeBounds.right, floor, roomBounds.back],
-    [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
-  addOutsideStage(target, floor)
-  addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
-  addOutsideSkyLight(target)
-}
-
-function addOutsideStage(target: Vertex[], floor: number) {
-  const dark: Vec3 = [0.005, 0.008, 0.02]
-  const z = outsideDjBooth.z + 2.15
-  const width = 7.4
-  const left = outsideDjBooth.x - width / 2
-  const right = outsideDjBooth.x + width / 2
-  const base = floor + 0.1
-  const top = floor + 4.1
-  const centerY = (base + top) / 2
-
-  addBox(target, outsideDjBooth.x, floor + 0.04, z + 0.12, width + 1.2, 0.08, 1.55, dark, 0)
-  addBox(target, left, centerY, z, 0.13, top - base, 0.13, electricNavy, 3.2)
-  addBox(target, right, centerY, z, 0.13, top - base, 0.13, electricNavy, 3.2)
-  addBox(target, outsideDjBooth.x, top, z, width, 0.13, 0.13, electricNavy, 3.2)
-  addStageBeam(target, [left, base, z], [right, top, z], electricNavy)
-  addStageBeam(target, [right, base, z], [left, top, z], electricNavy)
-}
-
-function addStageBeam(target: Vertex[], a: Vec3, b: Vec3, color: Vec3) {
-  const center = scale(add(a, b), 0.5)
-  const length = Math.hypot(b[0] - a[0], b[1] - a[1])
-  const angle = Math.atan2(b[1] - a[1], b[0] - a[0])
-  const side: Vec3 = [-Math.sin(angle) * 0.06, Math.cos(angle) * 0.06, 0]
-
-  addQuad(target, add(a, side), subtract(a, side), subtract(b, side), add(b, side), color, 2.4)
-  addBox(target, center[0], center[1], center[2], length, 0.035, 0.035, color, 1.2)
-}
-
-function addOutsideSkyLight(target: Vertex[]) {
-  const z = outsideBounds.front - 0.12
-
-  if (outsideMotif === 'night') {
-    addDisc(target, [10.5, 6.8, z], 0.56, 0.56, 'z', [0.86, 0.88, 1], 1.15)
-    addDisc(target, [10.72, 6.92, z - 0.01], 0.5, 0.5, 'z', [0, 0, 0.015], 0)
-    return
-  }
-
-  addDisc(target, [10.5, 6.8, z], 1.0, 1.0, 'z', [1, 0.78, 0.22], 1.9)
-}
-
-function addGrassHorizon(target: Vertex[], floor: number) {
-  const sideSegments = 32
-  const points: [number, number][] = []
-  const centerX = (landscapeBounds.left + landscapeBounds.right) / 2
-  const centerZ = (landscapeBounds.back + landscapeBounds.front) / 2
-  const outerScale = 1.85
-
-  addGrassQuad(target, [landscapeBounds.left, floor, landscapeBounds.front], [landscapeBounds.right, floor,
-    landscapeBounds.front], [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor,
-    landscapeBounds.back])
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([mix(landscapeBounds.left, landscapeBounds.right, t), landscapeBounds.back])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([landscapeBounds.right, mix(landscapeBounds.back, landscapeBounds.front, t)])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([mix(landscapeBounds.right, landscapeBounds.left, t), landscapeBounds.front])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([landscapeBounds.left, mix(landscapeBounds.front, landscapeBounds.back, t)])
-  }
-
-  for (let i = 0; i < points.length; i++) {
-    const next = (i + 1) % points.length
-    const a = points[i]!
-    const b = points[next]!
-    const aHill = horizonHill(i, points.length)
-    const bHill = horizonHill(next, points.length)
-    const outerA: [number, number] = [
-      centerX + (a[0] - centerX) * outerScale,
-      centerZ + (a[1] - centerZ) * outerScale,
-    ]
-    const outerB: [number, number] = [
-      centerX + (b[0] - centerX) * outerScale,
-      centerZ + (b[1] - centerZ) * outerScale,
-    ]
-
-    addHorizonQuad(target, [a[0], floor, a[1]], [b[0], floor, b[1]], [outerB[0], floor + bHill, outerB[1]], [outerA[0],
-      floor + aHill, outerA[1]])
-  }
-}
-
-function horizonHill(index: number, total: number) {
-  const t = index / total
-
-  return 2.2
-    + Math.sin(t * Math.PI * 2 * 7.0) * 1.05
-    + Math.sin(t * Math.PI * 2 * 13.0 + 1.7) * 0.62
-    + Math.sin(t * Math.PI * 2 * 23.0 + 0.4) * 0.34
-}
-
-function addHorizonQuad(
-  target: Vertex[],
-  a: [number, number, number],
-  b: [number, number, number],
-  c: [number, number, number],
-  d: [number, number, number],
-) {
-  const color: Vec3 = [0.018, 0.16, 0.04]
-
-  target.push(packGrass(a, color), packGrass(b, color), packGrass(c, color))
-  target.push(packGrass(a, color), packGrass(c, color), packGrass(d, color))
-}
-
-function addDjBooth(target: Vertex[]) {
-  addDjBoothAt(target, djBooth, djSpeakers, 1, [1, 0.03, 0.015], 0.45)
-}
-
-function addDjBoothAt(target: Vertex[], booth: Bounds, speakers: Bounds[], direction: number, accent: Vec3,
-  accentGlow: number)
-{
-  const body: Vec3 = [0.026, 0.018, 0.021]
-  const top: Vec3 = [0.006, 0.006, 0.008]
-  const dark: Vec3 = [0.012, 0.011, 0.014]
-  const cone: Vec3 = [0.05, 0.047, 0.043]
-  const y = -2
-  const scale = 0.75
-
-  addBox(target, booth.x, y + 0.33, booth.z, booth.width, 0.66, booth.depth, body, 0)
-  addBox(target, booth.x, y + 0.7, booth.z + direction * 0.045, booth.width + 0.38 * scale, 0.12,
-    booth.depth + 0.28 * scale, top, 0)
-  addBox(target, booth.x - 0.82 * scale, y + 0.81, booth.z + direction * 0.21, 0.645 * scale, 0.039, 0.465 * scale,
-    dark, 0)
-  addBox(target, booth.x + 0.82 * scale, y + 0.81, booth.z + direction * 0.21, 0.645 * scale, 0.039, 0.465 * scale,
-    dark, 0)
-  addDisc(target, [booth.x - 0.82 * scale, y + 0.84, booth.z + direction * 0.21], 0.27 * scale, 0.21 * scale, 'y',
-    accent, accentGlow)
-  addDisc(target, [booth.x + 0.82 * scale, y + 0.84, booth.z + direction * 0.21], 0.27 * scale, 0.21 * scale, 'y',
-    accent, accentGlow)
-  addBox(target, booth.x, y + 0.835, booth.z + direction * 0.24, 0.56 * scale, 0.045, 0.68 * scale, [0.035, 0.034,
-    0.036], 0)
-
-  for (const speaker of speakers) {
-    addSpeakerStack(target, speaker, body, dark, cone, direction)
-  }
-}
-
-function addSpeakerStack(target: Vertex[], bounds: Bounds, body: Vec3, dark: Vec3, cone: Vec3, direction: number) {
-  const y = -2
-  const front = bounds.z + direction * (bounds.depth / 2 + 0.012)
-
-  addBox(target, bounds.x, y + 0.72, bounds.z, bounds.width, 1.44, bounds.depth, body, 0)
-  addBox(target, bounds.x, y + 1.6, bounds.z, bounds.width * 0.82, 0.54, bounds.depth * 0.82, dark, 0)
-  addDisc(target, [bounds.x, y + 0.9, front], 0.24, 0.24, 'z', cone, 0)
-  addDisc(target, [bounds.x, y + 0.39, front], 0.165, 0.165, 'z', cone, 0)
-  addDisc(target, [bounds.x, y + 1.6, front], 0.15, 0.15, 'z', cone, 0)
-}
-
-function addBox(
-  target: Vertex[],
-  x: number,
-  y: number,
-  z: number,
-  width: number,
-  height: number,
-  depth: number,
-  color: Vec3,
-  glow: number,
-  strobe = 0,
-) {
-  const left = x - width / 2
-  const right = x + width / 2
-  const bottom = y - height / 2
-  const top = y + height / 2
-  const front = z + depth / 2
-  const back = z - depth / 2
-
-  addQuad(target, [left, bottom, front], [right, bottom, front], [right, top, front], [left, top, front], color, glow,
-    strobe)
-  addQuad(target, [right, bottom, back], [left, bottom, back], [left, top, back], [right, top, back], color, glow,
-    strobe)
-  addQuad(target, [left, bottom, back], [left, bottom, front], [left, top, front], [left, top, back], color, glow,
-    strobe)
-  addQuad(target, [right, bottom, front], [right, bottom, back], [right, top, back], [right, top, front], color, glow,
-    strobe)
-  addQuad(target, [left, top, front], [right, top, front], [right, top, back], [left, top, back], color, glow, strobe)
-  addQuad(target, [left, bottom, back], [right, bottom, back], [right, bottom, front], [left, bottom, front], color,
-    glow, strobe)
-}
-
-function addDisc(
-  target: Vertex[],
-  center: Vec3,
-  radiusX: number,
-  radiusY: number,
-  axis: 'y' | 'z',
-  color: Vec3,
-  glow: number,
-) {
-  const segments = 18
-
-  for (let i = 0; i < segments; i++) {
-    const a = (i / segments) * Math.PI * 2
-    const b = ((i + 1) / segments) * Math.PI * 2
-    const pointA: Vec3 = axis === 'y'
-      ? [center[0] + Math.cos(a) * radiusX, center[1], center[2] + Math.sin(a) * radiusY]
-      : [center[0] + Math.cos(a) * radiusX, center[1] + Math.sin(a) * radiusY, center[2]]
-    const pointB: Vec3 = axis === 'y'
-      ? [center[0] + Math.cos(b) * radiusX, center[1], center[2] + Math.sin(b) * radiusY]
-      : [center[0] + Math.cos(b) * radiusX, center[1] + Math.sin(b) * radiusY, center[2]]
-
-    target.push(pack(center, color, glow), pack(pointA, color, glow), pack(pointB, color, glow))
-  }
-}
-
-function addWallStrips(target: Vertex[]) {
-  let id = 101
-
-  for (const z of [-2, -6, -10, -14, -18, -22]) {
-    addSideStrip(target, -6.98, z, id++)
-    addSideStrip(target, 6.98, z, id++)
-  }
-
-  for (const x of [-4.5, 0, 4.5]) {
-    if (x !== 0) {
-      addEndStrip(target, x, -23.98, id++)
-    }
-
-    if (x !== -4.5) {
-      addEndStrip(target, x, 3.98, id++)
-    }
-  }
-
-  addDjBoothStrip(target, djBooth, 1, [1, 0.03, 0.015], 2.15)
-  addDjBoothStrip(target, outsideDjBooth, -1, electricNavy, 3.2)
-  addBartenderBarStrip(target)
-  addBartenderBottleGlow(target)
-}
-
-function addSideStrip(target: Vertex[], x: number, z: number, id: number) {
-  addQuad(
-    target,
-    [x, -1.25, z - 0.24],
-    [x, 3.75, z - 0.24],
-    [x, 3.75, z - 0.09],
-    [x, -1.25, z - 0.09],
-    [0.22, 0.006, 0.004],
-    0.08,
-    id,
-  )
-
-  addQuad(
-    target,
-    [x, -1.25, z - 0.09],
-    [x, 3.75, z - 0.09],
-    [x, 3.75, z + 0.09],
-    [x, -1.25, z + 0.09],
-    [1, 0.03, 0.015],
-    2.15,
-    id,
-  )
-
-  addQuad(
-    target,
-    [x, -1.25, z + 0.09],
-    [x, 3.75, z + 0.09],
-    [x, 3.75, z + 0.24],
-    [x, -1.25, z + 0.24],
-    [0.22, 0.006, 0.004],
-    0.08,
-    id,
-  )
-}
-
-function addEndStrip(target: Vertex[], x: number, z: number, id: number) {
-  addQuad(
-    target,
-    [x - 0.24, -1.25, z],
-    [x - 0.09, -1.25, z],
-    [x - 0.09, 3.75, z],
-    [x - 0.24, 3.75, z],
-    [0.22, 0.006, 0.004],
-    0.08,
-    id,
-  )
-
-  addQuad(
-    target,
-    [x - 0.09, -1.25, z],
-    [x + 0.09, -1.25, z],
-    [x + 0.09, 3.75, z],
-    [x - 0.09, 3.75, z],
-    [1, 0.03, 0.015],
-    2.15,
-    id,
-  )
-
-  addQuad(
-    target,
-    [x + 0.09, -1.25, z],
-    [x + 0.24, -1.25, z],
-    [x + 0.24, 3.75, z],
-    [x + 0.09, 3.75, z],
-    [0.22, 0.006, 0.004],
-    0.08,
-    id,
-  )
-}
-
-function addDjBoothStrip(target: Vertex[], booth: Bounds, direction: number, color: Vec3, glow: number) {
-  const y = -1.54
-  const z = booth.z + direction * 0.91
-  const width = booth.width - 0.45
-  const height = 0.07
-
-  addBox(target, booth.x, y, z, width, height, 0.06, color, glow)
-}
-
-function addBartenderBarStrip(target: Vertex[]) {
-  addBox(target, bartenderBar.x, -1.54, bartenderBar.z - bartenderBar.depth / 2 - 0.16, bartenderBar.width - 0.45, 0.07,
-    0.06, [1, 0.03, 0.015], 2.15)
-}
-
-function addBartenderBottleGlow(target: Vertex[]) {
-  const y = -2
-
-  for (const shelfY of [0.98, 1.58]) {
-    for (let i = 0; i < 8; i++) {
-      const x = bartenderBar.x - 1.38 + i * 0.39
-      const height = 0.27 + (i % 3) * 0.07
-
-      addBox(target, x, y + shelfY + 0.06 + height / 2, roomBounds.front - 0.3, 0.1, height, 0.08, [1, 0.03, 0.015],
-        0.72)
-    }
-  }
-}
-
-function addRoomSmoke(target: Vertex[]) {
-  for (let i = 0; i < 82; i++) {
-    const seed = i + 1
-    const x = mix(-5.4, 5.4, smokeRandom(seed * 11.7))
-    const y = mix(-1.35, 1.4, smokeRandom(seed * 19.1) ** 1.8)
-    const z = mix(-22.5, 1.8, smokeRandom(seed * 31.3))
-    const width = mix(1.8, 5.1, smokeRandom(seed * 47.9))
-    const height = mix(0.8, 2.35, smokeRandom(seed * 61.5))
-    const opacity = mix(0.045, 0.12, smokeRandom(seed * 73.3))
-
-    addSmokePatch(target, [x, y, z], width, height, opacity, seed)
-  }
-}
-
-function addSmokePatch(
-  target: Vertex[],
-  center: [number, number, number],
-  width: number,
-  height: number,
-  opacity: number,
-  seed: number,
-) {
-  const left = -width / 2
-  const right = width / 2
-  const bottom = -height / 2
-  const top = height / 2
-
-  target.push(
-    packSmoke(center, left, bottom, opacity, seed, 0, 0),
-    packSmoke(center, right, bottom, opacity, seed, 1, 0),
-    packSmoke(center, right, top, opacity, seed, 1, 1),
-  )
-  target.push(
-    packSmoke(center, left, bottom, opacity, seed, 0, 0),
-    packSmoke(center, right, top, opacity, seed, 1, 1),
-    packSmoke(center, left, top, opacity, seed, 0, 1),
-  )
-}
-
-function smokeRandom(seed: number) {
-  const value = Math.sin(seed * 127.1) * 43758.5453123
-
-  return value - Math.floor(value)
-}
-
-function addCeilingBeams(target: Vertex[], time: number) {
-  for (const light of strobeLights) {
-    if (light.zone !== videoZone) {
-      continue
-    }
-
-    const hit = strobeTarget(light, time)
-
-    addBeam(target, light, hit[0], hit[2])
-    addFloorPool(target, light, hit[0], hit[2])
-  }
-}
-
-function addBeam(target: Vertex[], light: StrobeLight, targetX: number, targetZ: number) {
-  const shells = [
-    { radiusX: light.zone === 'outside' ? 1.35 : 0.5, radiusZ: light.zone === 'outside' ? 1.85 : 0.68,
-      glow: light.zone === 'outside' ? 0.7 : 0.42, color: light.color },
-  ]
-  const segments = 20
-
-  for (let shell = 0; shell < shells.length; shell++) {
-    const layer = shells[shell]!
-    const offset = shell * Math.PI / segments
-    const uvOffset = shell * 0.37
-
-    for (let i = 0; i < segments; i++) {
-      const a = (i / segments) * Math.PI * 2 + offset
-      const b = ((i + 1) / segments) * Math.PI * 2 + offset
-      const uA = i / segments + uvOffset
-      const uB = (i + 1) / segments + uvOffset
-      const topA: [number, number, number] = [light.x + Math.cos(a) * 0.07, light.top, light.z + Math.sin(a) * 0.07]
-      const topB: [number, number, number] = [light.x + Math.cos(b) * 0.07, light.top, light.z + Math.sin(b) * 0.07]
-      const bottomA: [number, number, number] = [targetX + Math.cos(a) * layer.radiusX, light.floor,
-        targetZ + Math.sin(a) * layer.radiusZ]
-      const bottomB: [number, number, number] = [targetX + Math.cos(b) * layer.radiusX, light.floor,
-        targetZ + Math.sin(b) * layer.radiusZ]
-
-      target.push(
-        pack(topA, layer.color, layer.glow * 0.18, light.id, uA, 0, 1),
-        pack(topB, layer.color, layer.glow * 0.18, light.id, uB, 0, 1),
-        pack(bottomB, layer.color, layer.glow, light.id, uB, 1, 1),
-      )
-      target.push(
-        pack(topA, layer.color, layer.glow * 0.18, light.id, uA, 0, 1),
-        pack(bottomB, layer.color, layer.glow, light.id, uB, 1, 1),
-        pack(bottomA, layer.color, layer.glow, light.id, uA, 1, 1),
-      )
-    }
-  }
-}
-
-function addFloorPool(target: Vertex[], light: StrobeLight, x: number, z: number) {
-  const center: [number, number, number] = [x, light.floor + 0.02, z]
-  const color = light.color
-  const innerRadius = 0.82
-  const outerRadiusX = 1.75
-  const outerRadiusZ = 2.2
-  const segments = 32
-
-  for (let i = 0; i < segments; i++) {
-    const a = (i / segments) * Math.PI * 2
-    const b = ((i + 1) / segments) * Math.PI * 2
-    const innerA: [number, number, number] = [x + Math.cos(a) * innerRadius, light.floor + 0.02,
-      z + Math.sin(a) * innerRadius]
-    const innerB: [number, number, number] = [x + Math.cos(b) * innerRadius, light.floor + 0.02,
-      z + Math.sin(b) * innerRadius]
-    const edgeA: [number, number, number] = [x + Math.cos(a) * outerRadiusX, light.floor + 0.02,
-      z + Math.sin(a) * outerRadiusZ]
-    const edgeB: [number, number, number] = [x + Math.cos(b) * outerRadiusX, light.floor + 0.02,
-      z + Math.sin(b) * outerRadiusZ]
-
-    target.push(pack(center, color, 1.08, light.id), pack(innerA, color, 0.9, light.id),
-      pack(innerB, color, 0.9, light.id))
-    target.push(pack(innerA, color, 0.34, light.id), pack(edgeA, color, 0.08, light.id),
-      pack(edgeB, color, 0.08, light.id))
-    target.push(pack(innerA, color, 0.34, light.id), pack(edgeB, color, 0.08, light.id),
-      pack(innerB, color, 0.34, light.id))
-  }
-}
-
-function addQuad(
-  target: Vertex[],
-  a: [number, number, number],
-  b: [number, number, number],
-  c: [number, number, number],
-  d: [number, number, number],
-  color: [number, number, number],
-  glow: number,
-  strobe = 0,
-) {
-  target.push(
-    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [b[0], b[1], b[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [d[0], d[1], d[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-  )
-}
-
-function addGrassQuad(
-  target: Vertex[],
-  a: [number, number, number],
-  b: [number, number, number],
-  c: [number, number, number],
-  d: [number, number, number],
-) {
-  const color: Vec3 = [0.05, 0.34, 0.08]
-
-  target.push(packGrass(a, color), packGrass(b, color), packGrass(c, color))
-  target.push(packGrass(a, color), packGrass(c, color), packGrass(d, color))
-}
-
-function pack(
-  point: [number, number, number],
-  color: [number, number, number],
-  glow: number,
-  strobe = 0,
-  u = 0,
-  v = 0,
-  haze = 0,
-): Vertex {
-  return [point[0], point[1], point[2], color[0], color[1], color[2], glow, strobe, u, v, haze]
-}
-
-function packGrass(point: [number, number, number], color: [number, number, number]): Vertex {
-  return pack(point, color, 0, 0, point[0] * 0.08, point[2] * 0.08, 2)
-}
-
-function packSmoke(
-  center: [number, number, number],
-  x: number,
-  y: number,
-  opacity: number,
-  seed: number,
-  u: number,
-  v: number,
-): Vertex {
-  return [center[0], center[1], center[2], x, y, opacity, 0, seed, u, v, 0]
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
