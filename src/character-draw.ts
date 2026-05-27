@@ -110,7 +110,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
         sampleKey)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
-        npcBlendCache, poses[poseIndex] ??= [], sampledTime)
+        npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey)
       poseIndex++
     }
   }
@@ -133,9 +133,10 @@ function addRenderedCharacter(
   blendCache?: PoseBlendCache,
   placedPose?: Vec3[],
   time = options.time,
+  cacheFrame = 0,
 ) {
   const pose = sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet,
-    groundJointIndices, characterScale, basePose, blendCache, placedPose)
+    groundJointIndices, characterScale, basePose, blendCache, placedPose, cacheFrame)
   const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
   const localReflection = detailedHair
   const turn: TurnBasis = {
