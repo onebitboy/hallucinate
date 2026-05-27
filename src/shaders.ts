@@ -10,9 +10,7 @@ layout(location = 3) in float strobe;
 layout(location = 4) in vec2 pattern;
 layout(location = 5) in float haze;
 
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
+uniform mat4 viewProjection;
 
 out vec3 shade;
 out float light;
@@ -21,36 +19,8 @@ out float hazeAmount;
 out vec3 worldPosition;
 flat out float strobeId;
 
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
 void main() {
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
+  gl_Position = viewProjection * vec4(position, 1.0);
   shade = color;
   light = glow;
   patternUv = pattern;
@@ -73,9 +43,7 @@ layout(location = 6) in vec3 instanceColor;
 layout(location = 7) in float instanceGlow;
 layout(location = 8) in float instanceStrobe;
 
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
+uniform mat4 viewProjection;
 
 out vec3 shade;
 out float light;
@@ -84,38 +52,10 @@ out float hazeAmount;
 out vec3 worldPosition;
 flat out float strobeId;
 
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
 void main() {
   vec3 along = mix(instanceA, instanceB, boxPosition.z);
   vec3 position = along + instanceSide * boxPosition.x + instanceUp * boxPosition.y;
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
+  gl_Position = viewProjection * vec4(position, 1.0);
   shade = instanceColor * boxShade;
   light = instanceGlow;
   patternUv = vec2(0.0);
@@ -342,46 +282,17 @@ layout(location = 3) in vec3 instanceUp;
 layout(location = 4) in vec3 instanceForward;
 layout(location = 5) in vec3 instanceColor;
 
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
+uniform mat4 viewProjection;
 
 out vec3 shade;
 out vec3 worldPosition;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
 
 void main() {
   vec3 position = instanceCenter
     + instanceSide * localPosition.x
     + instanceUp * localPosition.y
     + instanceForward * localPosition.z;
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-
-  gl_Position = projection * camera * vec4(position, 1.0);
+  gl_Position = viewProjection * vec4(position, 1.0);
   shade = instanceColor;
   worldPosition = position;
 }
@@ -426,9 +337,7 @@ layout(location = 4) in vec3 instanceBeamRadius;
 layout(location = 5) in vec3 instanceColor;
 layout(location = 6) in vec2 instanceMeta;
 
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
+uniform mat4 viewProjection;
 
 out vec3 shade;
 out float light;
@@ -436,30 +345,6 @@ out vec2 patternUv;
 out float hazeAmount;
 out vec3 worldPosition;
 flat out float strobeId;
-
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
 
 void main() {
   float pool = step(0.5, local.w);
@@ -469,11 +354,7 @@ void main() {
   vec3 poolPosition = instanceHit + vec3(local.x, 0.02, local.y);
   vec3 position = mix(beamPosition, poolPosition, pool);
   float glow = mix(instanceMeta.y * paint.z, paint.z, pool);
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec4 view = camera * vec4(position, 1.0);
-
-  gl_Position = projection * view;
+  gl_Position = viewProjection * vec4(position, 1.0);
   shade = instanceColor;
   light = glow;
   patternUv = paint.xy;
@@ -492,43 +373,16 @@ layout(location = 3) in float seed;
 layout(location = 4) in vec2 pattern;
 
 uniform float time;
-uniform vec2 resolution;
-uniform vec3 cameraEye;
-uniform vec3 cameraCenter;
+uniform mat4 viewProjection;
+uniform vec3 cameraRight;
+uniform vec3 cameraUp;
 
 out vec2 patternUv;
 out vec2 localUv;
 out float opacity;
 out float patchSeed;
 
-mat4 perspective(float fov, float aspect, float near, float far) {
-  float f = 1.0 / tan(fov * 0.5);
-
-  return mat4(
-    f / aspect, 0.0, 0.0, 0.0,
-    0.0, f, 0.0, 0.0,
-    0.0, 0.0, (far + near) / (near - far), -1.0,
-    0.0, 0.0, (2.0 * far * near) / (near - far), 0.0
-  );
-}
-
-mat4 lookAt(vec3 eye, vec3 center, vec3 up) {
-  vec3 z = normalize(eye - center);
-  vec3 x = normalize(cross(up, z));
-  vec3 y = cross(z, x);
-
-  return mat4(
-    x.x, y.x, z.x, 0.0,
-    x.y, y.y, z.y, 0.0,
-    x.z, y.z, z.z, 0.0,
-    -dot(x, eye), -dot(y, eye), -dot(z, eye), 1.0
-  );
-}
-
 void main() {
-  vec3 viewForward = normalize(cameraCenter - cameraEye);
-  vec3 right = normalize(cross(viewForward, vec3(0.0, 1.0, 0.0)));
-  vec3 up = normalize(cross(right, viewForward));
   float cycle = fract(time * 0.018 + seed * 0.137 + center.y * 0.19);
   float fade = smoothstep(0.0, 0.18, cycle) * (1.0 - smoothstep(0.78, 1.0, cycle));
   vec2 drift = vec2(sin(seed * 2.41), cos(seed * 3.17));
@@ -538,11 +392,9 @@ void main() {
   place.x += drift.x * (cycle - 0.5) * 1.45 + sin(time * 0.11 + seed * 6.1) * 0.22;
   place.z += drift.y * (cycle - 0.5) * 1.9 + cos(time * 0.09 + seed * 4.7) * 0.28;
 
-  mat4 camera = lookAt(cameraEye, cameraCenter, vec3(0.0, 1.0, 0.0));
-  mat4 projection = perspective(1.08, resolution.x / resolution.y, 0.1, 180.0);
-  vec3 position = place + right * offset.x + up * offset.y;
+  vec3 position = place + cameraRight * offset.x + cameraUp * offset.y;
 
-  gl_Position = projection * camera * vec4(position, 1.0);
+  gl_Position = viewProjection * vec4(position, 1.0);
   localUv = pattern;
   patternUv = pattern + vec2(seed * 0.071 + time * 0.012, time * 0.026);
   opacity = offset.z * fade;

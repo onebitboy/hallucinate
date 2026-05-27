@@ -1,4 +1,5 @@
 import { isOutside } from './scene.ts'
+import type { CameraMatrix } from './camera-matrix.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
@@ -6,6 +7,7 @@ type Camera = { eye: Vec3; center: Vec3 }
 export function drawRoomDepth(options: {
   array: WebGLVertexArrayObject
   camera: Camera
+  cameraMatrix: CameraMatrix
   count: number
   gl: WebGL2RenderingContext
   height: number
@@ -13,19 +15,16 @@ export function drawRoomDepth(options: {
   program: WebGLProgram
   treeShadowMap: WebGLTexture
   uniforms: {
-    cameraCenter: WebGLUniformLocation
     cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
-    resolution: WebGLUniformLocation
     treeShadowSampler: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
   width: number
 }) {
   options.gl.useProgram(options.program)
-  options.gl.uniform2f(options.uniforms.resolution, options.width, options.height)
+  options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  options.gl.uniform3f(options.uniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
   options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
   options.gl.activeTexture(options.gl.TEXTURE4)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.treeShadowMap)
@@ -39,26 +38,28 @@ export function drawRoomDepth(options: {
 
 export function useRoomSmokeProgram(options: {
   camera: Camera
+  cameraMatrix: CameraMatrix
   gl: WebGL2RenderingContext
   height: number
   program: WebGLProgram
   smokeMap: WebGLTexture
   time: number
   uniforms: {
-    cameraCenter: WebGLUniformLocation
-    cameraEye: WebGLUniformLocation
-    resolution: WebGLUniformLocation
+    cameraRight: WebGLUniformLocation
+    cameraUp: WebGLUniformLocation
     smokeMap: WebGLUniformLocation
     time: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
   width: number
 }) {
   options.gl.useProgram(options.program)
   options.gl.uniform1f(options.uniforms.time, options.time)
-  options.gl.uniform2f(options.uniforms.resolution, options.width, options.height)
-  options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  options.gl.uniform3f(options.uniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
+  options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
+  options.gl.uniform3f(options.uniforms.cameraRight, options.cameraMatrix.right[0], options.cameraMatrix.right[1],
+    options.cameraMatrix.right[2])
+  options.gl.uniform3f(options.uniforms.cameraUp, options.cameraMatrix.up[0], options.cameraMatrix.up[1],
+    options.cameraMatrix.up[2])
   options.gl.activeTexture(options.gl.TEXTURE3)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.smokeMap)
   options.gl.uniform1i(options.uniforms.smokeMap, 3)
@@ -66,6 +67,7 @@ export function useRoomSmokeProgram(options: {
 
 export function useLightProgram(options: {
   camera: Camera
+  cameraMatrix: CameraMatrix
   characterPosition: Vec3
   frame: number
   gl: WebGL2RenderingContext
@@ -73,22 +75,17 @@ export function useLightProgram(options: {
   program: WebGLProgram
   smokeMap: WebGLTexture
   uniforms: {
-    cameraCenter: WebGLUniformLocation
-    cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
-    resolution: WebGLUniformLocation
     smokeMap: WebGLUniformLocation
     time: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
   width: number
 }) {
   options.gl.useProgram(options.program)
   options.gl.uniform1f(options.uniforms.time, options.frame)
   options.gl.uniform1i(options.uniforms.renderZone, isOutside(options.characterPosition) ? 1 : 0)
-  options.gl.uniform2f(options.uniforms.resolution, options.width, options.height)
-  options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  options.gl.uniform3f(options.uniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
+  options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.activeTexture(options.gl.TEXTURE2)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.smokeMap)
   options.gl.uniform1i(options.uniforms.smokeMap, 2)

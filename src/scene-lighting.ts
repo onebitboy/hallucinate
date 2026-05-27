@@ -65,13 +65,13 @@ export function createSceneLighting(options: {
       const facing = clamp((nx * toLightX + ny * toLightY + nz * toLightZ) / distance, 0, 1)
       const cone = smoothstep(0.58, 0.96, vertical)
 
-      uplight += facing * cone * clamp(1 - distance / 8, 0, 1)
+      uplight += facing * cone * clamp(1 - distance / 10.5, 0, 1)
     }
 
     const light = 0.34 + diffuse * 0.86 + lift * 0.18
     const warmth: Vec3 = [1.1, 1.03, 0.86]
     const baseLight = night ? light * 0.22 + lift * 0.04 : light
-    const blueLight = night ? uplight * 2.1 : 0
+    const blueLight = night ? uplight * 3.4 : 0
     const shade: Vec3 = [
       clamp(color[0] * baseLight * warmth[0] + blueLight * electricNavy[0], 0, 1),
       clamp(color[1] * baseLight * warmth[1] + blueLight * electricNavy[1], 0, 1),

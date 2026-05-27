@@ -107,36 +107,27 @@ const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
 const postProgram = createProgram(gl, postVertex, postFragment)
 const smokeMap = createSmokeMap(gl)
 const treeShadowMap = createTreeShadowMap(gl)
-const resolution = gl.getUniformLocation(program, 'resolution')
+const viewProjection = gl.getUniformLocation(program, 'viewProjection')
 const cameraEye = gl.getUniformLocation(program, 'cameraEye')
-const cameraCenter = gl.getUniformLocation(program, 'cameraCenter')
 const renderZone = gl.getUniformLocation(program, 'renderZone')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
-const characterBoxResolution = gl.getUniformLocation(characterBoxProgram, 'resolution')
-const characterBoxCameraEye = gl.getUniformLocation(characterBoxProgram, 'cameraEye')
-const characterBoxCameraCenter = gl.getUniformLocation(characterBoxProgram, 'cameraCenter')
+const characterBoxViewProjection = gl.getUniformLocation(characterBoxProgram, 'viewProjection')
 const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
 const lightTime = gl.getUniformLocation(lightProgram, 'time')
 const lightSmokeMap = gl.getUniformLocation(lightProgram, 'smokeMap')
 const lightRenderZone = gl.getUniformLocation(lightProgram, 'renderZone')
-const lightResolution = gl.getUniformLocation(lightProgram, 'resolution')
-const lightCameraEye = gl.getUniformLocation(lightProgram, 'cameraEye')
-const lightCameraCenter = gl.getUniformLocation(lightProgram, 'cameraCenter')
+const lightViewProjection = gl.getUniformLocation(lightProgram, 'viewProjection')
 const strobeTime = gl.getUniformLocation(strobeProgram, 'time')
 const strobeSmokeMap = gl.getUniformLocation(strobeProgram, 'smokeMap')
 const strobeRenderZone = gl.getUniformLocation(strobeProgram, 'renderZone')
-const strobeResolution = gl.getUniformLocation(strobeProgram, 'resolution')
-const strobeCameraEye = gl.getUniformLocation(strobeProgram, 'cameraEye')
-const strobeCameraCenter = gl.getUniformLocation(strobeProgram, 'cameraCenter')
-const hairResolution = gl.getUniformLocation(hairProgram, 'resolution')
-const hairCameraEye = gl.getUniformLocation(hairProgram, 'cameraEye')
-const hairCameraCenter = gl.getUniformLocation(hairProgram, 'cameraCenter')
+const strobeViewProjection = gl.getUniformLocation(strobeProgram, 'viewProjection')
+const hairViewProjection = gl.getUniformLocation(hairProgram, 'viewProjection')
 const hairRenderZone = gl.getUniformLocation(hairProgram, 'renderZone')
 const roomSmokeTime = gl.getUniformLocation(smokeProgram, 'time')
 const roomSmokeMap = gl.getUniformLocation(smokeProgram, 'smokeMap')
-const roomSmokeResolution = gl.getUniformLocation(smokeProgram, 'resolution')
-const roomSmokeCameraEye = gl.getUniformLocation(smokeProgram, 'cameraEye')
-const roomSmokeCameraCenter = gl.getUniformLocation(smokeProgram, 'cameraCenter')
+const roomSmokeViewProjection = gl.getUniformLocation(smokeProgram, 'viewProjection')
+const roomSmokeCameraRight = gl.getUniformLocation(smokeProgram, 'cameraRight')
+const roomSmokeCameraUp = gl.getUniformLocation(smokeProgram, 'cameraUp')
 const postScene = gl.getUniformLocation(postProgram, 'scene')
 const postBloom = gl.getUniformLocation(postProgram, 'bloom')
 const postBloomResolution = gl.getUniformLocation(postProgram, 'bloomResolution')
@@ -169,13 +160,11 @@ const characterBoxGeometry = createCharacterBoxGeometry()
 const characterBoxInstanceSize = 17
 const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES_PER_ELEMENT
 
-if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSampler || !characterBoxResolution
-  || !characterBoxCameraEye || !characterBoxCameraCenter || !characterBoxRenderZone || !lightTime || !lightSmokeMap
-  || !lightRenderZone || !lightResolution || !lightCameraEye || !lightCameraCenter || !strobeTime || !strobeSmokeMap
-  || !strobeRenderZone || !strobeResolution || !strobeCameraEye || !strobeCameraCenter || !hairResolution
-  || !hairCameraEye
-  || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
-  || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution
+if (!viewProjection || !cameraEye || !renderZone || !treeShadowSampler || !characterBoxViewProjection
+  || !characterBoxRenderZone || !lightTime || !lightSmokeMap || !lightRenderZone || !lightViewProjection
+  || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
+  || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
+  || !roomSmokeCameraUp || !postScene || !postBloom || !postBloomResolution
   || !postSkyForward || !postSkyRight || !postSkyUp || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
@@ -185,16 +174,12 @@ if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSamp
 }
 
 const characterBoxUniforms = {
-  cameraCenter: characterBoxCameraCenter,
-  cameraEye: characterBoxCameraEye,
   renderZone: characterBoxRenderZone,
-  resolution: characterBoxResolution,
+  viewProjection: characterBoxViewProjection,
 }
 const hairUniforms = {
-  cameraCenter: hairCameraCenter,
-  cameraEye: hairCameraEye,
   renderZone: hairRenderZone,
-  resolution: hairResolution,
+  viewProjection: hairViewProjection,
 }
 
 setupVertexArray({ array, buffer, data: points, gl, stride, usage: gl.STATIC_DRAW })
@@ -336,12 +321,10 @@ const draw = (stamp: number) => {
       count: lightCount,
       program: lightProgram,
       uniforms: {
-        cameraCenter: lightCameraCenter,
-        cameraEye: lightCameraEye,
         renderZone: lightRenderZone,
-        resolution: lightResolution,
         smokeMap: lightSmokeMap,
         time: lightTime,
+        viewProjection: lightViewProjection,
       },
     },
     outside,
@@ -357,11 +340,10 @@ const draw = (stamp: number) => {
     },
     program,
     roomUniforms: {
-      cameraCenter,
       cameraEye,
       renderZone,
-      resolution,
       treeShadowSampler,
+      viewProjection,
     },
     sky,
     smoke: {
@@ -369,11 +351,11 @@ const draw = (stamp: number) => {
       points: smokePoints,
       program: smokeProgram,
       uniforms: {
-        cameraCenter: roomSmokeCameraCenter,
-        cameraEye: roomSmokeCameraEye,
-        resolution: roomSmokeResolution,
+        cameraRight: roomSmokeCameraRight,
+        cameraUp: roomSmokeCameraUp,
         smokeMap: roomSmokeMap,
         time: roomSmokeTime,
+        viewProjection: roomSmokeViewProjection,
       },
     },
     strobeController,
@@ -404,12 +386,10 @@ const strobeController = createStrobeDrawController({
   program: strobeProgram,
   smokeMap,
   uniforms: {
-    cameraCenter: strobeCameraCenter,
-    cameraEye: strobeCameraEye,
     renderZone: strobeRenderZone,
-    resolution: strobeResolution,
     smokeMap: strobeSmokeMap,
     time: strobeTime,
+    viewProjection: strobeViewProjection,
   },
 })
 const { addLocalReflection, addSunLitTriangle } = createSceneLighting({

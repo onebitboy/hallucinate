@@ -1,5 +1,6 @@
 import type { HairRenderMesh, Vec3 } from './types.ts'
 import type { CharacterBoxGeometry } from './types.ts'
+import type { CameraMatrix } from './camera-matrix.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
 export type NumberBufferCache = { capacity?: number; data: Float32Array }
@@ -53,6 +54,7 @@ function fillNumberBuffer(cache: NumberBufferCache, values: number[]) {
 export function drawCharacterBoxes(options: {
   array: WebGLVertexArrayObject
   camera: Camera
+  cameraMatrix: CameraMatrix
   count: number
   geometry: CharacterBoxGeometry
   gl: WebGL2RenderingContext
@@ -60,10 +62,8 @@ export function drawCharacterBoxes(options: {
   outside: boolean
   program: WebGLProgram
   uniforms: {
-    cameraCenter: WebGLUniformLocation
-    cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
-    resolution: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
   width: number
 }) {
@@ -72,10 +72,7 @@ export function drawCharacterBoxes(options: {
   }
 
   options.gl.useProgram(options.program)
-  options.gl.uniform2f(options.uniforms.resolution, options.width, options.height)
-  options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  options.gl.uniform3f(options.uniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
+  options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
   options.gl.bindVertexArray(options.array)
   options.gl.drawArraysInstanced(options.gl.TRIANGLES, 0, options.geometry.count, options.count)
@@ -84,24 +81,20 @@ export function drawCharacterBoxes(options: {
 
 export function drawNpcHair(options: {
   camera: Camera
+  cameraMatrix: CameraMatrix
   gl: WebGL2RenderingContext
   hairRenderMeshes: HairRenderMesh[]
   height: number
   outside: boolean
   program: WebGLProgram
   uniforms: {
-    cameraCenter: WebGLUniformLocation
-    cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
-    resolution: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
   width: number
 }) {
   options.gl.useProgram(options.program)
-  options.gl.uniform2f(options.uniforms.resolution, options.width, options.height)
-  options.gl.uniform3f(options.uniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  options.gl.uniform3f(options.uniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
+  options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform1i(options.uniforms.renderZone, options.outside ? 1 : 0)
 
   for (const mesh of options.hairRenderMeshes) {

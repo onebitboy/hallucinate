@@ -7,6 +7,7 @@ import {
   useLightProgram,
   useRoomSmokeProgram,
 } from './room-draw.ts'
+import { createCameraMatrix, updateCameraMatrix } from './camera-matrix.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import type { CharacterBoxGeometry, HairRenderMesh, Target, Vec3 } from './types.ts'
 
@@ -16,36 +17,34 @@ type Camera = {
 }
 
 type RoomUniforms = {
-  cameraCenter: WebGLUniformLocation
   cameraEye: WebGLUniformLocation
   renderZone: WebGLUniformLocation
-  resolution: WebGLUniformLocation
   treeShadowSampler: WebGLUniformLocation
+  viewProjection: WebGLUniformLocation
 }
 
 type LightUniforms = {
-  cameraCenter: WebGLUniformLocation
-  cameraEye: WebGLUniformLocation
   renderZone: WebGLUniformLocation
-  resolution: WebGLUniformLocation
   smokeMap: WebGLUniformLocation
   time: WebGLUniformLocation
+  viewProjection: WebGLUniformLocation
 }
 
 type SmokeUniforms = {
-  cameraCenter: WebGLUniformLocation
-  cameraEye: WebGLUniformLocation
-  resolution: WebGLUniformLocation
+  cameraRight: WebGLUniformLocation
+  cameraUp: WebGLUniformLocation
   smokeMap: WebGLUniformLocation
   time: WebGLUniformLocation
+  viewProjection: WebGLUniformLocation
 }
 
 type CharacterBoxUniforms = {
-  cameraCenter: WebGLUniformLocation
-  cameraEye: WebGLUniformLocation
   renderZone: WebGLUniformLocation
-  resolution: WebGLUniformLocation
+  viewProjection: WebGLUniformLocation
 }
+
+const mainCameraMatrix = createCameraMatrix()
+const bloomCameraMatrix = createCameraMatrix()
 
 export function renderClubFrame(options: {
   arrays: {
@@ -105,6 +104,9 @@ export function renderClubFrame(options: {
 }) {
   const gl = options.gl
   const frame = Math.floor(options.time * 60)
+  updateCameraMatrix(mainCameraMatrix, options.camera.eye, options.camera.center, options.width, options.height)
+  updateCameraMatrix(bloomCameraMatrix, options.camera.eye, options.camera.center, options.bloomTarget.width,
+    options.bloomTarget.height)
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, options.target.frame)
   gl.viewport(0, 0, options.width, options.height)
@@ -113,10 +115,8 @@ export function renderClubFrame(options: {
   gl.clearColor(options.sky ? 0.28 : 0.01, options.sky ? 0.55 : 0.01, options.sky ? 0.92 : 0.014, 0.0)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
   gl.useProgram(options.program)
-  gl.uniform2f(options.roomUniforms.resolution, options.width, options.height)
+  gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, mainCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  gl.uniform3f(options.roomUniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
@@ -134,6 +134,7 @@ export function renderClubFrame(options: {
   drawRoomDepth({
     array: options.arrays.room,
     camera: options.camera,
+    cameraMatrix: mainCameraMatrix,
     count: options.points.length / options.vertexSize,
     gl,
     height: options.height,
@@ -149,6 +150,7 @@ export function renderClubFrame(options: {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     useRoomSmokeProgram({
       camera: options.camera,
+      cameraMatrix: mainCameraMatrix,
       gl,
       height: options.height,
       program: options.smoke.program,
@@ -170,10 +172,8 @@ export function renderClubFrame(options: {
   gl.clearColor(0, 0, 0, 0)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
   gl.useProgram(options.program)
-  gl.uniform2f(options.roomUniforms.resolution, options.bloomTarget.width, options.bloomTarget.height)
+  gl.uniformMatrix4fv(options.roomUniforms.viewProjection, false, bloomCameraMatrix.viewProjection)
   gl.uniform3f(options.roomUniforms.cameraEye, options.camera.eye[0], options.camera.eye[1], options.camera.eye[2])
-  gl.uniform3f(options.roomUniforms.cameraCenter, options.camera.center[0], options.camera.center[1],
-    options.camera.center[2])
   gl.uniform1i(options.roomUniforms.renderZone, options.outside ? 1 : 0)
   gl.activeTexture(gl.TEXTURE4)
   gl.bindTexture(gl.TEXTURE_2D, options.treeShadowMap)
@@ -189,6 +189,7 @@ export function renderClubFrame(options: {
   drawRoomDepth({
     array: options.arrays.room,
     camera: options.camera,
+    cameraMatrix: bloomCameraMatrix,
     count: options.points.length / options.vertexSize,
     gl,
     height: options.bloomTarget.height,
@@ -220,29 +221,12 @@ export function renderClubFrame(options: {
   gl.bindTexture(gl.TEXTURE_2D, options.bloomTarget.color)
   gl.uniform1i(options.post.bloom, 1)
   gl.uniform2f(options.post.bloomResolution, options.bloomTarget.width, options.bloomTarget.height)
-  const forward = normalize([
-    options.camera.center[0] - options.camera.eye[0],
-    options.camera.center[1] - options.camera.eye[1],
-    options.camera.center[2] - options.camera.eye[2],
-  ])
-  const right = normalize([-forward[2], 0, forward[0]])
-  const up: Vec3 = [
-    right[1] * forward[2] - right[2] * forward[1],
-    right[2] * forward[0] - right[0] * forward[2],
-    right[0] * forward[1] - right[1] * forward[0],
-  ]
-
-  gl.uniform3f(options.post.skyForward, forward[0], forward[1], forward[2])
-  gl.uniform3f(options.post.skyRight, right[0], right[1], right[2])
-  gl.uniform3f(options.post.skyUp, up[0], up[1], up[2])
+  gl.uniform3f(options.post.skyForward, mainCameraMatrix.forward[0], mainCameraMatrix.forward[1],
+    mainCameraMatrix.forward[2])
+  gl.uniform3f(options.post.skyRight, mainCameraMatrix.right[0], mainCameraMatrix.right[1], mainCameraMatrix.right[2])
+  gl.uniform3f(options.post.skyUp, mainCameraMatrix.up[0], mainCameraMatrix.up[1], mainCameraMatrix.up[2])
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-}
-
-function normalize(value: Vec3): Vec3 {
-  const amount = Math.hypot(value[0], value[1], value[2])
-
-  return [value[0] / amount, value[1] / amount, value[2] / amount]
 }
 
 function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: number, height: number) {
@@ -254,6 +238,7 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
   drawCharacterBoxes({
     array: options.arrays.characterBox,
     camera: options.camera,
+    cameraMatrix: width === options.width ? mainCameraMatrix : bloomCameraMatrix,
     count: options.character.boxInstanceCount,
     geometry: options.character.boxGeometry,
     gl: options.gl,
@@ -265,6 +250,7 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
   })
   drawNpcHair({
     camera: options.camera,
+    cameraMatrix: width === options.width ? mainCameraMatrix : bloomCameraMatrix,
     gl: options.gl,
     hairRenderMeshes: options.character.hairRenderMeshes,
     height,
@@ -278,6 +264,7 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
 function drawLights(options: Parameters<typeof renderClubFrame>[0], width: number, height: number, frame: number) {
   useLightProgram({
     camera: options.camera,
+    cameraMatrix: width === options.width ? mainCameraMatrix : bloomCameraMatrix,
     characterPosition: options.characterPosition,
     frame,
     gl: options.gl,
@@ -289,5 +276,5 @@ function drawLights(options: Parameters<typeof renderClubFrame>[0], width: numbe
   })
   options.gl.bindVertexArray(options.arrays.light)
   options.gl.drawArrays(options.gl.TRIANGLES, 0, options.light.count)
-  options.strobeController.draw(options.camera, width, height, frame)
+  options.strobeController.draw(frame, width === options.width ? mainCameraMatrix : bloomCameraMatrix)
 }

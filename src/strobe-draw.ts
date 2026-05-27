@@ -1,9 +1,8 @@
 import { uploadFloatBuffer } from './character-gpu.ts'
 import { isOutside } from './scene.ts'
 import { strobeRandom, strobeReflectionAmount, strobeTarget } from './strobe-object.ts'
+import type { CameraMatrix } from './camera-matrix.ts'
 import type { CharacterBoxGeometry, StrobeLight, StrobeReflectionLight, Vec3, VideoZone } from './types.ts'
-
-type Camera = { eye: Vec3; center: Vec3 }
 
 type StrobeDrawOptions = {
   array: WebGLVertexArrayObject
@@ -16,12 +15,10 @@ type StrobeDrawOptions = {
   program: WebGLProgram
   smokeMap: WebGLTexture
   uniforms: {
-    cameraCenter: WebGLUniformLocation
-    cameraEye: WebGLUniformLocation
     renderZone: WebGLUniformLocation
-    resolution: WebGLUniformLocation
     smokeMap: WebGLUniformLocation
     time: WebGLUniformLocation
+    viewProjection: WebGLUniformLocation
   }
 }
 
@@ -78,7 +75,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
         ? instanceBuffer
         : instanceBuffer.subarray(0, instances.length), instanceBufferCache)
     },
-    draw(camera: Camera, width: number, height: number, nextFrame: number) {
+    draw(nextFrame: number, cameraMatrix: CameraMatrix) {
       if (instanceCount === 0) {
         return
       }
@@ -86,9 +83,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
       options.gl.useProgram(options.program)
       options.gl.uniform1f(options.uniforms.time, nextFrame)
       options.gl.uniform1i(options.uniforms.renderZone, isOutside(options.characterPosition) ? 1 : 0)
-      options.gl.uniform2f(options.uniforms.resolution, width, height)
-      options.gl.uniform3f(options.uniforms.cameraEye, camera.eye[0], camera.eye[1], camera.eye[2])
-      options.gl.uniform3f(options.uniforms.cameraCenter, camera.center[0], camera.center[1], camera.center[2])
+      options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, cameraMatrix.viewProjection)
       options.gl.activeTexture(options.gl.TEXTURE2)
       options.gl.bindTexture(options.gl.TEXTURE_2D, options.smokeMap)
       options.gl.uniform1i(options.uniforms.smokeMap, 2)
