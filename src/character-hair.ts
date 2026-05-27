@@ -1,6 +1,11 @@
 import { scale, subtract } from './math.ts'
 import type { AssimpMesh, AssimpScene, HairInstance, HairMesh, HairRenderMesh, Vec3 } from './types.ts'
 
+export type HairInstanceUploadCache = {
+  buffers: Float32Array[]
+  grouped: number[][]
+}
+
 export function createHairMeshes(scene: AssimpScene, source: string): HairMesh[] {
   const meshes = scene.meshes!.filter(mesh => mesh.name.toLowerCase().includes('hair'))
     .filter((_, index) => !removedHairStyles.has(`${source}:${index}`))
@@ -42,8 +47,9 @@ function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
   }
 
   return {
+    index: -1,
     name: `${source}:${mesh.name}`,
-    localTriangles,
+    localTriangles: new Float32Array(localTriangles),
   }
 }
 
@@ -62,7 +68,7 @@ function createHairRenderMesh(context: WebGL2RenderingContext, mesh: HairMesh): 
 
   context.bindVertexArray(array)
   context.bindBuffer(context.ARRAY_BUFFER, vertexBuffer)
-  context.bufferData(context.ARRAY_BUFFER, new Float32Array(mesh.localTriangles), context.STATIC_DRAW)
+  context.bufferData(context.ARRAY_BUFFER, mesh.localTriangles, context.STATIC_DRAW)
   context.enableVertexAttribArray(0)
   context.vertexAttribPointer(0, 3, context.FLOAT, false, 0, 0)
 
@@ -102,8 +108,10 @@ export function updateHairInstances(
   context: WebGL2RenderingContext,
   hairRenderMeshes: HairRenderMesh[],
   hairInstances: HairInstance[],
+  cache?: HairInstanceUploadCache,
 ) {
-  const grouped = Array.from({ length: hairRenderMeshes.length }, () => [] as number[])
+  const grouped = cache ? resizeHairInstanceGroups(cache, hairRenderMeshes.length) : createHairInstanceGroups(
+    hairRenderMeshes.length)
 
   for (const instance of hairInstances) {
     const data = grouped[instance.meshIndex]!
@@ -130,11 +138,39 @@ export function updateHairInstances(
   for (let i = 0; i < hairRenderMeshes.length; i++) {
     const mesh = hairRenderMeshes[i]!
     const data = grouped[i]!
+    const buffer = cache ? fillHairInstanceBuffer(cache, i, data) : new Float32Array(data)
 
     mesh.instanceCount = data.length / 15
     context.bindBuffer(context.ARRAY_BUFFER, mesh.instanceBuffer)
-    context.bufferData(context.ARRAY_BUFFER, new Float32Array(data), context.DYNAMIC_DRAW)
+    context.bufferData(context.ARRAY_BUFFER, buffer, context.DYNAMIC_DRAW)
   }
+}
+
+function createHairInstanceGroups(length: number) {
+  return Array.from({ length }, () => [] as number[])
+}
+
+function resizeHairInstanceGroups(cache: HairInstanceUploadCache, length: number) {
+  while (cache.grouped.length < length) {
+    cache.grouped.push([])
+  }
+
+  for (let i = 0; i < length; i++) {
+    cache.grouped[i]!.length = 0
+  }
+
+  return cache.grouped
+}
+
+function fillHairInstanceBuffer(cache: HairInstanceUploadCache, index: number, data: number[]) {
+  if (!cache.buffers[index] || cache.buffers[index]!.length < data.length) {
+    cache.buffers[index] = new Float32Array(data.length)
+  }
+
+  cache.buffers[index]!.set(data)
+
+  return cache.buffers[index]!.length === data.length ? cache.buffers[index]! : cache.buffers[index]!.subarray(0,
+    data.length)
 }
 
 export function normalizeHairPoints(points: Vec3[], turnRightSideForward: boolean): Vec3[] {

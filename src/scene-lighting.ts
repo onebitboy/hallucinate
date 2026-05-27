@@ -1,15 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
-import {
-  add,
-  clamp,
-  cross,
-  dot,
-  normalize,
-  scale,
-  smoothstep,
-  subtract,
-} from './math.ts'
+import { clamp, smoothstep } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import type { CircleBounds, Vec3, Vertex } from './types.ts'
 
@@ -28,25 +19,50 @@ export function createSceneLighting(options: {
     color: Vec3,
     tree = options.getTree(),
   ) {
-    const center = scale(add(add(a, b), c), 1 / 3)
-    const normal = normalize(cross(subtract(c, a), subtract(b, a)))
-    const sun = normalize(subtract([10.5, 6.8, outsideBounds.front], center))
-    const diffuse = Math.abs(dot(normal, sun))
-    const lift = clamp((normal[1] + 1) * 0.5, 0, 1)
+    const centerX = (a[0] + b[0] + c[0]) / 3
+    const centerY = (a[1] + b[1] + c[1]) / 3
+    const centerZ = (a[2] + b[2] + c[2]) / 3
+    const ux = c[0] - a[0]
+    const uy = c[1] - a[1]
+    const uz = c[2] - a[2]
+    const vx = b[0] - a[0]
+    const vy = b[1] - a[1]
+    const vz = b[2] - a[2]
+    const normalX = uy * vz - uz * vy
+    const normalY = uz * vx - ux * vz
+    const normalZ = ux * vy - uy * vx
+    const normalLength = Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ)
+    if (normalLength === 0) {
+      throw new Error('Cannot normalize zero vector')
+    }
+    const nx = normalX / normalLength
+    const ny = normalY / normalLength
+    const nz = normalZ / normalLength
+    const sunX = 10.5 - centerX
+    const sunY = 6.8 - centerY
+    const sunZ = outsideBounds.front - centerZ
+    const sunLength = Math.sqrt(sunX * sunX + sunY * sunY + sunZ * sunZ)
+    if (sunLength === 0) {
+      throw new Error('Cannot normalize zero vector')
+    }
+    const diffuse = Math.abs((nx * sunX + ny * sunY + nz * sunZ) / sunLength)
+    const lift = clamp((ny + 1) * 0.5, 0, 1)
     const night = outsideMotif === 'night'
-    const treeLights: Vec3[] = [
-      [tree.x - tree.radius * 2.5, characterFloor - 0.35, tree.z + tree.radius * 0.85],
-      [tree.x + tree.radius * 2.5, characterFloor - 0.35, tree.z + tree.radius * 0.85],
-      [tree.x, characterFloor - 0.35, tree.z - tree.radius * 2.5],
-    ]
     let uplight = 0
 
-    for (const light of treeLights) {
-      const toLight = subtract(light, center)
-      const distance = Math.hypot(toLight[0], toLight[1], toLight[2])
-      const fromLight = normalize(subtract(center, light))
-      const vertical = clamp(dot(fromLight, [0, 1, 0]), 0, 1)
-      const facing = clamp(dot(normal, scale(fromLight, -1)), 0, 1)
+    for (let i = 0; i < 3; i++) {
+      const lightX = i === 0 ? tree.x - tree.radius * 2.5 : i === 1 ? tree.x + tree.radius * 2.5 : tree.x
+      const lightY = characterFloor - 0.35
+      const lightZ = i < 2 ? tree.z + tree.radius * 0.85 : tree.z - tree.radius * 2.5
+      const toLightX = lightX - centerX
+      const toLightY = lightY - centerY
+      const toLightZ = lightZ - centerZ
+      const distance = Math.sqrt(toLightX * toLightX + toLightY * toLightY + toLightZ * toLightZ)
+      if (distance === 0) {
+        throw new Error('Cannot normalize zero vector')
+      }
+      const vertical = clamp(-toLightY / distance, 0, 1)
+      const facing = clamp((nx * toLightX + ny * toLightY + nz * toLightZ) / distance, 0, 1)
       const cone = smoothstep(0.58, 0.96, vertical)
 
       uplight += facing * cone * clamp(1 - distance / 8, 0, 1)

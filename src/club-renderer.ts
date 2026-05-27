@@ -83,6 +83,9 @@ export function renderClubFrame(options: {
     bloomResolution: WebGLUniformLocation
     program: WebGLProgram
     scene: WebGLUniformLocation
+    skyForward: WebGLUniformLocation
+    skyRight: WebGLUniformLocation
+    skyUp: WebGLUniformLocation
   }
   program: WebGLProgram
   roomUniforms: RoomUniforms
@@ -217,8 +220,29 @@ export function renderClubFrame(options: {
   gl.bindTexture(gl.TEXTURE_2D, options.bloomTarget.color)
   gl.uniform1i(options.post.bloom, 1)
   gl.uniform2f(options.post.bloomResolution, options.bloomTarget.width, options.bloomTarget.height)
+  const forward = normalize([
+    options.camera.center[0] - options.camera.eye[0],
+    options.camera.center[1] - options.camera.eye[1],
+    options.camera.center[2] - options.camera.eye[2],
+  ])
+  const right = normalize([-forward[2], 0, forward[0]])
+  const up: Vec3 = [
+    right[1] * forward[2] - right[2] * forward[1],
+    right[2] * forward[0] - right[0] * forward[2],
+    right[0] * forward[1] - right[1] * forward[0],
+  ]
+
+  gl.uniform3f(options.post.skyForward, forward[0], forward[1], forward[2])
+  gl.uniform3f(options.post.skyRight, right[0], right[1], right[2])
+  gl.uniform3f(options.post.skyUp, up[0], up[1], up[2])
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+}
+
+function normalize(value: Vec3): Vec3 {
+  const amount = Math.hypot(value[0], value[1], value[2])
+
+  return [value[0] / amount, value[1] / amount, value[2] / amount]
 }
 
 function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: number, height: number) {

@@ -140,6 +140,9 @@ const roomSmokeCameraCenter = gl.getUniformLocation(smokeProgram, 'cameraCenter'
 const postScene = gl.getUniformLocation(postProgram, 'scene')
 const postBloom = gl.getUniformLocation(postProgram, 'bloom')
 const postBloomResolution = gl.getUniformLocation(postProgram, 'bloomResolution')
+const postSkyForward = gl.getUniformLocation(postProgram, 'skyForward')
+const postSkyRight = gl.getUniformLocation(postProgram, 'skyRight')
+const postSkyUp = gl.getUniformLocation(postProgram, 'skyUp')
 const array = gl.createVertexArray()
 const buffer = gl.createBuffer()
 const lightArray = gl.createVertexArray()
@@ -172,7 +175,8 @@ if (!resolution || !cameraEye || !cameraCenter || !renderZone || !treeShadowSamp
   || !strobeRenderZone || !strobeResolution || !strobeCameraEye || !strobeCameraCenter || !hairResolution
   || !hairCameraEye
   || !hairCameraCenter || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeResolution
-  || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution || !array
+  || !roomSmokeCameraEye || !roomSmokeCameraCenter || !postScene || !postBloom || !postBloomResolution
+  || !postSkyForward || !postSkyRight || !postSkyUp || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer)
@@ -347,6 +351,9 @@ const draw = (stamp: number) => {
       bloomResolution: postBloomResolution,
       program: postProgram,
       scene: postScene,
+      skyForward: postSkyForward,
+      skyRight: postSkyRight,
+      skyUp: postSkyUp,
     },
     program,
     roomUniforms: {

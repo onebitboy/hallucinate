@@ -1,6 +1,6 @@
 import { characterFloor, hairPalette, jewelPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
-import { lengthSq, mix, normalize, normalizeIndex, smoothAngle } from './math.ts'
+import { lengthSq, mix, normalizeIndex, smoothAngle } from './math.ts'
 import {
   backDoor,
   bartenderBar,
@@ -10,6 +10,18 @@ import {
 } from './scene-data.ts'
 import { collideRoom, isOutside } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
+
+const inputDirections: Vec3[] = [
+  [0, 0, 1],
+  [1, 0, 1],
+  [-1, 0, 1],
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 0, -1],
+  [1, 0, -1],
+  [-1, 0, -1],
+]
+const inputCrossingDestination: PlayerDestination = { position: [backDoor.x, characterFloor, 0] }
 
 export function createPlayers(count: number, outsideTree: CircleBounds) {
   const next: Player[] = []
@@ -46,12 +58,13 @@ export function createPlayers(count: number, outsideTree: CircleBounds) {
 }
 
 export function updatePlayers(players: Player[], delta: number, time: number, outsideTree: CircleBounds) {
+  const crossingDestination: PlayerDestination = { position: [backDoor.x, characterFloor, 0] }
+
   for (const player of players) {
-    const destination = activePlayerDestination(player)
-    const distance = Math.hypot(
-      destination.position[0] - player.position[0],
-      destination.position[2] - player.position[2],
-    )
+    const destination = activePlayerDestination(player, crossingDestination)
+    const dx = destination.position[0] - player.position[0]
+    const dz = destination.position[2] - player.position[2]
+    const distance = Math.sqrt(dx * dx + dz * dz)
 
     if (distance < 0.55 && destination === player.destination) {
       player.destination = playerDestination(player.seed, Math.floor(time / 6 + player.seed), outsideTree)
@@ -68,12 +81,14 @@ export function updatePlayers(players: Player[], delta: number, time: number, ou
     player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-7 * delta))
 
     if (moving) {
-      const direction = normalize([...player.input])
+      const inputLength = Math.sqrt(lengthSq(player.input))
+      const directionX = player.input[0] / inputLength
+      const directionZ = player.input[2] / inputLength
 
-      player.position[0] += direction[0] * delta * 2.55
-      player.position[2] += direction[2] * delta * 2.55
+      player.position[0] += directionX * delta * 2.55
+      player.position[2] += directionZ * delta * 2.55
       collideRoom(player.position, outsideTree)
-      player.turn = smoothAngle(player.turn, Math.atan2(direction[0], direction[2]), 8, delta)
+      player.turn = smoothAngle(player.turn, Math.atan2(directionX, directionZ), 8, delta)
     }
     else if (destination.lookAt) {
       const dx = destination.lookAt[0] - player.position[0]
@@ -90,30 +105,25 @@ function choosePlayerInput(player: Player, time: number) {
   const random = seededRandom(player.seed, Math.floor(time * 7.7))
 
   if (random < 0.22) {
-    player.input = [0, 0, 0]
+    player.input[0] = 0
+    player.input[1] = 0
+    player.input[2] = 0
     return
   }
 
-  const destination = activePlayerDestination(player)
+  const destination = activePlayerDestination(player, inputCrossingDestination)
   const dx = destination.position[0] - player.position[0]
   const dz = destination.position[2] - player.position[2]
   const angle = Math.atan2(dx, dz) + seededRange(player.seed, Math.floor(time * 5.3), -0.75, 0.75)
-  const directions: Vec3[] = [
-    [0, 0, 1],
-    [1, 0, 1],
-    [-1, 0, 1],
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 0, -1],
-    [1, 0, -1],
-    [-1, 0, -1],
-  ]
-  const index = normalizeIndex(Math.round(angle / (Math.PI / 4)), directions.length)
+  const index = normalizeIndex(Math.round(angle / (Math.PI / 4)), inputDirections.length)
+  const input = inputDirections[index]!
 
-  player.input = [...directions[index]!]
+  player.input[0] = input[0]
+  player.input[1] = input[1]
+  player.input[2] = input[2]
 }
 
-function activePlayerDestination(player: Player): PlayerDestination {
+function activePlayerDestination(player: Player, crossingDestination: PlayerDestination): PlayerDestination {
   const outside = isOutside(player.position)
   const destinationOutside = isOutside(player.destination.position)
 
@@ -121,9 +131,9 @@ function activePlayerDestination(player: Player): PlayerDestination {
     return player.destination
   }
 
-  return {
-    position: [backDoor.x, characterFloor, outside ? roomBounds.front - 0.75 : roomBounds.front + 0.75],
-  }
+  crossingDestination.position[2] = outside ? roomBounds.front - 0.75 : roomBounds.front + 0.75
+
+  return crossingDestination
 }
 
 function playerDestination(seed: number, step: number, outsideTree: CircleBounds): PlayerDestination {

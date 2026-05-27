@@ -23,7 +23,7 @@ export function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight,
   const lx = light.x - point[0]
   const ly = top - point[1]
   const lz = light.z - point[2]
-  const length = Math.hypot(lx, ly, lz)
+  const length = Math.sqrt(lx * lx + ly * ly + lz * lz)
   const facing = Math.max(0, (normal[0] * lx + normal[1] * ly + normal[2] * lz) / length)
   const inside = Math.pow(1 - cone, 0.45)
 

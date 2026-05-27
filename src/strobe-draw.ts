@@ -26,6 +26,7 @@ type StrobeDrawOptions = {
 
 export function createStrobeDrawController(options: StrobeDrawOptions) {
   const instances: number[] = []
+  let instanceBuffer = new Float32Array(0)
   let instanceCount = 0
   let reflectionFrame = -1
   let reflectionLights: StrobeReflectionLight[] = []
@@ -65,8 +66,15 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
       }
 
       instanceCount = instances.length / options.instanceSize
+      if (instanceBuffer.length < instances.length) {
+        instanceBuffer = new Float32Array(instances.length)
+      }
+
+      instanceBuffer.set(instances)
       options.gl.bindBuffer(options.gl.ARRAY_BUFFER, options.instanceBuffer)
-      options.gl.bufferData(options.gl.ARRAY_BUFFER, new Float32Array(instances), options.gl.DYNAMIC_DRAW)
+      options.gl.bufferData(options.gl.ARRAY_BUFFER, instanceBuffer.length === instances.length
+        ? instanceBuffer
+        : instanceBuffer.subarray(0, instances.length), options.gl.DYNAMIC_DRAW)
     },
     draw(camera: Camera, width: number, height: number, nextFrame: number) {
       if (instanceCount === 0) {
@@ -98,7 +106,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
 
   function activeReflectionLights() {
     if (reflectionFrame !== frame) {
-      reflectionLights = []
+      reflectionLights.length = 0
       reflectionFrame = frame
 
       for (const light of options.lights) {

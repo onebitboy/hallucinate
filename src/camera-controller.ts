@@ -62,9 +62,14 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     },
     update(delta: number, input: Vec3, characterTurn: number) {
       const moving = lengthSq(input) > 0
+      const movingBack = moving && input[2] < 0
 
       if (!dragging && wasMoving && !moving) {
         returning = true
+      }
+
+      if (!dragging && movingBack) {
+        returning = false
       }
 
       if (!dragging && ((moving && input[2] >= 0) || returning)) {

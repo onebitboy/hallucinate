@@ -31,6 +31,10 @@ export async function loadCharacterAssets(gl: WebGL2RenderingContext, hairIndex:
   }
   const hairMeshes = [...createHairMeshes(manHair, 'man'), ...createHairMeshes(womanHair, 'woman')]
 
+  for (let i = 0; i < hairMeshes.length; i++) {
+    hairMeshes[i]!.index = i
+  }
+
   validateCharacterRig(rig.root, characterBones)
 
   return {

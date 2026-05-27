@@ -1,6 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
-import { addBox, addDisc, addGrassQuad, addQuad, pack, packGrass, packSmoke } from './geometry.ts'
+import { addBox, addDisc, addGrassQuad, addQuad, pack, packSmoke } from './geometry.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideDjBooth,
   outsideDjSpeakers, roomBounds } from './scene-data.ts'
@@ -96,9 +96,6 @@ function addBartenderBar(target: Vertex[]) {
 
 function addOutside(target: Vertex[]) {
   const floor = -1.95
-  const horizonFloor = -2.08
-
-  addGrassHorizon(target, horizonFloor)
 
   addGrassQuad(target, [landscapeBounds.left, floor, landscapeBounds.front], [landscapeBounds.right, floor,
     landscapeBounds.front], [landscapeBounds.right, floor, roomBounds.front], [landscapeBounds.left, floor,
@@ -152,89 +149,10 @@ function addOutsideSkyLight(target: Vertex[]) {
   const z = outsideBounds.front - 0.12
 
   if (outsideMotif === 'night') {
-    addDisc(target, [10.5, 6.8, z], 0.56, 0.56, 'z', [0.86, 0.88, 1], 1.15)
-    addDisc(target, [10.72, 6.92, z - 0.01], 0.5, 0.5, 'z', [0, 0, 0.015], 0)
     return
   }
 
   addDisc(target, [10.5, 6.8, z], 1.0, 1.0, 'z', [1, 0.78, 0.22], 1.9)
-}
-
-function addGrassHorizon(target: Vertex[], floor: number) {
-  const sideSegments = 32
-  const points: [number, number][] = []
-  const centerX = (landscapeBounds.left + landscapeBounds.right) / 2
-  const centerZ = (landscapeBounds.back + landscapeBounds.front) / 2
-  const outerScale = 1.85
-
-  addGrassQuad(target, [landscapeBounds.left, floor, landscapeBounds.front], [landscapeBounds.right, floor,
-    landscapeBounds.front], [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor,
-    landscapeBounds.back])
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([mix(landscapeBounds.left, landscapeBounds.right, t), landscapeBounds.back])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([landscapeBounds.right, mix(landscapeBounds.back, landscapeBounds.front, t)])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([mix(landscapeBounds.right, landscapeBounds.left, t), landscapeBounds.front])
-  }
-
-  for (let i = 0; i < sideSegments; i++) {
-    const t = i / sideSegments
-
-    points.push([landscapeBounds.left, mix(landscapeBounds.front, landscapeBounds.back, t)])
-  }
-
-  for (let i = 0; i < points.length; i++) {
-    const next = (i + 1) % points.length
-    const a = points[i]!
-    const b = points[next]!
-    const aHill = horizonHill(i, points.length)
-    const bHill = horizonHill(next, points.length)
-    const outerA: [number, number] = [
-      centerX + (a[0] - centerX) * outerScale,
-      centerZ + (a[1] - centerZ) * outerScale,
-    ]
-    const outerB: [number, number] = [
-      centerX + (b[0] - centerX) * outerScale,
-      centerZ + (b[1] - centerZ) * outerScale,
-    ]
-
-    addHorizonQuad(target, [a[0], floor, a[1]], [b[0], floor, b[1]], [outerB[0], floor + bHill, outerB[1]], [outerA[0],
-      floor + aHill, outerA[1]])
-  }
-}
-
-function horizonHill(index: number, total: number) {
-  const t = index / total
-
-  return 2.2
-    + Math.sin(t * Math.PI * 2 * 7.0) * 1.05
-    + Math.sin(t * Math.PI * 2 * 13.0 + 1.7) * 0.62
-    + Math.sin(t * Math.PI * 2 * 23.0 + 0.4) * 0.34
-}
-
-function addHorizonQuad(
-  target: Vertex[],
-  a: [number, number, number],
-  b: [number, number, number],
-  c: [number, number, number],
-  d: [number, number, number],
-) {
-  const color: Vec3 = [0.018, 0.16, 0.04]
-
-  target.push(packGrass(a, color), packGrass(b, color), packGrass(c, color))
-  target.push(packGrass(a, color), packGrass(c, color), packGrass(d, color))
 }
 
 function addDjBooth(target: Vertex[]) {

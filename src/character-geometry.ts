@@ -1,5 +1,4 @@
 import { addQuad } from './geometry.ts'
-import { normalize, scale } from './math.ts'
 import type { Vec3, Vertex } from './types.ts'
 
 export type VertexBufferCache = {
@@ -109,7 +108,7 @@ export function addCharacterBox(
   upZ *= depth * 0.5
 
   if (!localReflection) {
-    addCharacterBoxInstance(instances, a, b, [sideX, sideY, sideZ], [upX, upY, upZ], color, glow, strobe)
+    addCharacterBoxInstance(instances, a, b, sideX, sideY, sideZ, upX, upY, upZ, color, glow, strobe)
     return
   }
 
@@ -121,8 +120,8 @@ export function addCharacterBox(
   const b1: Vec3 = [b[0] + sideX - upX, b[1] + sideY - upY, b[2] + sideZ - upZ]
   const b2: Vec3 = [b[0] + sideX + upX, b[1] + sideY + upY, b[2] + sideZ + upZ]
   const b3: Vec3 = [b[0] - sideX + upX, b[1] - sideY + upY, b[2] - sideZ + upZ]
-  const shadeA = scale(color, 0.65)
-  const shadeB = scale(color, 0.82)
+  const shadeA: Vec3 = [color[0] * 0.65, color[1] * 0.65, color[2] * 0.65]
+  const shadeB: Vec3 = [color[0] * 0.82, color[1] * 0.82, color[2] * 0.82]
 
   addCharacterQuad(target, a0, a1, b1, b0, shadeA, glow, localReflection, light)
   addCharacterQuad(target, a1, a2, b2, b1, color, glow, localReflection, light)
@@ -172,11 +171,14 @@ function addLitQuad(
     (a[1] + b[1] + c[1] + d[1]) * 0.25,
     (a[2] + b[2] + c[2] + d[2]) * 0.25,
   ]
-  const normal = normalize([
-    uy * vz - uz * vy,
-    uz * vx - ux * vz,
-    ux * vy - uy * vx,
-  ])
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  const length = Math.sqrt(nx * nx + ny * ny + nz * nz)
+  if (length === 0) {
+    throw new Error('Cannot normalize zero vector')
+  }
+  const normal: Vec3 = [nx / length, ny / length, nz / length]
 
   addQuad(target, a, b, c, d, light(color, center, normal), glow)
 }
@@ -185,8 +187,12 @@ function addCharacterBoxInstance(
   instances: number[],
   a: Vec3,
   b: Vec3,
-  side: Vec3,
-  up: Vec3,
+  sideX: number,
+  sideY: number,
+  sideZ: number,
+  upX: number,
+  upY: number,
+  upZ: number,
   color: Vec3,
   glow: number,
   strobe: number,
@@ -198,12 +204,12 @@ function addCharacterBoxInstance(
     b[0],
     b[1],
     b[2],
-    side[0],
-    side[1],
-    side[2],
-    up[0],
-    up[1],
-    up[2],
+    sideX,
+    sideY,
+    sideZ,
+    upX,
+    upY,
+    upZ,
     color[0],
     color[1],
     color[2],

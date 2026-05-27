@@ -57,8 +57,9 @@ export type CharacterClip = {
 }
 
 export type HairMesh = {
+  index: number
   name: string
-  localTriangles: number[]
+  localTriangles: Float32Array
 }
 
 export type TreeMesh = {
@@ -159,11 +160,11 @@ export type Player = {
 }
 
 export type SampledPose = {
-  stand: Map<string, Vec3>
-  run: Map<string, Vec3>
+  stand: Vec3[]
+  run: Vec3[]
 }
 
-export type PoseBlendCache = Map<number, Map<string, Vec3>>
+export type PoseBlendCache = Map<number, Vec3[]>
 
 export type CharacterBoxGeometry = {
   data: Float32Array

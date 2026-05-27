@@ -1,9 +1,11 @@
 import { loadCharacterAssets } from './character-assets.ts'
 import { buildCharacterDrawData } from './character-draw.ts'
+import type { CharacterDrawCache } from './character-draw.ts'
 import { uploadCharacterBoxInstances } from './character-gpu.ts'
 import type { NumberBufferCache } from './character-gpu.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { updateHairInstances } from './character-hair.ts'
+import type { HairInstanceUploadCache } from './character-hair.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { createLocalCharacter } from './local-character.ts'
 import type { CharacterRig, HairRenderMesh, Player, Vec3 } from './types.ts'
@@ -34,6 +36,13 @@ export function createCharacterRenderSystem(options: {
   let boxInstanceCount = 0
   let assetsLoaded = false
   const boxInstanceCache: NumberBufferCache = { data: new Float32Array(0) }
+  const drawCache: CharacterDrawCache = {
+    boxInstances: [],
+    hairInstances: [],
+    npcBlendCache: new Map(),
+    vertices: [],
+  }
+  const hairInstanceCache: HairInstanceUploadCache = { buffers: [], grouped: [] }
   const vertexCache: VertexBufferCache = { data: new Float32Array(0) }
 
   async function loadAssets(hairIndex: number) {
@@ -83,12 +92,13 @@ export function createCharacterRenderSystem(options: {
       players: options.players,
       rig,
       time,
+      drawCache,
       vertexCache,
       width: options.canvas.width,
     })
 
     boxInstances = data.boxInstances
-    updateHairInstances(options.gl, hairRenderMeshes, data.hairInstances)
+    updateHairInstances(options.gl, hairRenderMeshes, data.hairInstances, hairInstanceCache)
     boxInstanceCount = uploadCharacterBoxInstances({
       buffer: options.boxInstanceBuffer,
       cache: boxInstanceCache,

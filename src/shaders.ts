@@ -603,6 +603,9 @@ precision highp float;
 uniform sampler2D scene;
 uniform sampler2D bloom;
 uniform vec2 bloomResolution;
+uniform vec3 skyForward;
+uniform vec3 skyRight;
+uniform vec3 skyUp;
 
 in vec2 uv;
 
@@ -625,16 +628,44 @@ vec3 afternoonSky(vec2 point) {
   return mix(mix(peach, blue, lift), horizon, warmth * 0.72);
 }
 
+vec3 hashStar(vec2 cell) {
+  vec3 value = fract(vec3(cell.xyx) * vec3(0.1031, 0.103, 0.0973));
+  value += dot(value, value.yzx + 33.33);
+
+  return fract((value.xxy + value.yzz) * value.zyx);
+}
+
 vec3 nightSky(vec2 point) {
-  float starCell = 150.0;
-  vec2 cell = floor(point * vec2(starCell, starCell * 0.62));
-  vec2 local = fract(point * vec2(starCell, starCell * 0.62)) - 0.5;
-  float seed = fract(sin(dot(cell, vec2(41.7, 289.3))) * 37158.5453);
-  float star = step(0.985, seed) * smoothstep(0.055, 0.0, length(local));
+  float starCell = 210.0;
+  vec2 cell = floor(point * vec2(starCell, starCell * 0.5));
+  vec2 local = fract(point * vec2(starCell, starCell * 0.5)) - 0.5;
+  vec3 seed = hashStar(cell);
+  float size = seed.y * seed.y * seed.y * seed.y;
+  float radius = mix(0.035, 0.16, size);
+  float star = step(0.972, seed.x) * smoothstep(radius, 0.0, length(local));
+  vec3 blue = vec3(0.55, 0.68, 1.0);
+  vec3 red = vec3(1.0, 0.58, 0.52);
+  vec3 yellow = vec3(1.0, 0.9, 0.52);
+  vec3 white = vec3(0.95, 0.97, 1.0);
+  vec3 starColor = seed.z < 0.25 ? blue : seed.z < 0.5 ? red : seed.z < 0.75 ? yellow : white;
   vec3 low = vec3(0.015, 0.01, 0.035);
   vec3 high = vec3(0.0, 0.0, 0.012);
+  vec2 moonDelta = vec2(abs(fract(point.x - 0.55 + 0.5) - 0.5), point.y - 0.62);
+  float moonDistance = length(moonDelta * vec2(1.0, .5));
+  float moon = smoothstep(0.008, 0.006, moonDistance);
+  float moonGlow = smoothstep(0.03, 0.008, moonDistance) * 0.18;
+  vec3 sky = mix(low, high, smoothstep(0.0, 1.0, point.y));
+  vec3 moonColor = vec3(0.94, 0.92, 0.82);
 
-  return mix(low, high, smoothstep(0.0, 1.0, point.y)) + vec3(star);
+  return sky + starColor * star + moonColor * moonGlow + moonColor * moon;
+}
+
+vec2 skyPoint(vec2 point) {
+  vec2 screen = point * 2.0 - 1.0;
+  float aspect = bloomResolution.x / bloomResolution.y;
+  vec3 direction = normalize(skyForward + skyRight * screen.x * aspect + skyUp * screen.y);
+
+  return vec2(atan(direction.x, direction.z) / 6.2831853 + 0.5, asin(direction.y) / 3.14159265 + 0.5);
 }
 
 void main() {
@@ -646,7 +677,11 @@ void main() {
   vec2 far = texel * 7.0;
   vec3 glow = bright(texture(bloom, uv)) * 0.72;
 
-  base = mix(base, ${outsideMotif === 'night' ? 'nightSky(uv)' : 'afternoonSky(uv)'}, sky);
+  if (sky > 0.0) {
+    vec2 skyUv = skyPoint(uv);
+
+    base = mix(base, ${outsideMotif === 'night' ? 'nightSky(skyUv)' : 'afternoonSky(skyUv)'}, sky);
+  }
 
   glow += bright(texture(bloom, uv + vec2(near.x, 0.0))) * 0.18;
   glow += bright(texture(bloom, uv - vec2(near.x, 0.0))) * 0.18;
