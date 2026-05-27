@@ -1,9 +1,10 @@
-import { electricNavy, outsideMotif } from './constants.ts'
 import { characterFloor } from './character-data.ts'
-import { add, mix, scale, subtract } from './math.ts'
-import { strobeTarget } from './strobe-object.ts'
+import { electricNavy, outsideMotif } from './constants.ts'
 import { addBox, addDisc, addGrassQuad, addQuad, pack, packGrass, packSmoke } from './geometry.ts'
-import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideDjBooth, outsideDjSpeakers, roomBounds } from './scene-data.ts'
+import { add, mix, scale, subtract } from './math.ts'
+import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, landscapeBounds, outsideBounds, outsideDjBooth,
+  outsideDjSpeakers, roomBounds } from './scene-data.ts'
+import { strobeTarget } from './strobe-object.ts'
 import type { Bounds, StrobeLight, Vec3, Vertex, VideoZone } from './types.ts'
 
 export function addRoom(target: Vertex[]) {

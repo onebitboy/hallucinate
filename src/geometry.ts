@@ -1,6 +1,5 @@
 import type { Vec3, Vertex } from './types.ts'
 
-
 export function addBox(
   target: Vertex[],
   x: number,

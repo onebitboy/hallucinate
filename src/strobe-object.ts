@@ -1,7 +1,7 @@
-import { electricNavy } from './constants.ts'
 import { characterFloor } from './character-data.ts'
-import { outsideDjBooth, roomBounds } from './scene-data.ts'
+import { electricNavy } from './constants.ts'
 import { clamp, mix, smoothstep } from './math.ts'
+import { outsideDjBooth, roomBounds } from './scene-data.ts'
 import type { StrobeLight, Vec3 } from './types.ts'
 
 export function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, target: Vec3) {

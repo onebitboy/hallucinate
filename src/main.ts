@@ -917,9 +917,6 @@ async function loadOutsideTree() {
   addTreeToWorld(createTreeMeshes(trees))
 }
 
-
-
-
 function addTreeToWorld(meshes: TreeMesh[]) {
   const position: Vec3 = [outsideTree.x, characterFloor + 3.7, outsideTree.z]
 
@@ -945,14 +942,6 @@ function addTreeToWorld(meshes: TreeMesh[]) {
   refreshRoomBuffer()
 }
 
-
-
-
-
-
-
-
-
 async function loadAssimpScene(
   ajs: Awaited<ReturnType<typeof assimpjs>>,
   path: string,
@@ -976,10 +965,6 @@ async function loadAssimpScene(
 
   return JSON.parse(new TextDecoder().decode(result.GetFile(0).GetContent())) as AssimpScene
 }
-
-
-
-
 
 function updateCharacterMesh(time: number) {
   if (!characterRig) {
@@ -1119,7 +1104,8 @@ function addRenderedCharacter(
   basePose?: SampledPose,
   blendCache?: PoseBlendCache,
 ) {
-  const pose = sampleCharacterPose(characterRig!, time, player, characterPoseJoints, characterPoseJointSet, characterGroundJoints, characterScale, basePose, blendCache)
+  const pose = sampleCharacterPose(characterRig!, time, player, characterPoseJoints, characterPoseJointSet,
+    characterGroundJoints, characterScale, basePose, blendCache)
   const style = player.resolvedStyle ?? playerStyle(player.style)
   const localReflection = detailedHair
 
@@ -1591,13 +1577,6 @@ function activeStrobeReflectionLights() {
 
   return strobeReflectionLights
 }
-
-
-
-
-
-
-
 
 function restoreState() {
   const state = JSON.parse(localStorage.getItem(saveKey) ?? 'null') as {
@@ -2340,38 +2319,3 @@ function collideCircle(position: Vec3, bounds: CircleBounds) {
     position[2] = bounds.z + z / distance * radius
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

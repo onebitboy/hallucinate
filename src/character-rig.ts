@@ -1,6 +1,6 @@
 import { compose, identity, mix, multiply, nodeTransform, normalizeQuat, slerp, transformOrigin } from './math.ts'
-import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterRig, Mat4, PoseBlendCache, Quat, RigNode, SampledPose, Vec3 } from './types.ts'
-
+import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterRig, Mat4, PoseBlendCache, Quat, RigNode,
+  SampledPose, Vec3 } from './types.ts'
 
 export function createCharacterClip(scene: AssimpScene, name: string): CharacterClip {
   const animation = scene.animations?.[0]
@@ -108,7 +108,9 @@ export function sampleBasePose(rig: CharacterRig, time: number, characterPoseJoi
   }
 }
 
-export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number, characterPoseJointSet: Set<string>) {
+export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: number,
+  characterPoseJointSet: Set<string>)
+{
   const tick = (time * clip.ticksPerSecond) % clip.duration
   const pose = new Map<string, Vec3>()
   const world = new Array<Mat4>(rig.nodes.length)

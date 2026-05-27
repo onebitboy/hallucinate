@@ -1,5 +1,5 @@
-import { add, mix, normalize } from './math.ts'
 import { addQuad, pack } from './geometry.ts'
+import { add, mix, normalize } from './math.ts'
 import type { AssimpScene, CircleBounds, TreeMesh, Vec3, Vertex } from './types.ts'
 
 type EdgeBounds = { left: number; right: number; back: number; front: number }
@@ -261,7 +261,9 @@ export function uploadTreeShadowMap(
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, blurCanvas)
 }
 
-function drawShadowPolygon(context: CanvasRenderingContext2D, points: Vec3[], size: number, landscapeBounds: EdgeBounds) {
+function drawShadowPolygon(context: CanvasRenderingContext2D, points: Vec3[], size: number,
+  landscapeBounds: EdgeBounds)
+{
   const first = shadowTexturePoint(points[0]!, size, landscapeBounds)
 
   context.beginPath()
