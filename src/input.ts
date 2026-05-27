@@ -14,6 +14,7 @@ export function bindKeyboardInput(options: {
   openChatInput: () => void
   cycleHair: (direction: number) => void
   cycleHairColor: (direction: number) => void
+  cycleIdle: (direction: number) => void
   cycleShirt: (direction: number) => void
   cyclePants: (direction: number) => void
 }) {
@@ -35,6 +36,16 @@ export function bindKeyboardInput(options: {
 
     if (event.key.toLowerCase() === 'w') {
       options.cycleHair(1)
+      return
+    }
+
+    if (event.key.toLowerCase() === 'd') {
+      options.cycleIdle(-1)
+      return
+    }
+
+    if (event.key.toLowerCase() === 'f') {
+      options.cycleIdle(1)
       return
     }
 

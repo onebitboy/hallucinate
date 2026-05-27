@@ -8,6 +8,7 @@ export type ClubState = {
   velocityY: number
   characterHairIndex?: number
   characterHairColorIndex?: number
+  idleClipIndex?: number
   shirtColorIndex?: number
   topStyleIndex?: number
   pantsColorIndex?: number

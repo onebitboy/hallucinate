@@ -15,6 +15,10 @@ export function restoreClubState(options: {
   characterPosition: Vec3
   djVideoUi: ReturnType<typeof createDjVideoUi>
   hairController: ReturnType<typeof createCharacterHairController>
+  idleClipIndex: {
+    set(value: number): void
+  }
+  idleClipCount: number
   key: string
   localCharacter: ReturnType<typeof createLocalCharacter>
   styleController: ReturnType<typeof createCharacterStyleController>
@@ -29,6 +33,7 @@ export function restoreClubState(options: {
     options.localCharacter.velocityY = state.velocityY
     options.hairController.index = state.characterHairIndex ?? options.hairController.index
     options.hairController.colorIndex = state.characterHairColorIndex ?? options.hairController.colorIndex
+    options.idleClipIndex.set(normalizeIndex(state.idleClipIndex ?? 0, options.idleClipCount))
     options.styleController.topStyleIndex = normalizeIndex(state.topStyleIndex ?? state.shirtColorIndex
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
     options.styleController.bottomStyleIndex = normalizeIndex(state.bottomStyleIndex ?? state.pantsColorIndex
@@ -49,6 +54,7 @@ export function saveClubState(options: {
   characterPosition: Vec3
   djVideoUi: ReturnType<typeof createDjVideoUi>
   hairController: ReturnType<typeof createCharacterHairController>
+  idleClipIndex: number
   key: string
   localCharacter: ReturnType<typeof createLocalCharacter>
   styleController: ReturnType<typeof createCharacterStyleController>
@@ -67,6 +73,7 @@ export function saveClubState(options: {
     velocityY: options.localCharacter.velocityY,
     characterHairIndex: options.hairController.index,
     characterHairColorIndex: options.hairController.colorIndex,
+    idleClipIndex: options.idleClipIndex,
     shirtColorIndex: options.styleController.shirtColorIndex,
     topStyleIndex: options.styleController.topStyleIndex,
     pantsColorIndex: options.styleController.pantsColorIndex,

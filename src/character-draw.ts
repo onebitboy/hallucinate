@@ -31,6 +31,7 @@ type CharacterInput = {
   turn: number
   motionBlend: number
   mode?: CharacterMode
+  idleClipIndex: number
   style: PlayerStyle
   resolvedStyle?: ResolvedPlayerStyle
 }
@@ -72,6 +73,8 @@ const groundJointIndices = characterGroundJoints.map(name => poseJointIndices.ge
 const spine2Index = poseJointIndices.get('mixamorig:Spine2')!
 const neckIndex = poseJointIndices.get('mixamorig:Neck')!
 const hipsIndex = poseJointIndices.get('mixamorig:Hips')!
+const leftArmIndex = poseJointIndices.get('mixamorig:LeftArm')!
+const rightArmIndex = poseJointIndices.get('mixamorig:RightArm')!
 const leftUpLegIndex = poseJointIndices.get('mixamorig:LeftUpLeg')!
 const rightUpLegIndex = poseJointIndices.get('mixamorig:RightUpLeg')!
 const leftLegIndex = poseJointIndices.get('mixamorig:LeftLeg')!
@@ -97,6 +100,9 @@ const skirtE: Vec3 = [0, 0, 0]
 const skirtF: Vec3 = [0, 0, 0]
 const skirtG: Vec3 = [0, 0, 0]
 const skirtH: Vec3 = [0, 0, 0]
+const hairSide: Vec3 = [0, 0, 0]
+const hairUp: Vec3 = [0, 0, 0]
+const hairForward: Vec3 = [0, 0, 0]
 const farHairDistanceSq = 34 * 34
 
 export function buildCharacterDrawData(options: BuildOptions) {
@@ -110,7 +116,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const usedBasePoseKeys = cache?.usedBasePoseKeys ?? new Set<number>()
   const usedNpcBlendKeys = cache?.usedNpcBlendKeys ?? new Set<number>()
   const basePose = sampleBasePose(options.rig, options.time, characterPoseJoints, characterPoseJointSet,
-    cache?.basePose)
+    options.character.idleClipIndex, cache?.basePose)
 
   if (cache) {
     cache.basePose = basePose
@@ -134,12 +140,12 @@ export function buildCharacterDrawData(options: BuildOptions) {
 
     if (visibility.visible) {
       const sampledTime = bodySampleTime(options.time, visibility.distanceSq)
-      const sampleKey = Math.round(sampledTime * 60)
+      const sampleKey = player.idleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       usedBasePoseKeys.add(sampleKey)
       usedNpcBlendKeys.add(blendKey)
       const sampledBasePose = basePoses.get(sampleKey) ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses,
-        sampleKey)
+        sampleKey, player.idleClipIndex)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
         npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
@@ -205,10 +211,10 @@ function addRenderedCharacter(
   const hair = playerHair(options.hairMeshes, player.style.hairIndex)
 
   if (hair && detailedHair) {
-    addCharacterHair(target, pose, hair, turn, style.hairColor, options.light)
+    addCharacterHair(target, pose, hair, style.hairColor, options.light)
   }
   else if (hair && renderHair && options.hairMeshes.length > 0) {
-    addNpcHairInstance(hairInstances, pose, hair, player, style.hairColor)
+    addNpcHairInstance(hairInstances, pose, hair, style.hairColor)
   }
 }
 
@@ -223,8 +229,9 @@ function sampleAndCacheBasePose(
   time: number,
   basePoses: Map<number, SampledPose>,
   key: number,
+  idleClipIndex: number,
 ) {
-  const pose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet)
+  const pose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, idleClipIndex)
 
   basePoses.set(key, pose)
 
@@ -235,38 +242,28 @@ function addNpcHairInstance(
   hairInstances: VertexWriter,
   pose: Vec3[],
   hair: HairMesh,
-  player: { turn: number },
   color: Vec3,
 ) {
+  const basis = characterHairBasis(pose)
   const head = pose[headIndex]!
-  const top = pose[headTopIndex]!
-  const upX = top[0] - head[0]
-  const upY = top[1] - head[1]
-  const upZ = top[2] - head[2]
-  const upLength = Math.hypot(upX, upY, upZ)
-  const normalizedUpX = upX / upLength
-  const normalizedUpY = upY / upLength
-  const normalizedUpZ = upZ / upLength
-  const sin = Math.sin(player.turn)
-  const cos = Math.cos(player.turn)
   reserveFloats(hairInstances, 16)
 
   const data = hairInstances.data
   let offset = hairInstances.length
 
   data[offset++] = hair.index
-  data[offset++] = head[0] - normalizedUpX * 0.035
-  data[offset++] = head[1] - normalizedUpY * 0.035
-  data[offset++] = head[2] - normalizedUpZ * 0.035
-  data[offset++] = cos
-  data[offset++] = 0
-  data[offset++] = -sin
-  data[offset++] = normalizedUpX
-  data[offset++] = normalizedUpY
-  data[offset++] = normalizedUpZ
-  data[offset++] = sin
-  data[offset++] = 0
-  data[offset++] = cos
+  data[offset++] = head[0] - basis.up[0] * 0.035
+  data[offset++] = head[1] - basis.up[1] * 0.035
+  data[offset++] = head[2] - basis.up[2] * 0.035
+  data[offset++] = basis.side[0]
+  data[offset++] = basis.side[1]
+  data[offset++] = basis.side[2]
+  data[offset++] = basis.up[0]
+  data[offset++] = basis.up[1]
+  data[offset++] = basis.up[2]
+  data[offset++] = basis.forward[0]
+  data[offset++] = basis.forward[1]
+  data[offset++] = basis.forward[2]
   data[offset++] = color[0]
   data[offset++] = color[1]
   data[offset++] = color[2]
@@ -458,29 +455,15 @@ function addCharacterHair(
   target: VertexWriter,
   pose: Vec3[],
   mesh: HairMesh,
-  turn: TurnBasis,
   color: Vec3,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
 ) {
+  const basis = characterHairBasis(pose)
   const head = pose[headIndex]!
-  const top = pose[headTopIndex]!
   const triangles = mesh.localTriangles
-  const rawUpX = top[0] - head[0]
-  const rawUpY = top[1] - head[1]
-  const rawUpZ = top[2] - head[2]
-  const upLength = Math.hypot(rawUpX, rawUpY, rawUpZ)
-  const upX = rawUpX / upLength
-  const upY = rawUpY / upLength
-  const upZ = rawUpZ / upLength
-  const sideX = turn.cos
-  const sideY = 0
-  const sideZ = -turn.sin
-  const forwardX = -sideZ
-  const forwardY = 0
-  const forwardZ = sideX
-  const centerX = head[0] - upX * 0.035
-  const centerY = head[1] - upY * 0.035
-  const centerZ = head[2] - upZ * 0.035
+  const centerX = head[0] - basis.up[0] * 0.035
+  const centerY = head[1] - basis.up[1] * 0.035
+  const centerZ = head[2] - basis.up[2] * 0.035
 
   for (let i = 0; i < triangles.length; i += 9) {
     const a0 = triangles[i]!
@@ -492,15 +475,15 @@ function addCharacterHair(
     const c0 = triangles[i + 6]!
     const c1 = triangles[i + 7]!
     const c2 = triangles[i + 8]!
-    const ax = centerX + sideX * a0 + upX * a1 + forwardX * a2
-    const ay = centerY + sideY * a0 + upY * a1 + forwardY * a2
-    const az = centerZ + sideZ * a0 + upZ * a1 + forwardZ * a2
-    const bx = centerX + sideX * b0 + upX * b1 + forwardX * b2
-    const by = centerY + sideY * b0 + upY * b1 + forwardY * b2
-    const bz = centerZ + sideZ * b0 + upZ * b1 + forwardZ * b2
-    const cx = centerX + sideX * c0 + upX * c1 + forwardX * c2
-    const cy = centerY + sideY * c0 + upY * c1 + forwardY * c2
-    const cz = centerZ + sideZ * c0 + upZ * c1 + forwardZ * c2
+    const ax = centerX + basis.side[0] * a0 + basis.up[0] * a1 + basis.forward[0] * a2
+    const ay = centerY + basis.side[1] * a0 + basis.up[1] * a1 + basis.forward[1] * a2
+    const az = centerZ + basis.side[2] * a0 + basis.up[2] * a1 + basis.forward[2] * a2
+    const bx = centerX + basis.side[0] * b0 + basis.up[0] * b1 + basis.forward[0] * b2
+    const by = centerY + basis.side[1] * b0 + basis.up[1] * b1 + basis.forward[1] * b2
+    const bz = centerZ + basis.side[2] * b0 + basis.up[2] * b1 + basis.forward[2] * b2
+    const cx = centerX + basis.side[0] * c0 + basis.up[0] * c1 + basis.forward[0] * c2
+    const cy = centerY + basis.side[1] * c0 + basis.up[1] * c1 + basis.forward[1] * c2
+    const cz = centerZ + basis.side[2] * c0 + basis.up[2] * c1 + basis.forward[2] * c2
     const ux = cx - ax
     const uy = cy - ay
     const uz = cz - az
@@ -525,6 +508,45 @@ function addCharacterHair(
 
       addFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, shade, 0)
     }
+  }
+}
+
+function characterHairBasis(pose: Vec3[]) {
+  const head = pose[headIndex]!
+  const top = pose[headTopIndex]!
+  const leftArm = pose[leftArmIndex]!
+  const rightArm = pose[rightArmIndex]!
+  const upX = top[0] - head[0]
+  const upY = top[1] - head[1]
+  const upZ = top[2] - head[2]
+  const upLength = Math.hypot(upX, upY, upZ)
+
+  hairUp[0] = upX / upLength
+  hairUp[1] = upY / upLength
+  hairUp[2] = upZ / upLength
+
+  const sideX = leftArm[0] - rightArm[0]
+  const sideY = leftArm[1] - rightArm[1]
+  const sideZ = leftArm[2] - rightArm[2]
+  const sideDotUp = sideX * hairUp[0] + sideY * hairUp[1] + sideZ * hairUp[2]
+
+  hairSide[0] = sideX - hairUp[0] * sideDotUp
+  hairSide[1] = sideY - hairUp[1] * sideDotUp
+  hairSide[2] = sideZ - hairUp[2] * sideDotUp
+
+  const sideLength = Math.hypot(hairSide[0], hairSide[1], hairSide[2])
+
+  hairSide[0] /= sideLength
+  hairSide[1] /= sideLength
+  hairSide[2] /= sideLength
+  hairForward[0] = hairSide[1] * hairUp[2] - hairSide[2] * hairUp[1]
+  hairForward[1] = hairSide[2] * hairUp[0] - hairSide[0] * hairUp[2]
+  hairForward[2] = hairSide[0] * hairUp[1] - hairSide[1] * hairUp[0]
+
+  return {
+    forward: hairForward,
+    side: hairSide,
+    up: hairUp,
   }
 }
 

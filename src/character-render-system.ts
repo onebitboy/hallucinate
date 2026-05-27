@@ -23,6 +23,7 @@ export function createCharacterRenderSystem(options: {
   characterPosition: Vec3
   gl: WebGL2RenderingContext
   hairController: ReturnType<typeof createCharacterHairController>
+  idleClipIndex: () => number
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3
   localCharacter: ReturnType<typeof createLocalCharacter>
   players: Player[]
@@ -85,6 +86,7 @@ export function createCharacterRenderSystem(options: {
         turn: options.localCharacter.turn,
         motionBlend: options.localCharacter.motionBlend,
         mode: options.localCharacter.mode,
+        idleClipIndex: options.idleClipIndex(),
         style: {
           topStyleIndex: options.styleController.topStyleIndex,
           bottomStyleIndex: options.styleController.bottomStyleIndex,

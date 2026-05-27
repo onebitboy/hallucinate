@@ -1,6 +1,6 @@
 import { identity, mix, nodeTransform, transformOrigin } from './math.ts'
-import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterRig, Mat4, PoseBlendCache, Quat, RigNode,
-  SampledPose, Vec3 } from './types.ts'
+import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMode, CharacterRig, Mat4, PoseBlendCache,
+  Quat, RigNode, SampledPose, Vec3 } from './types.ts'
 
 type PoseSamplePlan = {
   channels: WeakMap<CharacterClip, (AssimpChannel | undefined)[]>
@@ -17,6 +17,14 @@ const samplePosition: Vec3 = [0, 0, 0]
 const sampleRotation: Quat = [1, 0, 0, 0]
 const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
+
+export function idleClip(rig: CharacterRig, index: number) {
+  if (index === 0) {
+    return rig.clips.stand
+  }
+
+  return rig.clips.dances[index - 1]!
+}
 
 export function createCharacterClip(scene: AssimpScene, name: string): CharacterClip {
   const animation = scene.animations?.[0]
@@ -80,12 +88,12 @@ export function createRigNodes(root: AssimpNode) {
 export function sampleCharacterPose(
   rig: CharacterRig,
   time: number,
-  player: { position: Vec3; turn: number; motionBlend: number; mode?: keyof CharacterRig['clips'] },
+  player: { position: Vec3; turn: number; motionBlend: number; idleClipIndex?: number; mode?: CharacterMode },
   characterPoseJoints: string[],
   characterPoseJointSet: Set<string>,
   characterGroundJointIndices: number[],
   characterScale: number,
-  basePose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet),
+  basePose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, player.idleClipIndex ?? 0),
   blendCache?: PoseBlendCache,
   placedPose?: Vec3[],
   cacheFrame = 0,
@@ -187,10 +195,12 @@ export function sampleBasePose(
   time: number,
   characterPoseJoints: string[],
   characterPoseJointSet: Set<string>,
+  idleClipIndex = 0,
   target?: SampledPose,
 ): SampledPose {
   return {
-    stand: sampleClipPose(rig, rig.clips.stand, time, characterPoseJoints, characterPoseJointSet, target?.stand),
+    stand: sampleClipPose(rig, idleClip(rig, idleClipIndex), time, characterPoseJoints, characterPoseJointSet,
+      target?.stand),
     run: sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet, target?.run),
   }
 }

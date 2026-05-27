@@ -1,5 +1,6 @@
 import { createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { createCameraController } from './camera-controller.ts'
+import { idleClipNames } from './character-assets.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createCharacterStyleController } from './character-style.ts'
@@ -83,6 +84,7 @@ const saveKey = 'club-state'
 const bloomScale = 0.5
 const keys = new Set<string>()
 const occupiedSeats = new Set<string>()
+let idleClipIndex = 0
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
@@ -90,6 +92,15 @@ const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
 const djVideoUi = createDjVideoUi(djVideo, characterPosition)
 const cameraController = createCameraController(canvas, characterPosition)
+function cycleIdle(direction: number) {
+  idleClipIndex = (idleClipIndex + direction + idleClipNames.length) % idleClipNames.length
+  console.log(`idle animation: ${idleClipNames[idleClipIndex]}`)
+}
+const idleClipState = {
+  set(value: number) {
+    idleClipIndex = value
+  },
+}
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
 const pixelRatio = createAdaptivePixelRatio()
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
@@ -226,6 +237,8 @@ restoreClubState({
   characterPosition,
   djVideoUi,
   hairController,
+  idleClipCount: idleClipNames.length,
+  idleClipIndex: idleClipState,
   key: saveKey,
   localCharacter,
   styleController,
@@ -239,6 +252,7 @@ bindKeyboardInput({
   openChatInput: () => chatUi.open(),
   cycleHair: direction => hairController.cycleHair(direction),
   cycleHairColor: direction => hairController.cycleColor(direction),
+  cycleIdle,
   cycleShirt: direction => styleController.cycleShirt(direction),
   cyclePants: direction => styleController.cyclePants(direction),
 })
@@ -283,6 +297,7 @@ const draw = (stamp: number) => {
       characterPosition,
       djVideoUi,
       hairController,
+      idleClipIndex,
       key: saveKey,
       localCharacter,
       styleController,
@@ -416,6 +431,7 @@ const characterRenderSystem = createCharacterRenderSystem({
   characterPosition,
   gl,
   hairController,
+  idleClipIndex: () => idleClipIndex,
   light: addLocalReflection,
   localCharacter,
   players,

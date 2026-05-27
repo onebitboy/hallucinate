@@ -100,7 +100,9 @@ export type YouTubeWindow = Window & {
 export type CharacterRig = {
   root: AssimpNode
   nodes: RigNode[]
-  clips: Record<CharacterMode, CharacterClip>
+  clips: Record<CharacterMode, CharacterClip> & {
+    dances: CharacterClip[]
+  }
 }
 
 export type RigNode = {
@@ -160,6 +162,7 @@ export type Player = {
   turn: number
   motionBlend: number
   mode?: CharacterMode
+  idleClipIndex: number
   input: Vec3
   nextDecision: number
   destination: PlayerDestination

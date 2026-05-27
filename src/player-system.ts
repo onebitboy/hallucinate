@@ -49,6 +49,7 @@ export function createPlayers(count: number, outsideTree: CircleBounds) {
       position,
       turn: seededRange(seed, 12, -Math.PI, Math.PI),
       motionBlend: 0,
+      idleClipIndex: Math.floor(seededRange(seed, 18, 0, 20)),
       input: [0, 0, 0],
       nextDecision: seededRange(seed, 13, 0.3, 2.8),
       destination,
