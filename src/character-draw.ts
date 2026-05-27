@@ -81,6 +81,18 @@ const characterPartPlans = characterParts.map(part => ({
 }))
 const hairLightPoint: Vec3 = [0, 0, 0]
 const hairLightNormal: Vec3 = [0, 1, 0]
+const partA: Vec3 = [0, 0, 0]
+const partB: Vec3 = [0, 0, 0]
+const chestA: Vec3 = [0, 0, 0]
+const chestB: Vec3 = [0, 0, 0]
+const skirtA: Vec3 = [0, 0, 0]
+const skirtB: Vec3 = [0, 0, 0]
+const skirtC: Vec3 = [0, 0, 0]
+const skirtD: Vec3 = [0, 0, 0]
+const skirtE: Vec3 = [0, 0, 0]
+const skirtF: Vec3 = [0, 0, 0]
+const skirtG: Vec3 = [0, 0, 0]
+const skirtH: Vec3 = [0, 0, 0]
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -267,29 +279,35 @@ function addCharacterPart(
   const axisX = to[0] - from[0]
   const axisY = to[1] - from[1]
   const axisZ = to[2] - from[2]
-  let a: Vec3 = [from[0] + axisX * start, from[1] + axisY * start, from[2] + axisZ * start]
-  let b: Vec3 = [from[0] + axisX * end, from[1] + axisY * end, from[2] + axisZ * end]
+  partA[0] = from[0] + axisX * start
+  partA[1] = from[1] + axisY * start
+  partA[2] = from[2] + axisZ * start
+  partB[0] = from[0] + axisX * end
+  partB[1] = from[1] + axisY * end
+  partB[2] = from[2] + axisZ * end
 
   if (part.armOffset) {
     const torso = pose[spine2Index]!
     const sideX = turn.cos
     const sideZ = -turn.sin
-    const centerX = (a[0] + b[0]) * 0.5 - torso[0]
-    const centerZ = (a[2] + b[2]) * 0.5 - torso[2]
+    const centerX = (partA[0] + partB[0]) * 0.5 - torso[0]
+    const centerZ = (partA[2] + partB[2]) * 0.5 - torso[2]
     const amount = Math.sign(centerX * sideX + centerZ * sideZ) * part.armOffset
     const offsetX = sideX * amount
     const offsetZ = sideZ * amount
 
-    a = [a[0] + offsetX, a[1], a[2] + offsetZ]
-    b = [b[0] + offsetX, b[1], b[2] + offsetZ]
+    partA[0] += offsetX
+    partA[2] += offsetZ
+    partB[0] += offsetX
+    partB[2] += offsetZ
   }
 
   if (part.lift) {
-    a = [a[0], a[1] + part.lift, a[2]]
-    b = [b[0], b[1] + part.lift, b[2]]
+    partA[1] += part.lift
+    partB[1] += part.lift
   }
 
-  addCharacterBox(target, boxInstances, a, b, part.width, part.depth, characterPartColor(part, style),
+  addCharacterBox(target, boxInstances, partA, partB, part.width, part.depth, characterPartColor(part, style),
     part.glow ?? 0.02, player.turn, localReflection, light, 0, turn.sin, turn.cos)
 }
 
@@ -354,18 +372,14 @@ function addCharacterChestSide(
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   localReflection: boolean,
 ) {
-  const a: Vec3 = [
-    centerX + sideX * offset + forwardX * 0.06,
-    centerY,
-    centerZ + sideZ * offset + forwardZ * 0.06,
-  ]
-  const b: Vec3 = [
-    centerX + sideX * offset + forwardX * 0.13,
-    centerY,
-    centerZ + sideZ * offset + forwardZ * 0.13,
-  ]
+  chestA[0] = centerX + sideX * offset + forwardX * 0.06
+  chestA[1] = centerY
+  chestA[2] = centerZ + sideZ * offset + forwardZ * 0.06
+  chestB[0] = centerX + sideX * offset + forwardX * 0.13
+  chestB[1] = centerY
+  chestB[2] = centerZ + sideZ * offset + forwardZ * 0.13
 
-  addCharacterBox(target, boxInstances, a, b, 0.065, 0.06, skin, 0.02, player.turn, localReflection, light, 0,
+  addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, skin, 0.02, player.turn, localReflection, light, 0,
     turn.sin, turn.cos)
 }
 
@@ -397,36 +411,34 @@ function addCharacterSkirt(
   const bottomWidth = 0.15
   const topDepth = 0.11
   const bottomDepth = 0.14
-  const a: Vec3 = [topX - sideX * topWidth - forwardX * topDepth, topY, topZ - sideZ * topWidth - forwardZ * topDepth]
-  const b: Vec3 = [topX + sideX * topWidth - forwardX * topDepth, topY, topZ + sideZ * topWidth - forwardZ * topDepth]
-  const c: Vec3 = [topX + sideX * topWidth + forwardX * topDepth, topY, topZ + sideZ * topWidth + forwardZ * topDepth]
-  const d: Vec3 = [topX - sideX * topWidth + forwardX * topDepth, topY, topZ - sideZ * topWidth + forwardZ * topDepth]
-  const e: Vec3 = [
-    bottomX - sideX * bottomWidth - forwardX * bottomDepth,
-    bottomY,
-    bottomZ - sideZ * bottomWidth - forwardZ * bottomDepth,
-  ]
-  const f: Vec3 = [
-    bottomX + sideX * bottomWidth - forwardX * bottomDepth,
-    bottomY,
-    bottomZ + sideZ * bottomWidth - forwardZ * bottomDepth,
-  ]
-  const g: Vec3 = [
-    bottomX + sideX * bottomWidth + forwardX * bottomDepth,
-    bottomY,
-    bottomZ + sideZ * bottomWidth + forwardZ * bottomDepth,
-  ]
-  const h: Vec3 = [
-    bottomX - sideX * bottomWidth + forwardX * bottomDepth,
-    bottomY,
-    bottomZ - sideZ * bottomWidth + forwardZ * bottomDepth,
-  ]
+  setPoint(skirtA, topX - sideX * topWidth - forwardX * topDepth, topY,
+    topZ - sideZ * topWidth - forwardZ * topDepth)
+  setPoint(skirtB, topX + sideX * topWidth - forwardX * topDepth, topY,
+    topZ + sideZ * topWidth - forwardZ * topDepth)
+  setPoint(skirtC, topX + sideX * topWidth + forwardX * topDepth, topY,
+    topZ + sideZ * topWidth + forwardZ * topDepth)
+  setPoint(skirtD, topX - sideX * topWidth + forwardX * topDepth, topY,
+    topZ - sideZ * topWidth + forwardZ * topDepth)
+  setPoint(skirtE, bottomX - sideX * bottomWidth - forwardX * bottomDepth, bottomY,
+    bottomZ - sideZ * bottomWidth - forwardZ * bottomDepth)
+  setPoint(skirtF, bottomX + sideX * bottomWidth - forwardX * bottomDepth, bottomY,
+    bottomZ + sideZ * bottomWidth - forwardZ * bottomDepth)
+  setPoint(skirtG, bottomX + sideX * bottomWidth + forwardX * bottomDepth, bottomY,
+    bottomZ + sideZ * bottomWidth + forwardZ * bottomDepth)
+  setPoint(skirtH, bottomX - sideX * bottomWidth + forwardX * bottomDepth, bottomY,
+    bottomZ - sideZ * bottomWidth + forwardZ * bottomDepth)
 
-  addCharacterQuad(target, a, b, f, e, style.pants, 0.02, localReflection, light)
-  addCharacterQuad(target, b, c, g, f, style.pantsLight, 0.02, localReflection, light)
-  addCharacterQuad(target, c, d, h, g, style.pantsDim, 0.02, localReflection, light)
-  addCharacterQuad(target, d, a, e, h, style.pantsLight, 0.02, localReflection, light)
-  addCharacterQuad(target, e, f, g, h, style.pantsDark, 0.02, localReflection, light)
+  addCharacterQuad(target, skirtA, skirtB, skirtF, skirtE, style.pants, 0.02, localReflection, light)
+  addCharacterQuad(target, skirtB, skirtC, skirtG, skirtF, style.pantsLight, 0.02, localReflection, light)
+  addCharacterQuad(target, skirtC, skirtD, skirtH, skirtG, style.pantsDim, 0.02, localReflection, light)
+  addCharacterQuad(target, skirtD, skirtA, skirtE, skirtH, style.pantsLight, 0.02, localReflection, light)
+  addCharacterQuad(target, skirtE, skirtF, skirtG, skirtH, style.pantsDark, 0.02, localReflection, light)
+}
+
+function setPoint(target: Vec3, x: number, y: number, z: number) {
+  target[0] = x
+  target[1] = y
+  target[2] = z
 }
 
 function addCharacterHair(

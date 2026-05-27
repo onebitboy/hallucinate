@@ -101,6 +101,12 @@ export function sampleCharacterPose(
   }
 
   const { stand, run } = basePose
+
+  if (!blendCache) {
+    return placeBlendedCharacterPose(stand, run, blend, player.position, player.turn, characterPoseJoints,
+      characterGroundJointIndices, characterScale, placedPose)
+  }
+
   const pose = new Array<Vec3>(characterPoseJoints.length)
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
@@ -118,6 +124,52 @@ export function sampleCharacterPose(
 
   return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
     characterScale, placedPose)
+}
+
+function placeBlendedCharacterPose(
+  stand: Vec3[],
+  run: Vec3[],
+  blend: number,
+  position: Vec3,
+  turn: number,
+  characterPoseJoints: string[],
+  characterGroundJointIndices: number[],
+  characterScale: number,
+  target = new Array<Vec3>(characterPoseJoints.length),
+) {
+  let ground = Infinity
+  const sin = Math.sin(turn)
+  const cos = Math.cos(turn)
+
+  for (const index of characterGroundJointIndices) {
+    const point = stand[index]!
+    const next = run[index]!
+
+    ground = Math.min(ground, mix(point[1], next[1], blend))
+  }
+
+  for (let i = 0; i < characterPoseJoints.length; i++) {
+    const point = stand[i]!
+    const next = run[i]!
+    const x = mix(point[0], next[0], blend) * characterScale
+    const y = (mix(point[1], next[1], blend) - ground) * characterScale
+    const z = mix(point[2], next[2], blend) * characterScale
+    const placed = target[i]
+    const px = position[0] + x * cos + z * sin
+    const py = position[1] + y
+    const pz = position[2] - x * sin + z * cos
+
+    if (placed) {
+      placed[0] = px
+      placed[1] = py
+      placed[2] = pz
+    }
+    else {
+      target[i] = [px, py, pz]
+    }
+  }
+
+  return target
 }
 
 export function sampleBasePose(
