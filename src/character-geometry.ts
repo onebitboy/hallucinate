@@ -1,9 +1,14 @@
 import { addQuad } from './geometry.ts'
-import { add, clamp, cross, dot, normalize, scale, subtract } from './math.ts'
+import { normalize, scale } from './math.ts'
 import type { Vec3, Vertex } from './types.ts'
 
-export function flattenVertices(target: Vertex[]) {
-  const data = new Float32Array(target.length * 11)
+export type VertexBufferCache = {
+  data: Float32Array
+}
+
+export function flattenVertices(target: Vertex[], cache?: VertexBufferCache) {
+  const size = target.length * 11
+  const data = cache ? resizeVertexBuffer(cache, size) : new Float32Array(size)
   let offset = 0
 
   for (const vertex of target) {
@@ -20,40 +25,29 @@ export function flattenVertices(target: Vertex[]) {
     data[offset++] = vertex[10]
   }
 
-  return data
+  return data.length === size ? data : data.subarray(0, size)
+}
+
+function resizeVertexBuffer(cache: VertexBufferCache, size: number) {
+  if (cache.data.length < size) {
+    cache.data = new Float32Array(size)
+  }
+
+  return cache.data
 }
 
 export function triangleAreaSquared(a: Vec3, b: Vec3, c: Vec3) {
-  return dot(cross(subtract(c, a), subtract(b, a)), cross(subtract(c, a), subtract(b, a)))
-}
+  const ux = c[0] - a[0]
+  const uy = c[1] - a[1]
+  const uz = c[2] - a[2]
+  const vx = b[0] - a[0]
+  const vy = b[1] - a[1]
+  const vz = b[2] - a[2]
+  const x = uy * vz - uz * vy
+  const y = uz * vx - ux * vz
+  const z = ux * vy - uy * vx
 
-export function hairPoint(center: Vec3, side: Vec3, up: Vec3, forward: Vec3, point: Vec3) {
-  const scaleAmount = 1.4
-  const x = point[0] * scaleAmount
-  const z = -(point[2] - 0.02) * scaleAmount - 0.055
-  const y = (point[1] + 0.08) * scaleAmount - Math.max(0, z) * 0.28
-
-  return add(add(add(center, scale(side, x)), scale(up, y)), scale(forward, z))
-}
-
-export function addLitTriangle(
-  target: Vertex[],
-  a: Vec3,
-  b: Vec3,
-  c: Vec3,
-  color: Vec3,
-  glow: number,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
-) {
-  const center = scale(add(add(a, b), c), 1 / 3)
-  const normal = normalize(cross(subtract(c, a), subtract(b, a)))
-  const shade = light(color, center, normal)
-
-  target.push(
-    [a[0], a[1], a[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-    [b[0], b[1], b[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-    [c[0], c[1], c[2], shade[0], shade[1], shade[2], glow, 0, 0, 0, 0],
-  )
+  return x * x + y * y + z * z
 }
 
 export function addCharacterBox(
@@ -167,8 +161,22 @@ function addLitQuad(
   glow: number,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
 ) {
-  const center = scale(add(add(a, b), add(c, d)), 0.25)
-  const normal = normalize(cross(subtract(c, a), subtract(b, a)))
+  const ux = c[0] - a[0]
+  const uy = c[1] - a[1]
+  const uz = c[2] - a[2]
+  const vx = b[0] - a[0]
+  const vy = b[1] - a[1]
+  const vz = b[2] - a[2]
+  const center: Vec3 = [
+    (a[0] + b[0] + c[0] + d[0]) * 0.25,
+    (a[1] + b[1] + c[1] + d[1]) * 0.25,
+    (a[2] + b[2] + c[2] + d[2]) * 0.25,
+  ]
+  const normal = normalize([
+    uy * vz - uz * vy,
+    uz * vx - ux * vz,
+    ux * vy - uy * vx,
+  ])
 
   addQuad(target, a, b, c, d, light(color, center, normal), glow)
 }

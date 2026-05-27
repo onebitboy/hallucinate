@@ -2,19 +2,32 @@ import type { HairRenderMesh, Vec3 } from './types.ts'
 import type { CharacterBoxGeometry } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
+export type NumberBufferCache = { data: Float32Array }
 
 export function uploadCharacterBoxInstances(options: {
   buffer: WebGLBuffer
+  cache?: NumberBufferCache
   gl: WebGL2RenderingContext
   instances: number[]
   instanceSize: number
 }) {
   const count = options.instances.length / options.instanceSize
+  const data = options.cache ? fillNumberBuffer(options.cache, options.instances) : new Float32Array(options.instances)
 
   options.gl.bindBuffer(options.gl.ARRAY_BUFFER, options.buffer)
-  options.gl.bufferData(options.gl.ARRAY_BUFFER, new Float32Array(options.instances), options.gl.DYNAMIC_DRAW)
+  options.gl.bufferData(options.gl.ARRAY_BUFFER, data, options.gl.DYNAMIC_DRAW)
 
   return count
+}
+
+function fillNumberBuffer(cache: NumberBufferCache, values: number[]) {
+  if (cache.data.length < values.length) {
+    cache.data = new Float32Array(values.length)
+  }
+
+  cache.data.set(values)
+
+  return cache.data.length === values.length ? cache.data : cache.data.subarray(0, values.length)
 }
 
 export function drawCharacterBoxes(options: {

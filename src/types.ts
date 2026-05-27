@@ -58,8 +58,7 @@ export type CharacterClip = {
 
 export type HairMesh = {
   name: string
-  points: Vec3[]
-  faces: number[][]
+  localTriangles: number[]
 }
 
 export type TreeMesh = {

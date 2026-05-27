@@ -13,6 +13,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let pitch = 0
   let dragging = false
   let returning = false
+  let wasMoving = false
 
   canvas.style.touchAction = 'none'
   canvas.addEventListener('pointerdown', event => {
@@ -34,11 +35,13 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
 
   canvas.addEventListener('pointerup', event => {
     dragging = false
+    returning = true
     canvas.releasePointerCapture(event.pointerId)
   })
 
   canvas.addEventListener('pointercancel', event => {
     dragging = false
+    returning = true
     canvas.releasePointerCapture(event.pointerId)
   })
 
@@ -60,11 +63,11 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     update(delta: number, input: Vec3, characterTurn: number) {
       const moving = lengthSq(input) > 0
 
-      if (!dragging && moving) {
+      if (!dragging && wasMoving && !moving) {
         returning = true
       }
 
-      if (!dragging && (moving || returning)) {
+      if (!dragging && ((moving && input[2] >= 0) || returning)) {
         const turnSpeed = returning ? 5 : mix(0.8, 2.2, input[2])
 
         turn = smoothAngle(turn, characterTurn, turnSpeed, delta)
@@ -78,6 +81,8 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
           }
         }
       }
+
+      wasMoving = moving
 
       target[0] = characterPosition[0]
       target[1] = characterPosition[1] + 1.2

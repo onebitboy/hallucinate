@@ -34,7 +34,35 @@ export function nodeTransform(node: AssimpNode): Mat4 {
 }
 
 export function compose(position: Vec3, rotation: Quat, nextScale: Vec3): Mat4 {
-  return multiply(translate(position), multiply(rotate(rotation), scaleMatrix(nextScale)))
+  const [w, x, y, z] = normalizeQuat(rotation)
+  const xx = x * x
+  const yy = y * y
+  const zz = z * z
+  const xy = x * y
+  const xz = x * z
+  const yz = y * z
+  const wx = w * x
+  const wy = w * y
+  const wz = w * z
+
+  return [
+    (1 - 2 * (yy + zz)) * nextScale[0],
+    2 * (xy - wz) * nextScale[1],
+    2 * (xz + wy) * nextScale[2],
+    position[0],
+    2 * (xy + wz) * nextScale[0],
+    (1 - 2 * (xx + zz)) * nextScale[1],
+    2 * (yz - wx) * nextScale[2],
+    position[1],
+    2 * (xz - wy) * nextScale[0],
+    2 * (yz + wx) * nextScale[1],
+    (1 - 2 * (xx + yy)) * nextScale[2],
+    position[2],
+    0,
+    0,
+    0,
+    1,
+  ]
 }
 
 export function translate([x, y, z]: Vec3): Mat4 {
@@ -112,18 +140,57 @@ export function rotate(quat: Quat): Mat4 {
 }
 
 export function multiply(a: Mat4, b: Mat4): Mat4 {
-  const next = Array.from({ length: 16 }, () => 0) as Mat4
+  const a0 = a[0]
+  const a1 = a[1]
+  const a2 = a[2]
+  const a3 = a[3]
+  const a4 = a[4]
+  const a5 = a[5]
+  const a6 = a[6]
+  const a7 = a[7]
+  const a8 = a[8]
+  const a9 = a[9]
+  const a10 = a[10]
+  const a11 = a[11]
+  const a12 = a[12]
+  const a13 = a[13]
+  const a14 = a[14]
+  const a15 = a[15]
+  const b0 = b[0]
+  const b1 = b[1]
+  const b2 = b[2]
+  const b3 = b[3]
+  const b4 = b[4]
+  const b5 = b[5]
+  const b6 = b[6]
+  const b7 = b[7]
+  const b8 = b[8]
+  const b9 = b[9]
+  const b10 = b[10]
+  const b11 = b[11]
+  const b12 = b[12]
+  const b13 = b[13]
+  const b14 = b[14]
+  const b15 = b[15]
 
-  for (let row = 0; row < 4; row++) {
-    for (let column = 0; column < 4; column++) {
-      next[row * 4 + column] = a[row * 4] * b[column]
-        + a[row * 4 + 1] * b[4 + column]
-        + a[row * 4 + 2] * b[8 + column]
-        + a[row * 4 + 3] * b[12 + column]
-    }
-  }
-
-  return next
+  return [
+    a0 * b0 + a1 * b4 + a2 * b8 + a3 * b12,
+    a0 * b1 + a1 * b5 + a2 * b9 + a3 * b13,
+    a0 * b2 + a1 * b6 + a2 * b10 + a3 * b14,
+    a0 * b3 + a1 * b7 + a2 * b11 + a3 * b15,
+    a4 * b0 + a5 * b4 + a6 * b8 + a7 * b12,
+    a4 * b1 + a5 * b5 + a6 * b9 + a7 * b13,
+    a4 * b2 + a5 * b6 + a6 * b10 + a7 * b14,
+    a4 * b3 + a5 * b7 + a6 * b11 + a7 * b15,
+    a8 * b0 + a9 * b4 + a10 * b8 + a11 * b12,
+    a8 * b1 + a9 * b5 + a10 * b9 + a11 * b13,
+    a8 * b2 + a9 * b6 + a10 * b10 + a11 * b14,
+    a8 * b3 + a9 * b7 + a10 * b11 + a11 * b15,
+    a12 * b0 + a13 * b4 + a14 * b8 + a15 * b12,
+    a12 * b1 + a13 * b5 + a14 * b9 + a15 * b13,
+    a12 * b2 + a13 * b6 + a14 * b10 + a15 * b14,
+    a12 * b3 + a13 * b7 + a14 * b11 + a15 * b15,
+  ]
 }
 
 export function transformOrigin(matrix: Mat4): Vec3 {

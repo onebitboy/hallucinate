@@ -1,10 +1,11 @@
-import { cross, dot, normalize, scale, subtract } from './math.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
 type Viewport = { width: number; height: number; clientWidth: number; clientHeight: number }
+export type ProjectedPoint = { x: number; y: number }
+export type WallProjector = ReturnType<typeof createWallProjector>
 
-export function projectedQuadTransform(width: number, height: number, points: ReturnType<typeof projectWallPoint>[]) {
+export function projectedQuadTransform(width: number, height: number, points: ProjectedPoint[]) {
   const from = [
     { x: 0, y: height },
     { x: width, y: height },
@@ -111,23 +112,55 @@ export function invertProjective(matrix: number[]) {
   ]
 }
 
-export function projectWallPoint(point: Vec3, camera: Camera, viewport: Viewport) {
-  const forward = normalize(subtract(camera.center, camera.eye))
-  const cameraZ = scale(forward, -1)
-  const cameraX = normalize(cross([0, 1, 0], cameraZ))
-  const cameraY = cross(cameraZ, cameraX)
-  const relative = subtract(point, camera.eye)
-  const viewX = dot(cameraX, relative)
-  const viewY = dot(cameraY, relative)
-  const viewZ = dot(cameraZ, relative)
-  const f = 1 / Math.tan(1.08 * 0.5)
-  const aspect = viewport.width / viewport.height
-  const depth = -viewZ
-  const ndcX = (viewX * f / aspect) / depth
-  const ndcY = (viewY * f) / depth
+export function createWallProjector(camera: Camera, viewport: Viewport) {
+  const forwardX = camera.center[0] - camera.eye[0]
+  const forwardY = camera.center[1] - camera.eye[1]
+  const forwardZ = camera.center[2] - camera.eye[2]
+  const forwardLength = Math.hypot(forwardX, forwardY, forwardZ)
+  const cameraZX = -forwardX / forwardLength
+  const cameraZY = -forwardY / forwardLength
+  const cameraZZ = -forwardZ / forwardLength
+  const cameraXLength = Math.hypot(cameraZZ, cameraZX)
+  const cameraXX = cameraZZ / cameraXLength
+  const cameraXY = 0
+  const cameraXZ = -cameraZX / cameraXLength
+  const cameraYX = cameraZY * cameraXZ - cameraZZ * cameraXY
+  const cameraYY = cameraZZ * cameraXX - cameraZX * cameraXZ
+  const cameraYZ = cameraZX * cameraXY - cameraZY * cameraXX
 
   return {
-    x: (ndcX * 0.5 + 0.5) * viewport.clientWidth,
-    y: (0.5 - ndcY * 0.5) * viewport.clientHeight,
+    aspect: viewport.width / viewport.height,
+    cameraXX,
+    cameraXY,
+    cameraXZ,
+    cameraYX,
+    cameraYY,
+    cameraYZ,
+    cameraZX,
+    cameraZY,
+    cameraZZ,
+    clientHeight: viewport.clientHeight,
+    clientWidth: viewport.clientWidth,
+    eyeX: camera.eye[0],
+    eyeY: camera.eye[1],
+    eyeZ: camera.eye[2],
+    f: 1 / Math.tan(1.08 * 0.5),
+  }
+}
+
+export function projectWallPoint(point: Vec3, projector: WallProjector) {
+  const relativeX = point[0] - projector.eyeX
+  const relativeY = point[1] - projector.eyeY
+  const relativeZ = point[2] - projector.eyeZ
+  const viewX = projector.cameraXX * relativeX + projector.cameraXY * relativeY + projector.cameraXZ * relativeZ
+  const viewY = projector.cameraYX * relativeX + projector.cameraYY * relativeY + projector.cameraYZ * relativeZ
+  const viewZ = projector.cameraZX * relativeX + projector.cameraZY * relativeY + projector.cameraZZ * relativeZ
+  const depth = -viewZ
+  const ndcX = (viewX * projector.f / projector.aspect) / depth
+  const ndcY = (viewY * projector.f) / depth
+
+  return {
+    x: (ndcX * 0.5 + 0.5) * projector.clientWidth,
+    y: (0.5 - ndcY * 0.5) * projector.clientHeight,
   }
 }

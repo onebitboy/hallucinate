@@ -28,10 +28,22 @@ function createHairMesh(mesh: AssimpMesh, source: string): HairMesh {
     points.push([mesh.vertices[i]!, mesh.vertices[i + 1]!, mesh.vertices[i + 2]!])
   }
 
+  const localPoints = normalizeHairPoints(points, turnRightSideForward).map(hairLocalPoint)
+  const localTriangles: number[] = []
+
+  for (const face of mesh.faces) {
+    if (face.length === 3) {
+      const a = localPoints[face[0]!]!
+      const b = localPoints[face[1]!]!
+      const c = localPoints[face[2]!]!
+
+      localTriangles.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
+    }
+  }
+
   return {
     name: `${source}:${mesh.name}`,
-    points: normalizeHairPoints(points, turnRightSideForward),
-    faces: mesh.faces.filter(face => face.length === 3),
+    localTriangles,
   }
 }
 
@@ -48,19 +60,9 @@ function createHairRenderMesh(context: WebGL2RenderingContext, mesh: HairMesh): 
     throw new Error('Failed to create hair render mesh')
   }
 
-  const data: number[] = []
-
-  for (const face of mesh.faces) {
-    const a = hairLocalPoint(mesh.points[face[0]!]!)
-    const b = hairLocalPoint(mesh.points[face[1]!]!)
-    const c = hairLocalPoint(mesh.points[face[2]!]!)
-
-    data.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
-  }
-
   context.bindVertexArray(array)
   context.bindBuffer(context.ARRAY_BUFFER, vertexBuffer)
-  context.bufferData(context.ARRAY_BUFFER, new Float32Array(data), context.STATIC_DRAW)
+  context.bufferData(context.ARRAY_BUFFER, new Float32Array(mesh.localTriangles), context.STATIC_DRAW)
   context.enableVertexAttribArray(0)
   context.vertexAttribPointer(0, 3, context.FLOAT, false, 0, 0)
 
@@ -82,7 +84,7 @@ function createHairRenderMesh(context: WebGL2RenderingContext, mesh: HairMesh): 
     array,
     vertexBuffer,
     instanceBuffer,
-    vertexCount: data.length / 3,
+    vertexCount: mesh.localTriangles.length / 3,
     instanceCount: 0,
   }
 }

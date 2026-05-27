@@ -12,6 +12,7 @@ import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { bindKeyboardInput } from './input.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPlayers, updatePlayers } from './player-system.ts'
+import { createWallProjector } from './projection.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -83,8 +84,8 @@ const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
-const chatUi = createChatUi(chatForm, chatInput, chatBubble, canvas, characterPosition)
-const djVideoUi = createDjVideoUi(djVideo, canvas, characterPosition)
+const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
+const djVideoUi = createDjVideoUi(djVideo, characterPosition)
 const cameraController = createCameraController(canvas, characterPosition)
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
@@ -256,6 +257,10 @@ const resize = () => {
   const width = Math.floor(canvas.clientWidth * ratio)
   const height = Math.floor(canvas.clientHeight * ratio)
 
+  if (canvas.width === width && canvas.height === height) {
+    return
+  }
+
   canvas.width = width
   canvas.height = height
   resizeTarget(gl, target, width, height)
@@ -289,8 +294,10 @@ const draw = (stamp: number) => {
   strobeController.updateInstances(stamp * 0.001, djVideoUi.zone)
   const lightCount = lightPoints.length / vertexSize
 
-  djVideoUi.update(camera)
-  chatUi.update(camera, stamp)
+  const projector = createWallProjector(camera, canvas)
+
+  djVideoUi.update(camera, projector)
+  chatUi.update(projector, stamp)
 
   const outside = isOutside(characterPosition)
   const sky = usesSkyBackground(camera)

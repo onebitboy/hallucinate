@@ -1,13 +1,11 @@
 import { projectWallPoint } from './projection.ts'
+import type { WallProjector } from './projection.ts'
 import type { Vec3 } from './types.ts'
-
-type Camera = { eye: Vec3; center: Vec3 }
 
 export function createChatUi(
   form: HTMLFormElement,
   input: HTMLInputElement,
   bubble: HTMLDivElement,
-  canvas: HTMLCanvasElement,
   position: Vec3,
 ) {
   let hideAt = 0
@@ -33,8 +31,8 @@ export function createChatUi(
       form.dataset.open = 'false'
       input.blur()
     },
-    update(camera: Camera, stamp: number) {
-      const point = projectWallPoint([position[0], position[1] + 1.05, position[2]], camera, canvas)
+    update(projector: WallProjector, stamp: number) {
+      const point = projectWallPoint([position[0], position[1] + 1.05, position[2]], projector)
       const x = Math.round(point.x)
       const y = Math.round(point.y - 68)
 

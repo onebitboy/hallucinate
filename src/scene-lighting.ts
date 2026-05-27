@@ -13,8 +13,8 @@ import {
 import { outsideBounds } from './scene-data.ts'
 import type { CircleBounds, Vec3, Vertex } from './types.ts'
 
-const wallLightZ = [-2, -6, -10, -14, -18, -22]
-const backLightX = [-4.5, 0, 4.5]
+const nearestWallLightZ = createNearestValue([-2, -6, -10, -14, -18, -22])
+const nearestBackLightX = createNearestValue([-4.5, 0, 4.5])
 
 export function createSceneLighting(options: {
   getTree: () => CircleBounds
@@ -86,40 +86,43 @@ export function createSceneLighting(options: {
 function redReflection(point: Vec3, normal: Vec3) {
   if (Math.abs(normal[0]) > Math.abs(normal[2])) {
     const x = normal[0] > 0 ? 6.98 : -6.98
-    const z = nearestValue(wallLightZ, point[2])
+    const z = nearestWallLightZ(point[2])
 
     return redLightAmount(point, normal, x, point[1], z)
   }
 
   const z = normal[2] > 0 ? 3.98 : -23.98
-  const x = nearestValue(backLightX, point[0])
+  const x = nearestBackLightX(point[0])
 
   return redLightAmount(point, normal, x, point[1], z)
 }
 
-function nearestValue(values: number[], target: number) {
-  let next = values[0]!
-  let distance = Math.abs(target - next)
+function createNearestValue(values: number[]) {
+  const thresholds: number[] = []
+  const ascending = values[values.length - 1]! > values[0]!
 
-  for (let i = 1; i < values.length; i++) {
-    const value = values[i]!
-    const nextDistance = Math.abs(target - value)
-
-    if (nextDistance < distance) {
-      next = value
-      distance = nextDistance
-    }
+  for (let i = 0; i < values.length - 1; i++) {
+    thresholds.push((values[i]! + values[i + 1]!) * 0.5)
   }
 
-  return next
+  return (target: number) => {
+    for (let i = 0; i < thresholds.length; i++) {
+      if (ascending ? target <= thresholds[i]! : target >= thresholds[i]!) {
+        return values[i]!
+      }
+    }
+
+    return values[values.length - 1]!
+  }
 }
 
 function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
   const dx = x - point[0]
   const dy = y - point[1]
   const dz = z - point[2]
-  const distance = Math.hypot(dx, dz)
-  const length = Math.hypot(dx, dy, dz)
+  const distanceSq = dx * dx + dz * dz
+  const distance = Math.sqrt(distanceSq)
+  const length = Math.sqrt(distanceSq + dy * dy)
   const facing = Math.max(0, (normal[0] * dx + normal[1] * dy + normal[2] * dz) / length)
   const height = 0.8 + Math.max(0, point[1] + 1.95) * 0.18
 

@@ -2,11 +2,9 @@ import { characterGroundJoints, characterScale, shoe, skin } from './character-d
 import {
   addCharacterBox,
   addCharacterQuad,
-  addLitTriangle,
   flattenVertices,
-  hairPoint,
-  triangleAreaSquared,
 } from './character-geometry.ts'
+import type { VertexBufferCache } from './character-geometry.ts'
 import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
@@ -43,6 +41,7 @@ type BuildOptions = {
   players: Player[]
   rig: CharacterRig
   time: number
+  vertexCache?: VertexBufferCache
   width: number
   height: number
 }
@@ -51,21 +50,21 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const vertices: Vertex[] = []
   const boxInstances: number[] = []
   const hairInstances: HairInstance[] = []
+  const basePose = sampleBasePose(options.rig, options.time, characterPoseJointSet)
 
-  addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true)
+  addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true, basePose)
 
   const view = characterView(options.cameraPosition, options.cameraTarget)
-  const npcPose = sampleBasePose(options.rig, options.time, characterPoseJointSet)
   const npcBlendCache: PoseBlendCache = new Map()
 
   for (const player of options.players) {
     if (characterInView(player, view, options.width, options.height)) {
-      addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, npcPose, npcBlendCache)
+      addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, basePose, npcBlendCache)
     }
   }
 
   return {
-    vertices: flattenVertices(vertices),
+    vertices: flattenVertices(vertices, options.vertexCache),
     boxInstances,
     hairInstances,
   }
@@ -265,14 +264,60 @@ function addCharacterHair(
   const side: Vec3 = [Math.cos(player.turn), 0, -Math.sin(player.turn)]
   const forward: Vec3 = [Math.sin(player.turn), 0, Math.cos(player.turn)]
   const center = add(head, scale(up, -0.035))
+  const triangles = mesh.localTriangles
+  const centerX = center[0]
+  const centerY = center[1]
+  const centerZ = center[2]
+  const sideX = side[0]
+  const sideY = side[1]
+  const sideZ = side[2]
+  const upX = up[0]
+  const upY = up[1]
+  const upZ = up[2]
+  const forwardX = forward[0]
+  const forwardY = forward[1]
+  const forwardZ = forward[2]
 
-  for (const face of mesh.faces) {
-    const a = hairPoint(center, side, up, forward, mesh.points[face[0]!]!)
-    const b = hairPoint(center, side, up, forward, mesh.points[face[1]!]!)
-    const c = hairPoint(center, side, up, forward, mesh.points[face[2]!]!)
+  for (let i = 0; i < triangles.length; i += 9) {
+    const a0 = triangles[i]!
+    const a1 = triangles[i + 1]!
+    const a2 = triangles[i + 2]!
+    const b0 = triangles[i + 3]!
+    const b1 = triangles[i + 4]!
+    const b2 = triangles[i + 5]!
+    const c0 = triangles[i + 6]!
+    const c1 = triangles[i + 7]!
+    const c2 = triangles[i + 8]!
+    const ax = centerX + sideX * a0 + upX * a1 + forwardX * a2
+    const ay = centerY + sideY * a0 + upY * a1 + forwardY * a2
+    const az = centerZ + sideZ * a0 + upZ * a1 + forwardZ * a2
+    const bx = centerX + sideX * b0 + upX * b1 + forwardX * b2
+    const by = centerY + sideY * b0 + upY * b1 + forwardY * b2
+    const bz = centerZ + sideZ * b0 + upZ * b1 + forwardZ * b2
+    const cx = centerX + sideX * c0 + upX * c1 + forwardX * c2
+    const cy = centerY + sideY * c0 + upY * c1 + forwardY * c2
+    const cz = centerZ + sideZ * c0 + upZ * c1 + forwardZ * c2
+    const ux = cx - ax
+    const uy = cy - ay
+    const uz = cz - az
+    const vx = bx - ax
+    const vy = by - ay
+    const vz = bz - az
+    const nx = uy * vz - uz * vy
+    const ny = uz * vx - ux * vz
+    const nz = ux * vy - uy * vx
+    const area = nx * nx + ny * ny + nz * nz
 
-    if (triangleAreaSquared(a, b, c) > 0.00000001) {
-      addLitTriangle(target, a, b, c, color, 0, light)
+    if (area > 0.00000001) {
+      const length = Math.sqrt(area)
+      const shade = light(color, [(ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3],
+        [nx / length, ny / length, nz / length])
+
+      target.push(
+        [ax, ay, az, shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+        [bx, by, bz, shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+        [cx, cy, cz, shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+      )
     }
   }
 }

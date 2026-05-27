@@ -1,5 +1,6 @@
 import { dot, subtract } from './math.ts'
 import { projectedQuadTransform, projectWallPoint } from './projection.ts'
+import type { WallProjector } from './projection.ts'
 import { djVideoWall, outsideVideoWall, videoTracks } from './scene-data.ts'
 import { isOutside } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
@@ -13,7 +14,6 @@ export function videoZones(): VideoZone[] {
 
 export function createDjVideoUi(
   element: HTMLElement,
-  canvas: HTMLCanvasElement,
   position: Vec3,
 ) {
   const layers: Record<VideoZone, HTMLElement> = {
@@ -31,6 +31,9 @@ export function createDjVideoUi(
   const players: Partial<Record<VideoZone, YouTubePlayer>> = {}
   const ready: Partial<Record<VideoZone, boolean>> = {}
   let zone: VideoZone = isOutside(position) ? 'outside' : 'inside'
+  const setElementStyle = createStyleSetter(element.style)
+  const setInsideStyle = createStyleSetter(layers.inside.style)
+  const setOutsideStyle = createStyleSetter(layers.outside.style)
 
   for (const area of videoZones()) {
     const layer = layers[area]
@@ -107,7 +110,7 @@ export function createDjVideoUi(
         document.head.append(script)
       }
     },
-    update(camera: Camera) {
+    update(camera: Camera, projector: WallProjector) {
       const nextZone: VideoZone = isOutside(position) ? 'outside' : 'inside'
 
       if (nextZone !== zone) {
@@ -126,9 +129,9 @@ export function createDjVideoUi(
       const wall = isOutside(position) ? outsideVideoWall : djVideoWall
 
       if (!djVideoFacesCamera(camera, wall)) {
-        element.style.opacity = '0'
-        layers.inside.style.pointerEvents = 'none'
-        layers.outside.style.pointerEvents = 'none'
+        setElementStyle('opacity', '0')
+        setInsideStyle('pointerEvents', 'none')
+        setOutsideStyle('pointerEvents', 'none')
         return
       }
 
@@ -138,31 +141,44 @@ export function createDjVideoUi(
       const top = wall.y + wall.height / 2
       const points = wall.normal[2] < 0
         ? [
-          projectWallPoint([right, bottom, wall.z], camera, canvas),
-          projectWallPoint([left, bottom, wall.z], camera, canvas),
-          projectWallPoint([left, top, wall.z], camera, canvas),
-          projectWallPoint([right, top, wall.z], camera, canvas),
+          projectWallPoint([right, bottom, wall.z], projector),
+          projectWallPoint([left, bottom, wall.z], projector),
+          projectWallPoint([left, top, wall.z], projector),
+          projectWallPoint([right, top, wall.z], projector),
         ]
         : [
-          projectWallPoint([left, bottom, wall.z], camera, canvas),
-          projectWallPoint([right, bottom, wall.z], camera, canvas),
-          projectWallPoint([right, top, wall.z], camera, canvas),
-          projectWallPoint([left, top, wall.z], camera, canvas),
+          projectWallPoint([left, bottom, wall.z], projector),
+          projectWallPoint([right, bottom, wall.z], projector),
+          projectWallPoint([right, top, wall.z], projector),
+          projectWallPoint([left, top, wall.z], projector),
         ]
 
-      element.style.opacity = '0.74'
-      layers.inside.style.opacity = zone === 'inside' ? '1' : '0'
-      layers.outside.style.opacity = zone === 'outside' ? '1' : '0'
-      layers.inside.style.pointerEvents = zone === 'inside' ? 'auto' : 'none'
-      layers.outside.style.pointerEvents = zone === 'outside' ? 'auto' : 'none'
-      element.style.width = `${wall.width * 120}px`
-      element.style.height = `${wall.height * 120}px`
-      element.style.transform = projectedQuadTransform(
+      setElementStyle('opacity', '0.74')
+      setInsideStyle('opacity', zone === 'inside' ? '1' : '0')
+      setOutsideStyle('opacity', zone === 'outside' ? '1' : '0')
+      setInsideStyle('pointerEvents', zone === 'inside' ? 'auto' : 'none')
+      setOutsideStyle('pointerEvents', zone === 'outside' ? 'auto' : 'none')
+      setElementStyle('width', `${wall.width * 120}px`)
+      setElementStyle('height', `${wall.height * 120}px`)
+      setElementStyle('transform', projectedQuadTransform(
         wall.width * 120,
         wall.height * 120,
         points,
-      )
+      ))
     },
+  }
+}
+
+type StyleName = 'height' | 'opacity' | 'pointerEvents' | 'transform' | 'width'
+
+function createStyleSetter(style: CSSStyleDeclaration) {
+  const values = new Map<StyleName, string>()
+
+  return (name: StyleName, value: string) => {
+    if (values.get(name) !== value) {
+      values.set(name, value)
+      style[name] = value
+    }
   }
 }
 

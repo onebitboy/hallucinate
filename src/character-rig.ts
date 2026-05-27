@@ -2,6 +2,18 @@ import { compose, identity, mix, multiply, nodeTransform, normalizeQuat, slerp, 
 import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterRig, Mat4, PoseBlendCache, Quat, RigNode,
   SampledPose, Vec3 } from './types.ts'
 
+type PoseSamplePlan = {
+  channels: WeakMap<CharacterClip, (AssimpChannel | undefined)[]>
+  indices: number[]
+  poseNames: (string | undefined)[]
+  world: Mat4[]
+}
+
+const identityMatrix = identity()
+const identityQuat: Quat = [1, 0, 0, 0]
+const unitScale: Vec3 = [1, 1, 1]
+const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
+
 export function createCharacterClip(scene: AssimpScene, name: string): CharacterClip {
   const animation = scene.animations?.[0]
 
@@ -72,7 +84,7 @@ export function sampleCharacterPose(
   basePose = sampleBasePose(rig, time, characterPoseJointSet),
   blendCache?: PoseBlendCache,
 ) {
-  const blendKey = Math.round(player.motionBlend * 60)
+  const blendKey = blendCache ? Math.round(player.motionBlend * 60) : 0
   const blend = blendCache ? blendKey / 60 : player.motionBlend
   const cached = blendCache?.get(blendKey)
 
@@ -112,20 +124,22 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
   characterPoseJointSet: Set<string>)
 {
   const tick = (time * clip.ticksPerSecond) % clip.duration
+  const plan = getPoseSamplePlan(rig, characterPoseJointSet)
+  const channels = getPoseSampleChannels(rig, clip, plan)
   const pose = new Map<string, Vec3>()
-  const world = new Array<Mat4>(rig.nodes.length)
 
-  for (let i = 0; i < rig.nodes.length; i++) {
+  for (const i of plan.indices) {
     const node = rig.nodes[i]!
-    const parent = node.parent < 0 ? identity() : world[node.parent]!
-    const channel = clip.channels.get(node.name)
+    const parent = node.parent < 0 ? identityMatrix : plan.world[node.parent]!
+    const channel = channels[i]
     const local = channel ? sampleChannelTransform(node, channel, tick) : node.transform
     const matrix = node.helper ? parent : multiply(parent, local)
+    const poseName = plan.poseNames[i]
 
-    world[i] = matrix
+    plan.world[i] = matrix
 
-    if (!node.helper && characterPoseJointSet.has(node.name)) {
-      pose.set(node.name, transformOrigin(matrix))
+    if (poseName) {
+      pose.set(poseName, transformOrigin(matrix))
     }
   }
 
@@ -135,8 +149,8 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
 function sampleChannelTransform(node: RigNode, channel: AssimpChannel, tick: number) {
   return compose(
     sampleVec3(channel.positionkeys, tick, node.origin),
-    sampleQuat(channel.rotationkeys, tick, [1, 0, 0, 0]),
-    sampleVec3(channel.scalingkeys, tick, [1, 1, 1]),
+    sampleQuat(channel.rotationkeys, tick, identityQuat),
+    sampleVec3(channel.scalingkeys, tick, unitScale),
   )
 }
 
@@ -149,19 +163,18 @@ function sampleVec3(keys: [number, Vec3][] | undefined, tick: number, fallback: 
     return [...keys[0]![1]]
   }
 
-  for (let i = 0; i < keys.length - 1; i++) {
-    const from = keys[i]!
-    const to = keys[i + 1]!
+  const index = nextKeyIndex(keys, tick)
 
-    if (tick <= to[0]) {
-      const t = (tick - from[0]) / (to[0] - from[0])
+  if (index > 0) {
+    const from = keys[index - 1]!
+    const to = keys[index]!
+    const t = (tick - from[0]) / (to[0] - from[0])
 
-      return [
-        mix(from[1][0], to[1][0], t),
-        mix(from[1][1], to[1][1], t),
-        mix(from[1][2], to[1][2], t),
-      ]
-    }
+    return [
+      mix(from[1][0], to[1][0], t),
+      mix(from[1][1], to[1][1], t),
+      mix(from[1][2], to[1][2], t),
+    ]
   }
 
   return [...keys[keys.length - 1]![1]]
@@ -176,13 +189,13 @@ function sampleQuat(keys: [number, Quat][] | undefined, tick: number, fallback: 
     return normalizeQuat(keys[0]![1])
   }
 
-  for (let i = 0; i < keys.length - 1; i++) {
-    const from = keys[i]!
-    const to = keys[i + 1]!
+  const index = nextKeyIndex(keys, tick)
 
-    if (tick <= to[0]) {
-      return slerp(from[1], to[1], (tick - from[0]) / (to[0] - from[0]))
-    }
+  if (index > 0) {
+    const from = keys[index - 1]!
+    const to = keys[index]!
+
+    return slerp(from[1], to[1], (tick - from[0]) / (to[0] - from[0]))
   }
 
   return normalizeQuat(keys[keys.length - 1]![1])
@@ -196,10 +209,14 @@ export function placeCharacterPose(
   characterGroundJoints: string[],
   characterScale: number,
 ) {
-  const ground = Math.min(...characterGroundJoints.map(name => pose.get(name)![1]))
+  let ground = Infinity
   const next = new Map<string, Vec3>()
   const sin = Math.sin(turn)
   const cos = Math.cos(turn)
+
+  for (const name of characterGroundJoints) {
+    ground = Math.min(ground, pose.get(name)![1])
+  }
 
   for (const name of characterPoseJoints) {
     const point = pose.get(name)!
@@ -215,6 +232,87 @@ export function placeCharacterPose(
   }
 
   return next
+}
+
+function getPoseSamplePlan(rig: CharacterRig, characterPoseJointSet: Set<string>) {
+  let bySet = poseSamplePlans.get(rig)
+
+  if (!bySet) {
+    bySet = new WeakMap()
+    poseSamplePlans.set(rig, bySet)
+  }
+
+  let plan = bySet.get(characterPoseJointSet)
+
+  if (!plan) {
+    const needed = new Set<number>()
+
+    for (let i = 0; i < rig.nodes.length; i++) {
+      if (characterPoseJointSet.has(rig.nodes[i]!.name)) {
+        let index = i
+
+        while (index >= 0 && !needed.has(index)) {
+          needed.add(index)
+          index = rig.nodes[index]!.parent
+        }
+      }
+    }
+
+    const indices = [...needed].sort((a, b) => a - b)
+    const poseNames = new Array<string | undefined>(rig.nodes.length)
+
+    for (const index of indices) {
+      const node = rig.nodes[index]!
+
+      if (!node.helper && characterPoseJointSet.has(node.name)) {
+        poseNames[index] = node.name
+      }
+    }
+
+    plan = {
+      channels: new WeakMap(),
+      indices,
+      poseNames,
+      world: new Array<Mat4>(rig.nodes.length),
+    }
+    bySet.set(characterPoseJointSet, plan)
+  }
+
+  return plan
+}
+
+function getPoseSampleChannels(rig: CharacterRig, clip: CharacterClip, plan: PoseSamplePlan) {
+  let channels = plan.channels.get(clip)
+
+  if (!channels) {
+    channels = new Array<AssimpChannel | undefined>(rig.nodes.length)
+
+    for (const index of plan.indices) {
+      channels[index] = clip.channels.get(rig.nodes[index]!.name)
+    }
+
+    plan.channels.set(clip, channels)
+  }
+
+  return channels
+}
+
+function nextKeyIndex<T extends Vec3 | Quat>(keys: [number, T][], tick: number) {
+  let low = 1
+  let high = keys.length - 1
+
+  while (low < high) {
+    const middle = (low + high) >> 1
+
+    if (tick <= keys[middle]![0]) {
+      high = middle
+    }
+    else {
+      low = middle + 1
+    }
+  }
+
+  return tick <= keys[low]![0] ? low : -1
 }
 
 function isAssimpHelper(node: AssimpNode) {
