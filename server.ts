@@ -130,8 +130,14 @@ const server = Bun.serve<SocketData>({
 
         if (type === MESSAGE) {
           const text = truncateMessage(decodeClientMessage(view))
+          const normalizedText = normalizeChatText(text)
+          const slur = slurMatch(text)
 
-          if (text && !binaryText(text) && !slurText(text)) {
+          if (slur) {
+            console.error(`Rejected chat from ${client.ip}: ${slur.normalized}`)
+          }
+
+          if (normalizedText && !binaryText(text) && !slur) {
             broadcast(client.room, encodeServerMessage({ id: client.id, text }))
           }
 
@@ -331,19 +337,50 @@ function binaryText(text: string) {
   return /^[01]+$/.test(text)
 }
 
-function slurText(text: string) {
-  const normalized = text
+function slurMatch(text: string) {
+  const normalized = normalizeChatText(text)
+  const squashed = normalized.replace(/(.)\1+/g, '$1')
+  const matched = slurs.find(slur => normalized.includes(slur) || squashed.includes(slur))
+  const pattern = slurPatterns.find(pattern => pattern.test(normalized))
+
+  return matched || pattern ? { matched: matched ?? String(pattern), normalized } : undefined
+}
+
+function normalizeChatText(text: string) {
+  return text
     .normalize('NFKD')
     .toLowerCase()
+    .replace(/[àáâãäåāăąɑαа]/g, 'a')
+    .replace(/[ƄЬᏏᖯ]/g, 'b')
+    .replace(/[çćĉċčсϲ]/g, 'c')
+    .replace(/[ďđԁ]/g, 'd')
+    .replace(/[èéêëēĕėęěеєε]/g, 'e')
+    .replace(/[ĝğġģɡց]/g, 'g')
+    .replace(/[ĥħһн]/g, 'h')
+    .replace(/[ìíîïĩīĭįıιіїӏ]/g, 'i')
+    .replace(/[јʝ]/g, 'j')
+    .replace(/[ķκк]/g, 'k')
+    .replace(/[ĺļľŀłⅼӏ]/g, 'l')
+    .replace(/[ｍм]/g, 'm')
+    .replace(/[ñńņňŋռոηп]/g, 'n')
+    .replace(/[òóôõöōŏőοоօ]/g, 'o')
+    .replace(/[ρр]/g, 'p')
+    .replace(/[ŕŗřг]/g, 'r')
+    .replace(/[śŝşšѕ]/g, 's')
+    .replace(/[ţťŧт]/g, 't')
+    .replace(/[ùúûüũūŭůűųυս]/g, 'u')
+    .replace(/[νѵ]/g, 'v')
+    .replace(/[ŵԝ]/g, 'w')
+    .replace(/[хχ]/g, 'x')
+    .replace(/[ýÿŷуү]/g, 'y')
+    .replace(/[źżžʐ]/g, 'z')
     .replace(/[0@]/g, 'o')
     .replace(/[1!|]/g, 'i')
     .replace(/3/g, 'e')
     .replace(/4/g, 'a')
     .replace(/5|\$/g, 's')
     .replace(/7/g, 't')
-    .replace(/[^\p{L}\p{N}]/gu, '')
-
-  return slurs.some(slur => normalized.includes(slur))
+    .replace(/[^a-z]/g, '')
 }
 
 const slurs = [
@@ -393,6 +430,19 @@ const slurs = [
   'shemale',
   'retard',
   'mongoloid',
+]
+
+const slurPatterns = [
+  /n+i+g+e+r+s?/,
+  /n+i+g+a+s?/,
+  /n+i+g+u+h+s?/,
+  /n+i+g+l+e+t+s?/,
+  /f+a+g+o+t+s?/,
+  /f+a+g+s?/,
+  /k+i+k+e+s?/,
+  /s+p+i+c+s?/,
+  /c+h+i+n+k+s?/,
+  /g+o+o+k+s?/,
 ]
 
 function validateMotionValues(motion: MotionPacket) {
