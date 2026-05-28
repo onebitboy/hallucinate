@@ -76,12 +76,12 @@ export const tentDjSpeakers: Bounds[] = [
 export const tentPole: CircleBounds = { x: tent.x, z: tent.z, radius: 0.13 }
 export const tentCenterBench = { x: tent.x, z: tent.z, innerRadius: 0.34, outerRadius: 0.9 }
 export const videoTracks: Record<VideoZone, string> = {
-  inside: 'DK5XBwLiWZY',
-  outside: 'HIn1BxT38mE',
+  inside: '0oB97YhEukw',
+  outside: 'ZEaqqk8V1bY',
   tent: 'fz6nN5AtcYk',
 }
 export const videoStartTimes: Record<VideoZone, number> = {
-  inside: 38,
+  inside: 0,
   outside: 0,
   tent: 0,
 }
