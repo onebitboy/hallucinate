@@ -16,8 +16,8 @@ import {
   MESSAGE,
   modeToProtocol,
   protocolToAngle,
-  protocolToScene,
   protocolToMode,
+  protocolToScene,
   S_LEAVE,
   S_MOTION,
   S_ROOM_STATE,
@@ -48,7 +48,13 @@ export function createMultiplayer(options: {
   onLeave: (id: number) => void
 }) {
   const players = new Map<number, Player>()
-  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:3001`
+  let url: string
+  if (location.protocol === 'https:') {
+    url = location.origin.replace(/^http/, 'ws')
+  }
+  else {
+    url = `ws://${location.hostname}:3001`
+  }
   const socket = new WebSocket(url)
   let selfId = 0
   let room = options.initialRoom
