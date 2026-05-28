@@ -16,6 +16,7 @@ import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { lengthSq } from './math.ts'
+import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
@@ -383,18 +384,8 @@ multiplayer = createMultiplayer({
   onLeave: id => chatUi.remove(id),
 })
 
-bindKeyboardInput({
-  activeInput: chatInput,
-  keys,
-  openChatInput: () => chatUi.open(),
-  setAlternativeInput: useAlternativeInput,
-  toggleHelp: () => {
-    const open = helpUi.toggle()
-
-    if (!open) {
-      localStorage.setItem(helpSeenKey, 'true')
-    }
-  },
+const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants',
+  (direction: number) => void> = {
   cycleHair: direction => {
     hairController.cycleHair(direction)
     multiplayer.sendMotion()
@@ -419,6 +410,28 @@ bindKeyboardInput({
     styleController.cyclePants(direction)
     multiplayer.sendMotion()
   },
+}
+
+bindKeyboardInput({
+  activeInput: chatInput,
+  keys,
+  openChatInput: () => chatUi.open(),
+  setAlternativeInput: useAlternativeInput,
+  toggleHelp: () => {
+    const open = helpUi.toggle()
+
+    if (!open) {
+      localStorage.setItem(helpSeenKey, 'true')
+    }
+  },
+  ...styleActions,
+})
+
+createMobileControls(styleActions)
+bindTapDestination({
+  canvas,
+  projector: wallProjector,
+  setDestination: value => localCharacter.setDestination(value, seatAt(value, occupiedSeats, 0.46, true)),
 })
 
 chatForm.addEventListener('submit', event => {

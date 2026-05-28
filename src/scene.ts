@@ -112,6 +112,32 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
   }
 }
 
+export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
+  const point: Vec3 = [x, characterFloor, z]
+
+  if (isOutside(point)) {
+    return x >= outsideBounds.left && x <= outsideBounds.right && z >= outsideBounds.back && z <= outsideBounds.front
+      && !inBuildingWall(x, z, 0.45)
+      && !inCircle(x, z, outsideTree)
+      && !inCircle(x, z, outsideBuddha)
+      && !inPaddedBounds(x, z, outsideDjBoothCollision)
+      && !inPaddedBounds(x, z, outsideHutBarCollision)
+      && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+      && outsideHutPostCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+  }
+
+  return x >= insideLeft && x <= insideRight
+    && z >= insideBack
+    && (z <= insideFront || isAtBackDoor(point))
+    && z <= roomBounds.front + 0.45
+    && !inPaddedBounds(x, z, djBoothCollision)
+    && !inPaddedBounds(x, z, bartenderBarCollision)
+    && bartenderStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+    && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds))
+}
+
 export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), padding = 0.46, includeOccupied = false):
   | Seat
   | undefined
@@ -312,6 +338,20 @@ function inBounds(x: number, z: number, bounds: Bounds) {
     && z > bounds.z - bounds.depth / 2 && z < bounds.z + bounds.depth / 2
 }
 
+function inPaddedBounds(x: number, z: number, bounds: PaddedBounds) {
+  return x > bounds.left && x < bounds.right && z > bounds.back && z < bounds.front
+}
+
+function inBuildingWall(x: number, z: number, padding: number) {
+  const left = roomBounds.left - padding
+  const right = roomBounds.right + padding
+  const back = roomBounds.back - padding
+  const front = roomBounds.front + padding
+
+  return x > left && x < right && z > back && z < front
+    && !(Math.abs(x - backDoor.x) < backDoor.width * 0.5 + padding && z > roomBounds.front - 0.8)
+}
+
 function collidePaddedBounds(position: Vec3, bounds: PaddedBounds) {
   const left = bounds.left
   const right = bounds.right
@@ -350,4 +390,12 @@ function collideCircle(position: Vec3, bounds: CircleBounds) {
     position[0] = bounds.x + x / distance * radius
     position[2] = bounds.z + z / distance * radius
   }
+}
+
+function inCircle(x: number, z: number, bounds: CircleBounds) {
+  const dx = x - bounds.x
+  const dz = z - bounds.z
+  const radius = bounds.radius + 0.28
+
+  return dx * dx + dz * dz < radius * radius
 }
