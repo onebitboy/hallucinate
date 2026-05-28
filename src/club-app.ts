@@ -388,6 +388,7 @@ multiplayer = createMultiplayer({
         predictedMessages.set(text, count - 1)
       }
 
+      chatUi.removeLatest(id)
       return
     }
 

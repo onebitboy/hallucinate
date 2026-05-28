@@ -12,8 +12,10 @@ export function createChatUi(
   let formY = Number.NaN
   const anchor: Vec3 = [0, 0, 0]
   const point: ProjectedPoint = { x: 0, y: 0 }
+  let bubbleId = 0
   const bubbles = new Map<number, {
     element: HTMLDivElement
+    owner: number
     position: Vec3
     hideAt: number
     x: number
@@ -35,19 +37,38 @@ export function createChatUi(
       return text
     },
     show(id: number, text: string, bubblePosition: Vec3, stamp: number) {
-      const bubble = bubbles.get(id) ?? createBubble(bubbleRoot, bubblePosition)
+      const key = ++bubbleId
+      const bubble = createBubble(bubbleRoot, id, bubblePosition)
 
       bubble.element.textContent = text
       bubble.position = bubblePosition
       bubble.hideAt = stamp + 4000
-      bubbles.set(id, bubble)
+      bubbles.set(key, bubble)
     },
     remove(id: number) {
-      const bubble = bubbles.get(id)
+      for (const [key, bubble] of bubbles) {
+        if (bubble.owner === id) {
+          bubble.element.remove()
+          bubbles.delete(key)
+        }
+      }
+    },
+    removeLatest(id: number) {
+      let latestKey = 0
+      let latestHideAt = 0
+
+      for (const [key, bubble] of bubbles) {
+        if (bubble.owner === id && bubble.hideAt > latestHideAt) {
+          latestKey = key
+          latestHideAt = bubble.hideAt
+        }
+      }
+
+      const bubble = bubbles.get(latestKey)
 
       if (bubble) {
         bubble.element.remove()
-        bubbles.delete(id)
+        bubbles.delete(latestKey)
       }
     },
     clear() {
@@ -97,10 +118,11 @@ export function createChatUi(
   }
 }
 
-function createBubble(root: HTMLDivElement, position: Vec3) {
+function createBubble(root: HTMLDivElement, owner: number, position: Vec3) {
   const element = document.createElement('div')
   const bubble = {
     element,
+    owner,
     position,
     hideAt: 0,
     x: Number.NaN,
