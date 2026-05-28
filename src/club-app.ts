@@ -338,6 +338,7 @@ multiplayer = createMultiplayer({
     bottomStyleIndex: styleController.bottomStyleIndex,
     hairIndex: hairController.index,
     hairColorIndex: hairController.colorIndex,
+    skinColorIndex: styleController.skinColorIndex,
   }),
   initialRoom: activeRoom,
   onRoomState: room => {
@@ -382,6 +383,10 @@ bindKeyboardInput({
   },
   cycleHairColor: direction => {
     hairController.cycleColor(direction)
+    multiplayer.sendMotion()
+  },
+  cycleSkin: direction => {
+    styleController.cycleSkin(direction)
     multiplayer.sendMotion()
   },
   cycleIdle: direction => {

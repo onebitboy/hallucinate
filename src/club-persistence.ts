@@ -41,6 +41,7 @@ export function restoreClubState(options: {
     options.localCharacter.velocityY = state.velocityY ?? options.localCharacter.velocityY
     options.hairController.index = state.characterHairIndex ?? options.hairController.index
     options.hairController.colorIndex = state.characterHairColorIndex ?? options.hairController.colorIndex
+    options.styleController.skinColorIndex = state.characterSkinColorIndex ?? options.styleController.skinColorIndex
     options.idleClipIndex.set(normalizeIndex(state.idleClipIndex ?? 0, options.idleClipCount))
     options.styleController.topStyleIndex = normalizeIndex(state.topStyleIndex ?? state.shirtColorIndex
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
@@ -84,6 +85,7 @@ export function saveClubState(options: {
     velocityY: options.localCharacter.velocityY,
     characterHairIndex: options.hairController.index,
     characterHairColorIndex: options.hairController.colorIndex,
+    characterSkinColorIndex: options.styleController.skinColorIndex,
     idleClipIndex: options.idleClipIndex,
     shirtColorIndex: options.styleController.shirtColorIndex,
     topStyleIndex: options.styleController.topStyleIndex,

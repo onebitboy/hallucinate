@@ -4,7 +4,10 @@ type HelpKey = {
 }
 
 const leftRows: HelpKey[][] = [
-  [{ keys: ['1', '2'], label: 'hair color' }],
+  [
+    { keys: ['1', '2'], label: 'hair color' },
+    { keys: ['3', '4'], label: 'skin tone' },
+  ],
   [{ keys: ['q', 'w'], label: 'hair style' }],
   [
     { keys: ['a', 's'], label: 'top wear' },

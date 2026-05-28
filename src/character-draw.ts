@@ -205,7 +205,7 @@ function addRenderedCharacter(
   }
 
   if (style.topMode === 'chest') {
-    addCharacterChest(target, boxInstances, pose, player, turn, options.light, localReflection)
+    addCharacterChest(target, boxInstances, pose, player, turn, style, options.light, localReflection)
   }
 
   const hair = playerHair(options.hairMeshes, player.style.hairIndex)
@@ -323,11 +323,11 @@ function addCharacterPart(
 
 function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
   if (part.top === 'torso') {
-    return style.topMode === 'shirt' || style.topMode === 'sleeveless' ? style.shirtLight : skin
+    return style.topMode === 'shirt' || style.topMode === 'sleeveless' ? style.shirtLight : style.skin
   }
 
   if (part.top === 'sleeve') {
-    return style.topMode === 'shirt' ? style.shirt : skin
+    return style.topMode === 'shirt' ? style.shirt : style.skin
   }
 
   if (part.bottom) {
@@ -338,7 +338,7 @@ function characterPartColor(part: CharacterPart, style: ResolvedPlayerStyle) {
     return style.shoe
   }
 
-  return part.color
+  return part.color === skin ? style.skin : part.color
 }
 
 function addCharacterChest(
@@ -347,6 +347,7 @@ function addCharacterChest(
   pose: Vec3[],
   player: { turn: number },
   turn: TurnBasis,
+  style: ResolvedPlayerStyle,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   localReflection: boolean,
 ) {
@@ -361,9 +362,9 @@ function addCharacterChest(
   const forwardZ = turn.cos
 
   addCharacterChestSide(target, boxInstances, centerX, centerY, centerZ, sideX, sideZ, forwardX, forwardZ, -0.055,
-    player, turn, light, localReflection)
+    player, turn, style, light, localReflection)
   addCharacterChestSide(target, boxInstances, centerX, centerY, centerZ, sideX, sideZ, forwardX, forwardZ, 0.055,
-    player, turn, light, localReflection)
+    player, turn, style, light, localReflection)
 }
 
 function addCharacterChestSide(
@@ -379,6 +380,7 @@ function addCharacterChestSide(
   offset: number,
   player: { turn: number },
   turn: TurnBasis,
+  style: ResolvedPlayerStyle,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   localReflection: boolean,
 ) {
@@ -389,7 +391,7 @@ function addCharacterChestSide(
   chestB[1] = centerY
   chestB[2] = centerZ + sideZ * offset + forwardZ * 0.13
 
-  addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, skin, 0.02, player.turn, localReflection, light, 0,
+  addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, style.skin, 0.02, player.turn, localReflection, light, 0,
     turn.sin, turn.cos)
 }
 

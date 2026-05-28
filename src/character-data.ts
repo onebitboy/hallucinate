@@ -42,6 +42,16 @@ export const shirtLight: Vec3 = [0.055, 0.07, 0.09]
 export const pants: Vec3 = [0.035, 0.04, 0.052]
 export const skin: Vec3 = [0.86, 0.58, 0.38]
 export const shoe: Vec3 = [0.018, 0.018, 0.02]
+export const skinPalette: Vec3[] = [
+  [0.98, 0.82, 0.68],
+  [0.93, 0.72, 0.55],
+  [0.86, 0.58, 0.38],
+  [0.74, 0.44, 0.26],
+  [0.58, 0.32, 0.18],
+  [0.39, 0.22, 0.13],
+  [0.24, 0.13, 0.08],
+  [0.13, 0.075, 0.05],
+]
 export const jewelPalette: Vec3[] = [
   [0.018, 0.018, 0.02],
   [0.14, 0.145, 0.16],

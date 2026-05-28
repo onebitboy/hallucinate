@@ -15,6 +15,7 @@ export function bindKeyboardInput(options: {
   toggleHelp: () => void
   cycleHair: (direction: number) => void
   cycleHairColor: (direction: number) => void
+  cycleSkin: (direction: number) => void
   cycleIdle: (direction: number) => void
   cycleShirt: (direction: number) => void
   cyclePants: (direction: number) => void
@@ -62,6 +63,16 @@ export function bindKeyboardInput(options: {
 
     if (event.key === '2') {
       options.cycleHairColor(1)
+      return
+    }
+
+    if (event.key === '3') {
+      options.cycleSkin(-1)
+      return
+    }
+
+    if (event.key === '4') {
+      options.cycleSkin(1)
       return
     }
 
