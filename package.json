@@ -7,7 +7,7 @@
     "dev": "concurrently -n web,app -c cyan,yellow \"bun run dev:web\" \"bun run dev:app\"",
     "dev:web": "vite",
     "dev:app": "bun --watch server.ts",
-    "build": "tsc && vite build",
+    "build": "bunx tsc && vite build",
     "start": "bun server.ts",
     "preview": "vite preview"
   },
