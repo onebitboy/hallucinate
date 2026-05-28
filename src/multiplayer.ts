@@ -70,6 +70,7 @@ export function createMultiplayer(options: {
   let lastKeys = -1
   let lastAngle = -1
   let lastMode = -1
+  let lastHeight = Infinity
 
   function connect() {
     const next = new WebSocket(url)
@@ -197,11 +198,12 @@ export function createMultiplayer(options: {
     const seated = mode === 'manSitting' || mode === 'womanSitting'
     const keys = seated ? 0 : encodeKeys(options.localInput)
     const angle = angleToProtocol(keys === 0 ? options.localTurn() : options.localMoveAngle())
+    const height = sceneToProtocol(options.localPosition[1])
 
     send(encodeClientMotion({
       x: sceneToProtocol(options.localPosition[0]),
       y: sceneToProtocol(options.localPosition[2]),
-      height: sceneToProtocol(options.localPosition[1]),
+      height,
       keys,
       angle,
       idleClipIndex: options.localIdleClipIndex(),
@@ -211,6 +213,7 @@ export function createMultiplayer(options: {
     lastKeys = keys
     lastAngle = angle
     lastMode = protocolMode
+    lastHeight = height
   }
 
   return {
@@ -238,8 +241,9 @@ export function createMultiplayer(options: {
       const protocolMode = modeToProtocol(mode)
       const keys = mode === 'manSitting' || mode === 'womanSitting' ? 0 : encodeKeys(options.localInput)
       const angle = angleToProtocol(keys === 0 ? options.localTurn() : options.localMoveAngle())
+      const height = sceneToProtocol(options.localPosition[1])
 
-      if (keys !== lastKeys || protocolMode !== lastMode || (keys !== 0 && angle !== lastAngle)) {
+      if (keys !== lastKeys || protocolMode !== lastMode || height !== lastHeight || (keys !== 0 && angle !== lastAngle)) {
         sendMotion()
       }
     },
@@ -257,8 +261,12 @@ export function updateRemotePlayers(players: Iterable<Player>, delta: number, ou
     const moving = lengthSq(player.input) > 0
 
     player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
-    if (player.mode !== 'manSitting' && player.mode !== 'womanSitting') {
+    if (player.mode === 'jump') {
+      player.modeTime = (player.modeTime ?? 0) + delta
+    }
+    else if (player.mode !== 'manSitting' && player.mode !== 'womanSitting') {
       player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
+      player.modeTime = undefined
     }
 
     if (moving) {
@@ -279,6 +287,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     turn: protocolToAngle(packet.angle),
     motionBlend: packet.keys === 0 ? 0 : 1,
     mode: protocolToMode(packet.mode),
+    modeTime: protocolToMode(packet.mode) === 'jump' ? 0 : undefined,
     idleClipIndex: packet.idleClipIndex,
     input: decodeKeys(packet.keys, packet.angle),
     nextDecision: 0,
@@ -302,7 +311,14 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
   player.turn = protocolToAngle(packet.angle)
   player.input = decodeKeys(packet.keys, packet.angle)
   player.motionBlend = packet.keys === 0 ? 0 : 1
-  player.mode = protocolToMode(packet.mode)
+  const mode = protocolToMode(packet.mode)
+
+  player.modeTime = mode === 'jump'
+    ? player.mode === 'jump'
+      ? player.modeTime
+      : 0
+    : undefined
+  player.mode = mode
   if (seatedMode(player.mode)) {
     player.position[1] = remoteSeatHeight(player)
   }
