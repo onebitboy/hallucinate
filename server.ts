@@ -58,7 +58,7 @@ const maxClientStep = 1.2
 const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
-let videoState: VideoStateEntry[] | undefined = initialVideoState()
+let videoState = initialVideoState()
 let nextId = 1
 
 type MemoryAsset = {
@@ -177,7 +177,14 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === VIDEO_STATE) {
-          client.videoState = validateVideoState(decodeVideoState(view).entries)
+          const nextVideoState = validateVideoState(decodeVideoState(view).entries)
+
+          if (!videoIdsMatch(nextVideoState, videoState)) {
+            sendVideoState(client)
+            return
+          }
+
+          client.videoState = nextVideoState
           pickVideoState()
           return
         }
@@ -667,18 +674,27 @@ function sendRoomState(client: Client) {
 }
 
 function sendVideoState(client: Client) {
-  client.socket.send(encodeVideoState({ entries: videoState! }))
+  client.socket.send(encodeVideoState({ entries: videoState }))
 }
 
 function pickVideoState() {
   const synced = [...clients.values()].filter(client => client.videoState)
 
   if (synced.length === 0) {
-    videoState = undefined
     return
   }
 
   videoState = synced[Math.floor(Math.random() * synced.length)]!.videoState!
+}
+
+function videoIdsMatch(left: VideoStateEntry[], right: VideoStateEntry[]) {
+  for (const entry of left) {
+    if (right.find(state => state.zone === entry.zone)!.id !== entry.id) {
+      return false
+    }
+  }
+
+  return true
 }
 
 function initialVideoState(): VideoStateEntry[] {
