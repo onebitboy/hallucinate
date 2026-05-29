@@ -8,6 +8,7 @@ import {
   decodeBeachBalls,
   decodeGraffiti,
   decodeOnline,
+  decodeModerationMessage,
   decodeRoomState,
   decodeServerMessage,
   decodeServerMotion,
@@ -39,6 +40,7 @@ import {
   truncateMessage,
   BEACH_BALLS,
   GRAFFITI,
+  MODERATION,
   VIDEO_STATE,
 } from './protocol.ts'
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
@@ -62,6 +64,7 @@ export function createMultiplayer(options: {
   initialRoom: number
   onRoomState: (room: number) => void
   onMessage: (id: number, text: string) => void
+  onDeleteMessages: (id: number) => void
   onLeave: (id: number) => void
   onOnlineCount: (count: number) => void
   onVideoState: (entries: VideoStateEntry[], preserveSameTrack: boolean) => void
@@ -216,6 +219,15 @@ export function createMultiplayer(options: {
       const message = decodeServerMessage(view)
 
       options.onMessage(message.id, message.text)
+      return
+    }
+
+    if (type === MODERATION) {
+      const message = decodeModerationMessage(view)
+
+      if (message.command === 'deleteMessages') {
+        options.onDeleteMessages(message.id)
+      }
     }
   }
 

@@ -15,6 +15,7 @@ import {
   encodeOnline,
   encodeRoomState,
   encodeServerMessage,
+  encodeModerationMessage,
   encodeBeachBalls,
   encodeGraffiti,
   encodeServerMotion,
@@ -976,6 +977,7 @@ async function banClient(id: number) {
 
   bannedIps.add(client.ip)
   await banDb.put(client.ip, client.ip)
+  broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id }))
 
   for (const next of [...clients.values()]) {
     if (next.ip === client.ip) {

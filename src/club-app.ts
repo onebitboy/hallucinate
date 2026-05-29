@@ -176,11 +176,19 @@ function addChatLogMessage(id: number, text: string) {
     event.stopPropagation()
     multiplayer.sendAdmin(adminPass, 'ban', id)
   })
-  row.append(message, ban)
+  row.append(ban, message)
   chatLog.append(row)
 
   while (chatLog.childElementCount > chatLogMax) {
     chatLog.firstElementChild!.remove()
+  }
+}
+
+function deleteChatLogMessages(id: number) {
+  for (const row of [...chatLog.children]) {
+    if (row instanceof HTMLElement && row.dataset.userId === String(id)) {
+      row.remove()
+    }
   }
 }
 
@@ -559,6 +567,10 @@ multiplayer = createMultiplayer({
 
     addChatLogMessage(id, text)
     chatUi.show(id, text, position, performance.now())
+  },
+  onDeleteMessages: id => {
+    deleteChatLogMessages(id)
+    chatUi.removeMessages(id)
   },
   onLeave: id => chatUi.remove(id),
   onOnlineCount: count => {

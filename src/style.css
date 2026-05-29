@@ -260,7 +260,7 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   align-items: center;
   display: flex;
   gap: 8px;
-  justify-content: space-between;
+  justify-content: flex-start;
   overflow: hidden;
   font-weight: 600;
   overflow-wrap: anywhere;

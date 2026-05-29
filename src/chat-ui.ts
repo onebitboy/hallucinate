@@ -53,6 +53,9 @@ export function createChatUi(
         }
       }
     },
+    removeMessages(id: number) {
+      this.remove(id)
+    },
     removeLatest(id: number) {
       let latestKey = 0
       let latestHideAt = 0

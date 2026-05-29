@@ -14,11 +14,12 @@ export const VIDEO_STATE = 11
 export const BEACH_BALLS = 12
 export const GRAFFITI = 13
 export const ADMIN = 14
+export const MODERATION = 15
 
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 17
+export const protocolVersion = 18
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -72,6 +73,11 @@ export type GraffitiPacket = {
 export type AdminPacket = {
   pass: string
   command: 'ban'
+  id: number
+}
+
+export type ModerationPacket = {
+  command: 'deleteMessages'
   id: number
 }
 
@@ -476,6 +482,30 @@ export function decodeAdminMessage(view: DataView): AdminPacket {
     id: view.getUint16(1),
     pass: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5, passLength)),
     command,
+  }
+}
+
+export function encodeModerationMessage(packet: ModerationPacket) {
+  const data = new ArrayBuffer(4)
+  const view = new DataView(data)
+
+  view.setUint8(0, MODERATION)
+  view.setUint8(1, 1)
+  view.setUint16(2, packet.id)
+
+  return data
+}
+
+export function decodeModerationMessage(view: DataView): ModerationPacket {
+  expectSize(view, 4)
+
+  if (view.getUint8(1) !== 1) {
+    throw new Error(`Invalid moderation command ${view.getUint8(1)}`)
+  }
+
+  return {
+    command: 'deleteMessages',
+    id: view.getUint16(2),
   }
 }
 
