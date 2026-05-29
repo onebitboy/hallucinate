@@ -182,9 +182,9 @@ function addChatLogMessage(id: number, text: string) {
     if (event.type === 'pointerdown') {
       pointerBanAt = performance.now()
     }
-    deleteChatLogMessages(id)
-    chatUi.removeMessages(id)
-    multiplayer.sendAdmin(adminPass, 'ban', id)
+    pendingBan = { id, message: text }
+    banMessage.textContent = `Are you sure you want to ban user with message: ${text}`
+    banDialog.showModal()
   }
   ban.addEventListener('pointerdown', sendBan, { capture: true })
   ban.addEventListener('click', sendBan)
@@ -208,6 +208,11 @@ const adminDialog = document.createElement('dialog')
 const adminForm = document.createElement('form')
 const adminInput = document.createElement('input')
 const adminSubmit = document.createElement('button')
+const banDialog = document.createElement('dialog')
+const banForm = document.createElement('form')
+const banMessage = document.createElement('p')
+const banCancel = document.createElement('button')
+const banSubmit = document.createElement('button')
 
 adminDialog.id = 'admin-dialog'
 adminForm.method = 'dialog'
@@ -218,14 +223,42 @@ adminSubmit.type = 'submit'
 adminSubmit.textContent = 'enter'
 adminForm.append(adminInput, adminSubmit)
 adminDialog.append(adminForm)
-document.body.append(adminDialog)
+banDialog.id = 'ban-dialog'
+banForm.method = 'dialog'
+banCancel.type = 'button'
+banSubmit.type = 'submit'
+banCancel.textContent = 'cancel'
+banSubmit.textContent = 'ban'
+banForm.append(banMessage, banCancel, banSubmit)
+banDialog.append(banForm)
+document.body.append(adminDialog, banDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
   adminInput.addEventListener(eventName, event => event.stopPropagation())
 }
 
+let pendingBan: { id: number; message: string } | undefined
+
 adminForm.addEventListener('submit', () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
+})
+
+banCancel.addEventListener('click', () => {
+  pendingBan = undefined
+  banDialog.close()
+})
+
+banForm.addEventListener('submit', () => {
+  if (!pendingBan) {
+    throw new Error('Missing pending ban')
+  }
+
+  const { id } = pendingBan
+
+  pendingBan = undefined
+  deleteChatLogMessages(id)
+  chatUi.removeMessages(id)
+  multiplayer.sendAdmin(adminPass, 'ban', id)
 })
 
 function openAdminDialog() {

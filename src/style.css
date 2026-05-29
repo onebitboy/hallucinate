@@ -288,20 +288,35 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   display: inline-block;
 }
 
-#admin-dialog {
+#admin-dialog,
+#ban-dialog {
   background: rgb(6 8 14 / 0.94);
   border: 1px solid rgb(255 255 255 / 0.24);
   color: white;
   padding: 12px;
 }
 
-#admin-dialog::backdrop {
+#admin-dialog::backdrop,
+#ban-dialog::backdrop {
   background: rgb(0 0 0 / 0.48);
 }
 
-#admin-dialog form {
+#admin-dialog form,
+#ban-dialog form {
   display: flex;
   gap: 8px;
+}
+
+#ban-dialog form {
+  align-items: start;
+  flex-wrap: wrap;
+  max-width: min(360px, calc(100dvw - 32px));
+}
+
+#ban-dialog p {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .help-cluster,
