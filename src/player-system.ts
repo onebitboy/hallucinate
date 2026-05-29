@@ -56,6 +56,7 @@ export function createPlayers(count: number, outsideTree: CircleBounds, occupied
       hairIndex: Math.floor(seededRange(seed, 16, 0, 19)),
       hairColorIndex: Math.floor(seededRange(seed, 17, 0, hairPalette.length)),
       skinColorIndex: Math.floor(seededRange(seed, 19, 0, skinPalette.length)),
+      accessoryIndex: 0,
     }
 
     const player: Player = {

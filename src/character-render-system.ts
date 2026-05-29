@@ -97,6 +97,7 @@ export function createCharacterRenderSystem(options: {
           hairIndex: options.hairController.index,
           hairColorIndex: options.hairController.colorIndex,
           skinColorIndex: options.styleController.skinColorIndex,
+          accessoryIndex: options.styleController.accessoryIndex,
         },
       },
       hairMeshes: options.hairController.meshes,

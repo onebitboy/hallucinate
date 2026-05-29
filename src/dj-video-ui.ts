@@ -113,8 +113,12 @@ export function createDjVideoUi(
           if (sameTrack) {
             players[state.zone]!.seekTo(state.time, true)
           }
+          else if (state.zone !== zone) {
+            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+          }
           else {
             loadVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            pauseOtherVideos(state.zone, players, ready)
           }
         }
       }
@@ -140,7 +144,13 @@ export function createDjVideoUi(
               },
               onStateChange(event) {
                 if (event.data === endedState) {
-                  loopVideo(area, players, pendingStarts, times)
+                  if (area === zone) {
+                    loopVideo(area, players, pendingStarts, times)
+                    pauseOtherVideos(area, players, ready)
+                  }
+                  else {
+                    players[area]!.pauseVideo()
+                  }
                 }
                 else {
                   syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes, trackIds)
@@ -174,6 +184,7 @@ export function createDjVideoUi(
 
         if (ready[zone]) {
           playVideoFromTime(zone, players, pendingStarts, times)
+          pauseOtherVideos(zone, players, ready)
         }
       }
 
@@ -248,6 +259,7 @@ export function createDjVideoUi(
     play() {
       if (ready[zone]) {
         playVideoFromTime(zone, players, pendingStarts, times)
+        pauseOtherVideos(zone, players, ready)
         return true
       }
 
@@ -330,6 +342,18 @@ function playVideoFromTime(
   pendingStarts[area] = times[area]
   players[area]!.seekTo(times[area], true)
   players[area]!.playVideo()
+}
+
+function pauseOtherVideos(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  ready: Partial<Record<VideoZone, boolean>>,
+) {
+  for (const zone of videoZones()) {
+    if (zone !== area && ready[zone]) {
+      players[zone]!.pauseVideo()
+    }
+  }
 }
 
 function loopVideo(

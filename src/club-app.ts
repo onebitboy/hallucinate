@@ -251,6 +251,7 @@ const doorCoverVisible = gl.getUniformLocation(program, 'doorCoverVisible')
 const treeShadowSampler = gl.getUniformLocation(program, 'treeShadowMap')
 const characterBoxViewProjection = gl.getUniformLocation(characterBoxProgram, 'viewProjection')
 const characterBoxRenderZone = gl.getUniformLocation(characterBoxProgram, 'renderZone')
+const characterBoxBloomPass = gl.getUniformLocation(characterBoxProgram, 'bloomPass')
 const lightTime = gl.getUniformLocation(lightProgram, 'time')
 const lightSmokeMap = gl.getUniformLocation(lightProgram, 'smokeMap')
 const lightRenderZone = gl.getUniformLocation(lightProgram, 'renderZone')
@@ -303,7 +304,7 @@ const characterBoxInstanceStride = characterBoxInstanceSize * Float32Array.BYTES
 
 if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisible || !treeShadowSampler
   || !characterBoxViewProjection
-  || !characterBoxRenderZone || !lightTime || !lightSmokeMap || !lightRenderZone || !lightViewProjection
+  || !characterBoxRenderZone || !characterBoxBloomPass || !lightTime || !lightSmokeMap || !lightRenderZone || !lightViewProjection
   || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
   || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
   || !roomSmokeCameraUp || !postScene || !postBloom || !postBloomResolution || !postRenderSky
@@ -317,6 +318,7 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisi
 }
 
 const characterBoxUniforms = {
+  bloomPass: characterBoxBloomPass,
   renderZone: characterBoxRenderZone,
   viewProjection: characterBoxViewProjection,
 }
@@ -438,6 +440,7 @@ multiplayer = createMultiplayer({
     hairIndex: hairController.index,
     hairColorIndex: hairController.colorIndex,
     skinColorIndex: styleController.skinColorIndex,
+    accessoryIndex: styleController.accessoryIndex,
   }),
   initialRoom: activeRoom,
   onRoomState: room => {
@@ -529,6 +532,10 @@ const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycle
     },
     cyclePants: direction => {
       styleController.cyclePants(direction)
+      multiplayer.sendMotion()
+    },
+    cycleAccessory: direction => {
+      styleController.cycleAccessory(direction)
       multiplayer.sendMotion()
     },
   }

@@ -41,6 +41,7 @@ type SmokeUniforms = {
 }
 
 type CharacterBoxUniforms = {
+  bloomPass: WebGLUniformLocation
   renderZone: WebGLUniformLocation
   viewProjection: WebGLUniformLocation
 }
@@ -205,6 +206,24 @@ export function renderClubFrame(options: {
   gl.uniform1i(options.roomUniforms.bloomPass, 1)
   gl.bindVertexArray(options.arrays.room)
   gl.drawArrays(gl.TRIANGLES, 0, options.points.length / options.vertexSize)
+  gl.depthFunc(gl.LEQUAL)
+  drawCharacterVertexGeometry(options)
+  drawCharacterBoxes({
+    array: options.arrays.characterBox,
+    bloomPass: true,
+    camera: options.camera,
+    cameraMatrix: bloomCameraMatrix,
+    count: options.character.boxInstanceCount,
+    geometry: options.character.boxGeometry,
+    gl: options.gl,
+    height: options.bloomTarget.height,
+    renderZone: options.renderZone,
+    program: options.character.boxProgram,
+    uniforms: options.character.boxUniforms,
+    width: options.bloomTarget.width,
+  })
+  gl.depthFunc(gl.LESS)
+  gl.useProgram(options.program)
   gl.uniform1i(options.roomUniforms.bloomPass, 0)
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE)
@@ -235,6 +254,15 @@ export function renderClubFrame(options: {
   }
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+}
+
+function drawCharacterVertexGeometry(options: Parameters<typeof renderClubFrame>[0]) {
+  if (options.character.count === 0) {
+    return
+  }
+
+  options.gl.bindVertexArray(options.arrays.character)
+  options.gl.drawArrays(options.gl.TRIANGLES, 0, options.character.count)
 }
 
 function drawBeachBalls(options: Parameters<typeof renderClubFrame>[0]) {

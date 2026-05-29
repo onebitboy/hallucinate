@@ -28,6 +28,7 @@ import {
   VIDEO_STATE,
 } from './src/protocol.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
+import { accessoryPalette } from './src/character-style.ts'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { outsideBounds, roomBounds, videoStartTimes, videoTracks } from './src/scene-data.ts'
 import { seatAt } from './src/scene.ts'
@@ -131,6 +132,7 @@ const server = Bun.serve<SocketData>({
             hairIndex: 0,
             hairColorIndex: 0,
             skinColorIndex: 2,
+            accessoryIndex: 0,
           },
         },
       }
@@ -651,7 +653,8 @@ function validateMotionValues(motion: MotionPacket) {
     || motion.style.bottomStyleIndex >= jewelPalette.length * 2
     || motion.style.hairIndex > maxHairIndex
     || motion.style.hairColorIndex >= hairPalette.length
-    || motion.style.skinColorIndex >= skinPalette.length)
+    || motion.style.skinColorIndex >= skinPalette.length
+    || motion.style.accessoryIndex > accessoryPalette.length)
   {
     throw new Error('Invalid style')
   }
@@ -673,6 +676,10 @@ function validateMotionValues(motion: MotionPacket) {
 
 function validateMotionStep(client: Client, motion: MotionPacket) {
   if (!client.poseSynced) {
+    return
+  }
+
+  if (motion.mode === 2 || motion.mode === 3) {
     return
   }
 

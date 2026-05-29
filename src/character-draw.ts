@@ -77,6 +77,10 @@ const neckIndex = poseJointIndices.get('mixamorig:Neck')!
 const hipsIndex = poseJointIndices.get('mixamorig:Hips')!
 const leftArmIndex = poseJointIndices.get('mixamorig:LeftArm')!
 const rightArmIndex = poseJointIndices.get('mixamorig:RightArm')!
+const leftForeArmIndex = poseJointIndices.get('mixamorig:LeftForeArm')!
+const rightForeArmIndex = poseJointIndices.get('mixamorig:RightForeArm')!
+const leftHandIndex = poseJointIndices.get('mixamorig:LeftHand')!
+const rightHandIndex = poseJointIndices.get('mixamorig:RightHand')!
 const leftUpLegIndex = poseJointIndices.get('mixamorig:LeftUpLeg')!
 const rightUpLegIndex = poseJointIndices.get('mixamorig:RightUpLeg')!
 const leftLegIndex = poseJointIndices.get('mixamorig:LeftLeg')!
@@ -105,6 +109,9 @@ const skirtH: Vec3 = [0, 0, 0]
 const hairSide: Vec3 = [0, 0, 0]
 const hairUp: Vec3 = [0, 0, 0]
 const hairForward: Vec3 = [0, 0, 0]
+const glowstickA: Vec3 = [0, 0, 0]
+const glowstickB: Vec3 = [0, 0, 0]
+const glowstickSide: Vec3 = [0, 0, 0]
 const farHairDistanceSq = 34 * 34
 
 export function buildCharacterDrawData(options: BuildOptions) {
@@ -215,6 +222,10 @@ function addRenderedCharacter(
     addCharacterChest(target, boxInstances, pose, player, turn, style, options.light, localReflection)
   }
 
+  if (style.accessory) {
+    addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+  }
+
   const hair = playerHair(options.hairMeshes, player.style.hairIndex)
 
   if (hair && detailedHair) {
@@ -223,6 +234,68 @@ function addRenderedCharacter(
   else if (hair && renderHair && options.hairMeshes.length > 0) {
     addNpcHairInstance(hairInstances, pose, hair, style.hairColor)
   }
+}
+
+function addGlowsticks(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  pose: Vec3[],
+  player: { turn: number },
+  turn: TurnBasis,
+  style: ResolvedPlayerStyle,
+  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  localReflection: boolean,
+) {
+  const torso = pose[spine2Index]!
+
+  addGlowstick(target, boxInstances, torso, pose[leftForeArmIndex]!, pose[leftHandIndex]!, player, turn, style, light,
+    localReflection)
+  addGlowstick(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style, light,
+    localReflection)
+}
+
+function addGlowstick(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  torso: Vec3,
+  foreArm: Vec3,
+  hand: Vec3,
+  player: { turn: number },
+  turn: TurnBasis,
+  style: ResolvedPlayerStyle,
+  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  localReflection: boolean,
+) {
+  const dx = hand[0] - foreArm[0]
+  const dy = hand[1] - foreArm[1]
+  const dz = hand[2] - foreArm[2]
+  const sideX = turn.cos
+  const sideZ = -turn.sin
+  const handSide = Math.sign((hand[0] - torso[0]) * sideX + (hand[2] - torso[2]) * sideZ)
+  const crossX = -dy * sideZ
+  const crossY = dz * sideX - dx * sideZ
+  const crossZ = dy * sideX
+  const crossLength = Math.hypot(crossX, crossY, crossZ)
+  const stickX = crossX / crossLength
+  const stickY = crossY / crossLength
+  const stickZ = crossZ / crossLength
+
+  const centerX = hand[0] + sideX * handSide * 0.08 + dx * 0.08
+  const centerY = hand[1] + 0.007 + dy * 0.08
+  const centerZ = hand[2] + sideZ * handSide * 0.08 + dz * 0.08
+  const half = 0.08
+
+  glowstickA[0] = centerX - stickX * half
+  glowstickA[1] = centerY - stickY * half
+  glowstickA[2] = centerZ - stickZ * half
+  glowstickB[0] = centerX + stickX * half
+  glowstickB[1] = centerY + stickY * half
+  glowstickB[2] = centerZ + stickZ * half
+  glowstickSide[0] = sideX * handSide
+  glowstickSide[1] = 0
+  glowstickSide[2] = sideZ * handSide
+  addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.025, 0.025, style.accessory!, 1.4, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: glowstickSide })
 }
 
 function bodySampleTime(time: number, distanceSq: number) {
@@ -398,8 +471,8 @@ function addCharacterChestSide(
   chestB[1] = centerY
   chestB[2] = centerZ + sideZ * offset + forwardZ * 0.13
 
-  addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, style.skin, 0.02, player.turn, localReflection, light, 0,
-    turn.sin, turn.cos)
+  addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, style.skin, 0.02, player.turn, localReflection,
+    light, 0, turn.sin, turn.cos)
 }
 
 function addCharacterSkirt(

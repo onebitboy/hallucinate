@@ -32,6 +32,7 @@ export function bindKeyboardInput(options: {
   cycleIdle: (direction: number) => void
   cycleShirt: (direction: number) => void
   cyclePants: (direction: number) => void
+  cycleAccessory: (direction: number) => void
 }) {
   addEventListener('keydown', event => {
     if (document.activeElement === options.activeInput) {
@@ -121,6 +122,16 @@ export function bindKeyboardInput(options: {
 
     if ((!alternativeInput && key === 'x') || (alternativeInput && key === ',')) {
       options.cyclePants(1)
+      return
+    }
+
+    if ((!alternativeInput && key === 'e') || (alternativeInput && key === 'o')) {
+      options.cycleAccessory(-1)
+      return
+    }
+
+    if ((!alternativeInput && key === 'r') || (alternativeInput && key === 'p')) {
+      options.cycleAccessory(1)
       return
     }
 

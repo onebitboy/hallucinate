@@ -75,6 +75,7 @@ export const characterBoxFragment = `#version 300 es
 precision highp float;
 
 uniform int renderZone;
+uniform int bloomPass;
 
 in vec3 shade;
 in float light;
@@ -113,6 +114,15 @@ bool sceneVisible() {
 void main() {
   if (!sceneVisible()) {
     discard;
+  }
+
+  if (bloomPass == 1) {
+    if (light < 0.15) {
+      discard;
+    }
+
+    pixel = vec4(shade * light * 2.2, 1.0);
+    return;
   }
 
   pixel = vec4(shade + shade * light * 2.2, 1.0);

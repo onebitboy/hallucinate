@@ -76,6 +76,7 @@ export function addCharacterBox(
   strobe = 0,
   turnSin = Math.sin(turn),
   turnCos = Math.cos(turn),
+  basis?: { side: Vec3 },
 ) {
   const dx = b[0] - a[0]
   const dy = b[1] - a[1]
@@ -92,7 +93,26 @@ export function addCharacterBox(
   let upY = 0
   let upZ = 0
 
-  if (vertical) {
+  if (basis) {
+    const dot = basis.side[0] * nx + basis.side[1] * ny + basis.side[2] * nz
+
+    sideX = basis.side[0] - nx * dot
+    sideY = basis.side[1] - ny * dot
+    sideZ = basis.side[2] - nz * dot
+    const sideLength = Math.hypot(sideX, sideY, sideZ)
+
+    if (sideLength === 0) {
+      throw new Error('Cannot orient box with parallel side')
+    }
+
+    sideX /= sideLength
+    sideY /= sideLength
+    sideZ /= sideLength
+    upX = ny * sideZ - nz * sideY
+    upY = nz * sideX - nx * sideZ
+    upZ = nx * sideY - ny * sideX
+  }
+  else if (vertical) {
     sideX = turnCos
     sideZ = -turnSin
     upX = turnSin

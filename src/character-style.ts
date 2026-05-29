@@ -4,6 +4,15 @@ import type { BottomMode, PlayerStyle, ResolvedPlayerStyle, TopMode } from './ty
 
 const topStyleCache = new Map<number, ReturnType<typeof createTopStyleData>>()
 const resolvedStyleCache = new Map<number, ResolvedPlayerStyle>()
+export const accessoryPalette = [
+  [1, 0.03, 0.02],
+  [1, 0.03, 0.7],
+  [0.05, 0.82, 1],
+  [0, 1, 0.18],
+  [1, 0.9, 0.04],
+  [0.6, 0.12, 1],
+  [1, 0.22, 0.04],
+] as const
 
 export function createCharacterStyleController() {
   let shirtColorIndex = 0
@@ -13,6 +22,7 @@ export function createCharacterStyleController() {
   let bottomStyleIndex = 0
   let bottomMode: BottomMode = 'pants'
   let skinColorIndex = 2
+  let accessoryIndex = 0
 
   return {
     get shirtColorIndex() {
@@ -46,6 +56,12 @@ export function createCharacterStyleController() {
       skinColorIndex = normalizeIndex(value, skinPalette.length)
       setVec3(skin, skinPalette[skinColorIndex]!)
     },
+    get accessoryIndex() {
+      return accessoryIndex
+    },
+    set accessoryIndex(value: number) {
+      accessoryIndex = normalizeIndex(value, accessoryPalette.length + 1)
+    },
     cycleShirt(direction: number) {
       topStyleIndex = normalizeIndex(topStyleIndex + direction, jewelPalette.length * 2 + 2)
       this.setTopStyle()
@@ -68,6 +84,9 @@ export function createCharacterStyleController() {
     },
     cycleSkin(direction: number) {
       this.skinColorIndex = skinColorIndex + direction
+    },
+    cycleAccessory(direction: number) {
+      this.accessoryIndex = accessoryIndex + direction
     },
   }
 }
@@ -99,8 +118,9 @@ export function resolvePlayerStyle(style: PlayerStyle): ResolvedPlayerStyle {
   const bottomIndex = normalizeIndex(style.bottomStyleIndex, jewelPalette.length * 2)
   const hairColorIndex = normalizeIndex(style.hairColorIndex, hairPalette.length)
   const skinColorIndex = normalizeIndex(style.skinColorIndex, skinPalette.length)
-  const key = ((topIndex * jewelPalette.length * 2 + bottomIndex) * hairPalette.length + hairColorIndex)
-    * skinPalette.length + skinColorIndex
+  const accessoryIndex = normalizeIndex(style.accessoryIndex, accessoryPalette.length + 1)
+  const key = (((topIndex * jewelPalette.length * 2 + bottomIndex) * hairPalette.length + hairColorIndex)
+    * skinPalette.length + skinColorIndex) * (accessoryPalette.length + 1) + accessoryIndex
   const cached = resolvedStyleCache.get(key)
 
   if (cached) {
@@ -122,6 +142,7 @@ export function resolvePlayerStyle(style: PlayerStyle): ResolvedPlayerStyle {
     shoe: scale(pantsColor, 0.72),
     hairColor: hairPalette[hairColorIndex]!,
     skin: skinPalette[skinColorIndex]!,
+    accessory: accessoryIndex === 0 ? undefined : accessoryPalette[accessoryIndex - 1],
   }
 
   resolvedStyleCache.set(key, resolved)

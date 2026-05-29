@@ -16,12 +16,12 @@ export const BEACH_BALLS = 12
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 10
+export const protocolVersion = 12
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const angleScale = 256 / (Math.PI * 2)
-const motionSize = 15
+const motionSize = 16
 const spawnSize = motionSize + 2
 
 export type MotionPacket = {
@@ -447,6 +447,7 @@ function writeMotion(view: DataView, offset: number, packet: MotionPacket) {
   view.setUint8(offset + 12, packet.style.hairIndex)
   view.setUint8(offset + 13, packet.style.hairColorIndex)
   view.setUint8(offset + 14, packet.style.skinColorIndex)
+  view.setUint8(offset + 15, packet.style.accessoryIndex)
 }
 
 function readMotion(view: DataView, offset: number): MotionPacket {
@@ -464,6 +465,7 @@ function readMotion(view: DataView, offset: number): MotionPacket {
       hairIndex: view.getUint8(offset + 12),
       hairColorIndex: view.getUint8(offset + 13),
       skinColorIndex: view.getUint8(offset + 14),
+      accessoryIndex: view.getUint8(offset + 15),
     },
   }
 }

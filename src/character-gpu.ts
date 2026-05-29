@@ -41,9 +41,11 @@ export function drawCharacterBoxes(options: {
   renderZone: number
   program: WebGLProgram
   uniforms: {
+    bloomPass: WebGLUniformLocation
     renderZone: WebGLUniformLocation
     viewProjection: WebGLUniformLocation
   }
+  bloomPass?: boolean
   width: number
 }) {
   if (options.count === 0) {
@@ -53,6 +55,7 @@ export function drawCharacterBoxes(options: {
   options.gl.useProgram(options.program)
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform1i(options.uniforms.renderZone, options.renderZone)
+  options.gl.uniform1i(options.uniforms.bloomPass, options.bloomPass ? 1 : 0)
   options.gl.bindVertexArray(options.array)
   options.gl.drawArraysInstanced(options.gl.TRIANGLES, 0, options.geometry.count, options.count)
   options.gl.bindVertexArray(null)

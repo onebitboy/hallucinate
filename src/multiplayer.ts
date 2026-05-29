@@ -53,6 +53,7 @@ export function createMultiplayer(options: {
     hairIndex: number
     hairColorIndex: number
     skinColorIndex: number
+    accessoryIndex: number
   }
   initialRoom: number
   onRoomState: (room: number) => void

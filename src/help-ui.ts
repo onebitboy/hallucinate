@@ -8,7 +8,10 @@ const leftRows: HelpKey[][] = [
     { keys: ['1', '2'], label: 'hair color' },
     { keys: ['3', '4'], label: 'skin tone' },
   ],
-  [{ keys: ['q', 'w'], label: 'hair style' }],
+  [
+    { keys: ['q', 'w'], label: 'hair style' },
+    { keys: ['e', 'r'], label: 'accessories' },
+  ],
   [
     { keys: ['a', 's'], label: 'top wear' },
     { keys: ['d', 'f'], label: 'dance moves' },
@@ -24,7 +27,10 @@ const alternativeLeftRows: HelpKey[][] = [
     { keys: ['7', '8'], label: 'hair color' },
     { keys: ['9', '0'], label: 'skin tone' },
   ],
-  [{ keys: ['u', 'i'], label: 'hair style' }],
+  [
+    { keys: ['u', 'i'], label: 'hair style' },
+    { keys: ['o', 'p'], label: 'accessories' },
+  ],
   [
     { keys: ['j', 'k'], label: 'top wear' },
     { keys: ['l', ';'], label: 'dance moves' },
