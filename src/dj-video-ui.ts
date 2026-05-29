@@ -106,12 +106,12 @@ export function createDjVideoUi(
         }
 
         trackIds[state.zone] = state.id
-        times[state.zone] = state.time
-        pendingStarts[state.zone] = state.time
+        times[state.zone] = videoStateTime(state.zone, state.id, state.time)
+        pendingStarts[state.zone] = times[state.zone]
 
         if (ready[state.zone]) {
           if (sameTrack && state.zone === zone) {
-            players[state.zone]!.seekTo(state.time, true)
+            players[state.zone]!.seekTo(times[state.zone], true)
           }
           else if (sameTrack) {
             cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
@@ -372,10 +372,14 @@ function loopVideo(
   pendingStarts: Partial<Record<VideoZone, number>>,
   times: Record<VideoZone, number>,
 ) {
-  times[area] = 0
-  pendingStarts[area] = 0
-  players[area]!.seekTo(0, true)
+  times[area] = videoStartTimes[area]
+  pendingStarts[area] = times[area]
+  players[area]!.seekTo(times[area], true)
   players[area]!.playVideo()
+}
+
+function videoStateTime(zone: VideoZone, id: string, time: number) {
+  return id === videoTracks[zone] && time < 0.5 ? videoStartTimes[zone] : time
 }
 
 function setPoint(target: Vec3, x: number, y: number, z: number) {

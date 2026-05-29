@@ -812,7 +812,14 @@ function validateVideoState(entries: VideoStateEntry[]) {
     throw new Error(`Invalid video state count ${seen.size}`)
   }
 
-  return entries
+  return entries.map(entry => ({
+    ...entry,
+    time: videoStateTime(entry),
+  }))
+}
+
+function videoStateTime(entry: VideoStateEntry) {
+  return entry.id === videoTracks[entry.zone] && entry.time < 0.5 ? videoStartTimes[entry.zone] : entry.time
 }
 
 function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
