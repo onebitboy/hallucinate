@@ -194,7 +194,7 @@ const server = Bun.serve<SocketData>({
 
           if (normalizedText && !binaryText(text) && !slur) {
             console.log(`Chat from ${client.ip}: ${text}`)
-            broadcast(client.room, encodeServerMessage({ id: client.id, text }))
+            broadcastAll(encodeServerMessage({ id: client.id, text }))
           }
 
           return
@@ -819,14 +819,14 @@ function validateVideoState(entries: VideoStateEntry[]) {
     throw new Error(`Invalid video state count ${seen.size}`)
   }
 
-  return entries.map(entry => ({
-    ...entry,
-    time: videoStateTime(entry),
-  }))
+  return entries.map(entry => videoStateEntry(entry))
 }
 
-function videoStateTime(entry: VideoStateEntry) {
-  return entry.id === videoTracks[entry.zone] && entry.time < 0.5 ? videoStartTimes[entry.zone] : entry.time
+function videoStateEntry(entry: VideoStateEntry): VideoStateEntry {
+  const id = videoTracks[entry.zone]
+  const time = entry.id === id && entry.time >= 0.5 ? entry.time : videoStartTimes[entry.zone]
+
+  return { zone: entry.zone, id, time }
 }
 
 function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
@@ -967,6 +967,12 @@ function removeClient(client: Client) {
 function broadcastOnline() {
   const data = encodeOnline(clients.size)
 
+  for (const client of clients.values()) {
+    client.socket.send(data)
+  }
+}
+
+function broadcastAll(data: ArrayBuffer) {
   for (const client of clients.values()) {
     client.socket.send(data)
   }
