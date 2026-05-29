@@ -75,13 +75,6 @@ export function createMultiplayer(options: {
   videoState: () => VideoStateEntry[]
 }) {
   const players = new Map<number, Player>()
-  let url: string
-  if (location.protocol === 'https:') {
-    url = `${location.origin.replace(/^http/, 'ws')}?protocol=${protocolVersion}`
-  }
-  else {
-    url = `ws://${location.hostname}:3001?protocol=${protocolVersion}`
-  }
   const heartbeatInterval = 5_000
   const videoSyncInterval = 10_000
   const reconnectDelay = 1_500
@@ -101,7 +94,7 @@ export function createMultiplayer(options: {
   let lastHeight = Infinity
 
   function connect() {
-    const next = new WebSocket(url)
+    const next = new WebSocket(connectUrl(connectedOnce))
 
     next.binaryType = 'arraybuffer'
     next.addEventListener('open', () => {
@@ -133,6 +126,14 @@ export function createMultiplayer(options: {
     next.addEventListener('message', receive)
 
     return next
+  }
+
+  function connectUrl(reconnect: boolean) {
+    const base = location.protocol === 'https:'
+      ? location.origin.replace(/^http/, 'ws')
+      : `ws://${location.hostname}:3001`
+
+    return `${base}?protocol=${protocolVersion}&session=${reconnect ? 'reconnect' : 'init'}`
   }
 
   function receive(event: MessageEvent<ArrayBuffer>) {

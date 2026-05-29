@@ -563,10 +563,12 @@ let beachBallPoints = new Float32Array()
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
 const graffitiSplats: import('./types.ts').GraffitiSplat[] = []
+const graffitiIds = new Set<number>()
 let graffitiSeed = Math.floor(Math.random() * 65536)
 let lastSprayAt = 0
 let sprayPointer = 0
 const sprayInterval = 55
+let graffitiPaintId = 0
 
 multiplayer = createMultiplayer({
   localPosition: characterPosition,
@@ -653,30 +655,44 @@ multiplayer = createMultiplayer({
   },
   onGraffiti: splats => {
     const appended: import('./types.ts').GraffitiSplat[] = []
+    const optimisticSplats = new Map(graffitiSplats
+      .map((splat, index) => [splat.id === 0 ? graffitiKey(splat) : '', index] as const)
+      .filter(([key]) => key !== ''))
     let rebuild = false
 
     for (const splat of splats) {
-      const optimistic = graffitiSplats.findIndex(next => next.id === 0 && graffitiKey(next) === graffitiKey(splat))
+      if (graffitiIds.has(splat.id)) {
+        continue
+      }
+
+      const optimistic = optimisticSplats.get(graffitiKey(splat)) ?? -1
 
       if (optimistic >= 0) {
         graffitiSplats[optimistic] = splat
+        graffitiIds.add(splat.id)
       }
       else {
         graffitiSplats.push(splat)
+        graffitiIds.add(splat.id)
         appended.push(splat)
       }
     }
 
     if (graffitiSplats.length > maxGraffitiSplats) {
-      graffitiSplats.splice(0, graffitiSplats.length - maxGraffitiSplats)
+      const removed = graffitiSplats.splice(0, graffitiSplats.length - maxGraffitiSplats)
+
+      for (const splat of removed) {
+        graffitiIds.delete(splat.id)
+      }
+
       rebuild = true
     }
 
     if (rebuild) {
-      repaintGraffitiTexture()
+      scheduleGraffitiTexturePaint(graffitiSplats, true)
     }
     else if (appended.length > 0) {
-      paintGraffitiTexture(appended)
+      scheduleGraffitiTexturePaint(appended, false)
     }
   },
   videoState: () => djVideoUi.states(),
@@ -820,6 +836,7 @@ function sprayAt(clientX: number, clientY: number) {
   }
 
   graffitiSplats.push(splat)
+  graffitiIds.add(splat.id)
   paintGraffitiTexture([splat])
   multiplayer.sendGraffiti([splat])
 }
@@ -1049,7 +1066,37 @@ function repaintGraffitiTexture() {
   paintGraffitiTexture(graffitiSplats)
 }
 
+function scheduleGraffitiTexturePaint(splats: import('./types.ts').GraffitiSplat[], clear: boolean) {
+  const paintId = ++graffitiPaintId
+  const chunk = 1400
+  let index = 0
+
+  if (clear) {
+    graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
+  }
+
+  function paintNext() {
+    if (paintId !== graffitiPaintId) {
+      return
+    }
+
+    paintGraffitiSplats(graffitiContext, splats.slice(index, index + chunk))
+    index += chunk
+
+    if (index < splats.length) {
+      requestAnimationFrame(paintNext)
+      return
+    }
+
+    gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
+  }
+
+  requestAnimationFrame(paintNext)
+}
+
 function paintGraffitiTexture(splats: import('./types.ts').GraffitiSplat[]) {
+  graffitiPaintId++
   paintGraffitiSplats(graffitiContext, splats)
   gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)

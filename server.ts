@@ -47,6 +47,7 @@ import type { GraffitiSplat } from './src/types.ts'
 type Client = {
   id: number
   ip: string
+  lastInteractionAt: number
   lastSeen: number
   lastMotionAt: number
   poseSynced: boolean
@@ -57,6 +58,7 @@ type Client = {
 }
 
 type SocketData = {
+  initialState: boolean
   ip: string
   protocolOk: boolean
 }
@@ -67,6 +69,7 @@ const rooms = Array.from({ length: roomCount }, () => new Set<Client>())
 const clients = new Map<Bun.ServerWebSocket<SocketData>, Client>()
 const heartbeatInterval = 10_000
 const clientTimeout = 30_000
+const onlineActivityTimeout = 5 * 60_000
 const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
 const maxClientStep = 1.2
@@ -114,6 +117,7 @@ const server = Bun.serve<SocketData>({
 
     if (server.upgrade(request, {
       data: {
+        initialState: url.searchParams.get('session') !== 'reconnect',
         ip,
         protocolOk: clientProtocolOk(url.searchParams.get('protocol')),
       },
@@ -131,11 +135,13 @@ const server = Bun.serve<SocketData>({
       }
 
       const id = nextId++
+      const now = Date.now()
       const client: Client = {
         id,
         ip: socket.data.ip,
-        lastSeen: Date.now(),
-        lastMotionAt: Date.now(),
+        lastInteractionAt: now,
+        lastSeen: now,
+        lastMotionAt: now,
         poseSynced: false,
         room: 0,
         socket,
@@ -166,7 +172,9 @@ const server = Bun.serve<SocketData>({
         sendVideoState(client)
       }
       sendBeachBalls(client)
-      sendGraffiti(client)
+      if (socket.data.initialState) {
+        sendGraffiti(client)
+      }
       broadcastOnline()
       broadcast(client.room, encodeSpawn(client.pose), client)
     },
@@ -186,6 +194,7 @@ const server = Bun.serve<SocketData>({
         if (type === C_MOTION) {
           const motion = decodeClientMotion(view)
 
+          touchInteraction(client)
           validateMotion(client, motion)
           client.pose = { id: client.id, ...motion }
           client.lastMotionAt = Date.now()
@@ -195,6 +204,7 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === C_ROOM_CHANGE) {
+          touchInteraction(client)
           changeRoom(client, decodeRoomChange(view))
           return
         }
@@ -204,6 +214,7 @@ const server = Bun.serve<SocketData>({
           const normalizedText = normalizeChatText(text)
           const slur = slurMatch(text)
 
+          touchInteraction(client)
           if (normalizedText && !binaryText(text) && !slur) {
             console.log(`Chat from ${client.ip}: ${text}`)
             broadcastAll(encodeServerMessage({ id: client.id, text }))
@@ -213,6 +224,7 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === ADMIN) {
+          touchInteraction(client)
           await applyAdminMessage(decodeAdminMessage(view))
           return
         }
@@ -250,6 +262,7 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === BEACH_BALLS) {
+          touchInteraction(client)
           const appliedBalls = applyBeachBalls(client, validateBeachBalls(decodeBeachBalls(view).balls))
 
           if (appliedBalls.length > 0) {
@@ -261,6 +274,7 @@ const server = Bun.serve<SocketData>({
 
         if (type === GRAFFITI) {
           try {
+            touchInteraction(client)
             const splats = await saveGraffiti(validateGraffiti(decodeGraffiti(view).splats))
 
             if (splats.length > 0) {
@@ -1025,6 +1039,12 @@ function syncRooms() {
   for (const client of clients.values()) {
     sendRoomState(client)
   }
+
+  broadcastOnline()
+}
+
+function touchInteraction(client: Client) {
+  client.lastInteractionAt = Date.now()
 }
 
 function removeClient(client: Client) {
@@ -1037,7 +1057,11 @@ function removeClient(client: Client) {
 }
 
 function broadcastOnline() {
-  const data = encodeOnline(clients.size)
+  const now = Date.now()
+  const online = [...clients.values()]
+    .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
+    .length
+  const data = encodeOnline(online)
 
   for (const client of clients.values()) {
     client.socket.send(data)
