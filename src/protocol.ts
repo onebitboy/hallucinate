@@ -16,7 +16,7 @@ export const BEACH_BALLS = 12
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 5
+export const protocolVersion = 6
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
