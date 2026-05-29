@@ -114,6 +114,11 @@ export function createMultiplayer(options: {
       clearInterval(heartbeat)
       clearInterval(videoSync)
 
+      if (event.code === 1012 && event.reason === 'version') {
+        location.reload()
+        return
+      }
+
       if (!closed) {
         reconnect = setTimeout(() => {
           socket = connect()
