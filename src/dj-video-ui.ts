@@ -391,7 +391,7 @@ function syncVideoTime(
       trackIndexes[area] = players[area]!.getPlaylistIndex()
     }
 
-    trackIds[area] = players[area]!.getVideoData().video_id || trackIds[area]
+    trackIds[area] = players[area]!.getVideoData()?.video_id || trackIds[area]
 
     if (pendingStart !== undefined && time < pendingStart - 0.5) {
       players[area]!.seekTo(pendingStart, true)
