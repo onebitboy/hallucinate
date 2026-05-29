@@ -296,6 +296,9 @@ function clientProtocolOk(protocol: string | null) {
   return version === String(protocolVersion)
 }
 
+console.log(`club multiplayer: ws://localhost:${server.port}`)
+console.log(`club static: http://localhost:${server.port}`)
+
 setInterval(syncRooms, heartbeatInterval)
 
 function clientIp(request: Request) {
