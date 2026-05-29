@@ -302,7 +302,7 @@ export function createMultiplayer(options: {
       return next
     },
     sendAdmin(pass: string, command: 'ban', id: number) {
-      send(encodeAdminMessage({ pass, command, id }))
+      queue(encodeAdminMessage({ pass, command, id }))
     },
     sendMotion,
     sendBeachBalls(balls: BeachBall[]) {

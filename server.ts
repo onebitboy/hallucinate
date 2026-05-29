@@ -959,7 +959,15 @@ async function loadBannedIps() {
 }
 
 async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) {
-  if (adminPass === '' || packet.pass !== adminPass) {
+  console.log(`Admin command: command=${packet.command} target=${packet.id}`)
+
+  if (adminPass === '') {
+    console.log('Admin command rejected: ADMIN_PASS is not set')
+    throw new Error('Missing admin pass')
+  }
+
+  if (packet.pass !== adminPass) {
+    console.log(`Admin command rejected: invalid pass target=${packet.id}`)
     throw new Error('Invalid admin pass')
   }
 
@@ -972,6 +980,7 @@ async function banClient(id: number) {
   const client = [...clients.values()].find(next => next.id === id)
 
   if (!client) {
+    console.log(`Admin ban rejected: invalid target id=${id}`)
     throw new Error(`Invalid ban target ${id}`)
   }
 
