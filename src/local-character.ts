@@ -14,6 +14,10 @@ import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 const jumpDuration = 0.8
 const jumpHeight = 1.65
 const jumpRiseDuration = 0.4
+const waveDuration = 95 / 30
+const waveLoopStart = 28 / 30
+const waveLoopEnd = 62 / 30
+const waveLoopDuration = waveLoopEnd - waveLoopStart
 
 export function createLocalCharacter(keys: Set<string>) {
   const position: Vec3 = [-2.2, -1.95, -6.8]
@@ -34,6 +38,21 @@ export function createLocalCharacter(keys: Set<string>) {
   let hasDestination = false
   let jumpTime = 0
   let jumpElapsed = 0
+  let jumpHeld = false
+  let waveActive = false
+  let waveHeld = false
+  let waveElapsed = 0
+  let waveOutroElapsed = -1
+
+  function startJump() {
+    hasDestination = false
+    destinationSeat = ''
+    path = []
+    jumpTime = jumpDuration
+    jumpElapsed = 0
+    mode = 'jump'
+    motionBlend = 0
+  }
 
   return {
     position,
@@ -54,7 +73,7 @@ export function createLocalCharacter(keys: Set<string>) {
       return jumpTime > 0
     },
     get modeTime() {
-      return jumpElapsed
+      return mode === 'wave' ? waveClipTime(waveElapsed, waveOutroElapsed, waveHeld) : jumpElapsed
     },
     get velocityY() {
       return velocityY
@@ -73,18 +92,50 @@ export function createLocalCharacter(keys: Set<string>) {
     readInput() {
       return readMoveInput(keys, input)
     },
+    startJumping() {
+      jumpHeld = !seated
+
+      if (!seated && jumpTime === 0) {
+        startJump()
+      }
+    },
+    stopJumping() {
+      jumpHeld = false
+    },
     jump() {
-      if (seated) {
+      if (seated || jumpTime > 0) {
+        return
+      }
+
+      startJump()
+    },
+    startWave() {
+      if (seated || jumpTime > 0) {
+        return
+      }
+
+      if (waveActive) {
+        waveHeld = true
+        waveOutroElapsed = -1
         return
       }
 
       hasDestination = false
       destinationSeat = ''
       path = []
-      jumpTime = jumpDuration
-      jumpElapsed = 0
-      mode = 'jump'
+      waveActive = true
+      waveHeld = true
+      waveElapsed = 0
+      waveOutroElapsed = -1
+      mode = 'wave'
       motionBlend = 0
+    },
+    stopWave() {
+      waveHeld = false
+
+      if (waveActive && waveElapsed >= waveLoopStart && waveOutroElapsed < 0) {
+        waveOutroElapsed = 0
+      }
     },
     update(
       delta: number,
@@ -136,10 +187,26 @@ export function createLocalCharacter(keys: Set<string>) {
         input[2] = sin * worldX + cos * worldZ
       }
       const moving = lengthSq(input) > 0
+
       couchRelease = Math.max(0, couchRelease - delta)
       if (jumpTime > 0) {
         jumpTime = Math.max(0, jumpTime - delta)
         jumpElapsed += delta
+      }
+      if (jumpHeld && jumpTime === 0 && !seated) {
+        startJump()
+      }
+      if (waveActive) {
+        waveElapsed += delta
+
+        if (!waveHeld && waveElapsed >= waveLoopStart) {
+          waveOutroElapsed = Math.max(0, waveOutroElapsed) + delta
+        }
+
+        if (waveOutroElapsed >= waveDuration - waveLoopEnd) {
+          waveActive = false
+          waveOutroElapsed = -1
+        }
       }
 
       if (seated) {
@@ -164,6 +231,17 @@ export function createLocalCharacter(keys: Set<string>) {
       if (jumpTime > 0) {
         mode = 'jump'
         motionBlend = 0
+        waveActive = false
+        waveHeld = false
+        waveOutroElapsed = -1
+      }
+      else if (waveActive && !moving) {
+        mode = 'wave'
+        motionBlend = 0
+      }
+      else if (waveActive) {
+        motionBlend = mix(motionBlend, 1, 1 - Math.exp(-8 * delta))
+        mode = 'wave'
       }
       else {
         motionBlend = mix(motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
@@ -241,6 +319,18 @@ export function createLocalCharacter(keys: Set<string>) {
       collideRoom(position, outsideTree)
     },
   }
+}
+
+function waveClipTime(elapsed: number, outroElapsed: number, held: boolean) {
+  if (elapsed < waveLoopStart) {
+    return elapsed
+  }
+
+  if (held) {
+    return waveLoopStart + (elapsed - waveLoopStart) % waveLoopDuration
+  }
+
+  return waveLoopEnd + Math.max(0, outroElapsed)
 }
 
 function waypointReached(position: Vec3, waypoint: Vec3) {

@@ -25,7 +25,10 @@ export function bindKeyboardInput(options: {
   openChatInput: () => void
   setAlternativeInput: (value: boolean) => void
   toggleHelp: () => void
-  jump: () => void
+  startJumping: () => void
+  stopJumping: () => void
+  startWave: () => void
+  stopWave: () => void
   cycleHair: (direction: number) => void
   cycleHairColor: (direction: number) => void
   cycleSkin: (direction: number) => void
@@ -61,7 +64,17 @@ export function bindKeyboardInput(options: {
     }
 
     if (key === 'b') {
-      options.jump()
+      if (options.keys.has(key)) {
+        return
+      }
+
+      options.keys.add(key)
+      options.startJumping()
+      return
+    }
+
+    if (key === 'v') {
+      options.startWave()
       return
     }
 
@@ -139,6 +152,17 @@ export function bindKeyboardInput(options: {
   })
 
   addEventListener('keyup', event => {
-    options.keys.delete(event.key.toLowerCase())
+    const key = event.key.toLowerCase()
+
+    if (key === 'v') {
+      options.stopWave()
+      return
+    }
+
+    if (key === 'b') {
+      options.stopJumping()
+    }
+
+    options.keys.delete(key)
   })
 }

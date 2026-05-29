@@ -22,6 +22,7 @@ export type Mat4 = [
 export type AssimpNode = {
   name: string
   transformation?: number[]
+  meshes?: number[]
   children?: AssimpNode[]
 }
 
@@ -118,7 +119,7 @@ export type RigNode = {
   origin: Vec3
 }
 
-export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting'
+export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting' | 'wave'
 export type BottomMode = 'pants' | 'skirt'
 export type TopMode = 'shirt' | 'sleeveless' | 'skin' | 'chest'
 export type CharacterPart = {

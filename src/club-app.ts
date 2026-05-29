@@ -29,7 +29,7 @@ import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector } from './projection.ts'
-import { outsideBuddha, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
+import { outsideBuddha, outsidePalmTree, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -243,12 +243,18 @@ function useAlternativeInput(value: boolean) {
   setAlternativeInput(value)
   helpUi.setAlternativeInput(value)
 }
+
+function palmTreeMeshColor(index: number): [number, number, number] {
+  return index === 0 ? [0.42, 0.24, 0.1] : [0.02, 0.72 + (index % 3) * 0.08, 0.16]
+}
+
 useAlternativeInput(alternativeInput)
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
 const pixelRatio = createAdaptivePixelRatio()
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
 let buddhaLoaded = false
+let palmTreeLoaded = false
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
@@ -666,7 +672,10 @@ const styleActions: Record<
 bindKeyboardInput({
   activeInput: chatInput,
   keys,
-  jump: () => localCharacter.jump(),
+  startJumping: () => localCharacter.startJumping(),
+  stopJumping: () => localCharacter.stopJumping(),
+  startWave: () => localCharacter.startWave(),
+  stopWave: () => localCharacter.stopWave(),
   openChatInput: () => chatUi.open(),
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
@@ -1003,8 +1012,9 @@ function updateIntro() {
     Number(characterRenderSystem.assetsLoaded)
     + Number(characterRenderSystem.detailsLoaded)
     + Number(buddhaLoaded)
+    + Number(palmTreeLoaded)
     + Number(treeLoaded)
-  ) / 4 * 100)
+  ) / 5 * 100)
 
   introProgress.textContent = `${progress}%`
   introBar.style.transform = `scaleX(${progress / 100})`
@@ -1104,7 +1114,23 @@ loadOutsideTree(gl, treeShadowMap, vertices, outsideTree, addSunLitTriangle)
     refreshRoomBuffer()
   })
   .catch((error: unknown) => {
-    void error
+    console.error(error)
+  })
+
+loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
+  color: palmTreeMeshColor,
+  height: 5.94,
+  name: 'palmtree.fbx',
+  path: '/palmtree.fbx',
+  shadow: false,
+  sourceUp: 'y',
+})
+  .then(() => {
+    palmTreeLoaded = true
+    refreshRoomBuffer()
+  })
+  .catch((error: unknown) => {
+    console.error(error)
   })
 
 loadStaticFbxObject(vertices, {

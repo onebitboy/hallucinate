@@ -2,8 +2,8 @@ import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsideStage, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle, tentPole,
-  tentVideoAngle } from './scene-data.ts'
+  outsidePalmTree, outsideStage, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor,
+  tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export type Seat = {
@@ -97,6 +97,7 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
     collideTentWalls(position, 0.35)
     collideCircle(position, tentPole)
     collideCircle(position, outsideTree)
+    collideCircle(position, outsidePalmTree)
     collideCircle(position, outsideBuddha)
     if (!onPaddedPlatform(position, outsideDjBoothCollision, djBoothTop)) {
       collidePaddedBounds(position, outsideDjBoothCollision)
@@ -175,6 +176,7 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   }
   if (sphereOverlapsHeight(position, radius, characterFloor + 5.5)) {
     collideCircle(position, outsideTree, radius)
+    collideCircle(position, outsidePalmTree, radius)
   }
   if (sphereOverlapsHeight(position, radius, characterFloor + 1.75)) {
     collideCircle(position, outsideBuddha, radius)
@@ -211,6 +213,7 @@ export function isWalkable(x: number, z: number, outsideTree: CircleBounds) {
       && !inTentWall(x, z, 0.35)
       && !inCircle(x, z, tentPole)
       && !inCircle(x, z, outsideTree)
+      && !inCircle(x, z, outsidePalmTree)
       && !inCircle(x, z, outsideBuddha)
       && !inPaddedBounds(x, z, outsideDjBoothCollision)
       && !inPaddedBounds(x, z, outsideStageCollision)

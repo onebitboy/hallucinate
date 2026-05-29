@@ -4,8 +4,17 @@ import { triangleAreaSquared } from './character-geometry.ts'
 import { outsideMotif } from './constants.ts'
 import { add } from './math.ts'
 import { landscapeBounds, roomBounds } from './scene-data.ts'
-import { addTreeShadowReceiver, createTreeMeshes, treeCollision, uploadTreeShadowMap } from './tree-object.ts'
+import { addTreeShadowReceiver, createTreeMeshes, treeCollision, treeMeshColor, uploadTreeShadowMap } from './tree-object.ts'
 import type { CircleBounds, Vec3, Vertex } from './types.ts'
+
+type OutsideTreeOptions = {
+  color: (index: number) => Vec3
+  height: number
+  name: string
+  path: string
+  shadow: boolean
+  sourceUp: 'y' | 'z'
+}
 
 export async function loadOutsideTree(
   gl: WebGL2RenderingContext,
@@ -13,13 +22,22 @@ export async function loadOutsideTree(
   vertices: Vertex[],
   outsideTree: CircleBounds,
   addSunLitTriangle: (target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, tree: CircleBounds) => void,
+  options: OutsideTreeOptions = {
+    color: index => treeMeshColor(index),
+    height: 12.9,
+    name: 'trees.fbx',
+    path: '/trees.fbx',
+    shadow: true,
+    sourceUp: 'z',
+  },
 ) {
-  const trees = await loadAssimpScene('/trees.fbx', 'trees.fbx')
-  const meshes = createTreeMeshes(trees)
-  const position: Vec3 = [outsideTree.x, characterFloor + 3.7, outsideTree.z]
+  const trees = await loadAssimpScene(options.path, options.name)
+  const meshes = createTreeMeshes(trees, options.name, options.height, options.color, options.sourceUp)
+  const positionY = options.sourceUp === 'y' ? characterFloor : characterFloor + options.height * 0.287
+  const position: Vec3 = [outsideTree.x, positionY, outsideTree.z]
   const collision = treeCollision(meshes, position)
 
-  if (outsideMotif !== 'night') {
+  if (options.shadow && outsideMotif !== 'night') {
     uploadTreeShadowMap(gl, treeShadowMap, meshes, position, characterFloor, landscapeBounds, roomBounds.front)
     addTreeShadowReceiver(vertices, characterFloor, landscapeBounds)
   }

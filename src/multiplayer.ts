@@ -337,7 +337,7 @@ export function updateRemotePlayers(players: Iterable<Player>, delta: number, ou
     const moving = lengthSq(player.input) > 0
 
     player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
-    if (player.mode === 'jump') {
+    if (player.mode === 'jump' || player.mode === 'wave') {
       player.modeTime = (player.modeTime ?? 0) + delta
     }
     else if (player.mode !== 'manSitting' && player.mode !== 'womanSitting') {
@@ -363,7 +363,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     turn: protocolToAngle(packet.angle),
     motionBlend: packet.keys === 0 ? 0 : 1,
     mode: protocolToMode(packet.mode),
-    modeTime: protocolToMode(packet.mode) === 'jump' ? 0 : undefined,
+    modeTime: protocolToMode(packet.mode) === 'jump' || protocolToMode(packet.mode) === 'wave' ? 0 : undefined,
     idleClipIndex: packet.idleClipIndex,
     input: decodeKeys(packet.keys, packet.angle),
     nextDecision: 0,
@@ -389,8 +389,8 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
   player.motionBlend = packet.keys === 0 ? 0 : 1
   const mode = protocolToMode(packet.mode)
 
-  player.modeTime = mode === 'jump'
-    ? player.mode === 'jump'
+  player.modeTime = mode === 'jump' || mode === 'wave'
+    ? player.mode === mode
       ? player.modeTime
       : 0
     : undefined

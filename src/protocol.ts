@@ -81,7 +81,7 @@ export type ModerationPacket = {
   id: number
 }
 
-const protocolModes: CharacterMode[] = ['stand', 'run', 'manSitting', 'womanSitting', 'jump']
+const protocolModes: CharacterMode[] = ['stand', 'run', 'manSitting', 'womanSitting', 'jump', 'wave']
 const protocolVideoZones: VideoZone[] = ['inside', 'outside', 'tent']
 
 export function modeToProtocol(mode: CharacterMode) {

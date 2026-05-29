@@ -1,28 +1,73 @@
 import { addQuad, pack } from './geometry.ts'
-import { add, mix, normalize } from './math.ts'
-import type { AssimpScene, CircleBounds, TreeMesh, Vec3, Vertex } from './types.ts'
+import { add, identity, mix, multiply, nodeTransform, normalize } from './math.ts'
+import type { AssimpNode, AssimpScene, CircleBounds, Mat4, TreeMesh, Vec3, Vertex } from './types.ts'
 
 type EdgeBounds = { left: number; right: number; back: number; front: number }
+type MeshInstance = { index: number; transform: Mat4 }
+type SourceUp = 'y' | 'z'
+type TreeMeshColor = (index: number) => Vec3
 
-export function createTreeMeshes(scene: AssimpScene): TreeMesh[] {
-  const meshes = scene.meshes!.map((mesh, index) => {
+export function createTreeMeshes(
+  scene: AssimpScene,
+  name = 'trees.fbx',
+  height = 12.9,
+  color: TreeMeshColor = treeMeshColor,
+  sourceUp: SourceUp = 'z',
+): TreeMesh[] {
+  const instances = collectMeshInstances(scene.rootnode)
+  const meshInstances = instances.length > 0
+    ? instances
+    : scene.meshes!.map((_, index) => ({ index, transform: identity() }))
+  const meshes = meshInstances.map(instance => {
+    const mesh = scene.meshes![instance.index]!
     const points: Vec3[] = []
 
     for (let i = 0; i < mesh.vertices.length; i += 3) {
-      points.push([mesh.vertices[i]!, mesh.vertices[i + 1]!, mesh.vertices[i + 2]!])
+      points.push(transformPoint([
+        mesh.vertices[i]!,
+        mesh.vertices[i + 1]!,
+        mesh.vertices[i + 2]!,
+      ], instance.transform))
     }
 
-    return { points, faces: mesh.faces.filter(face => face.length === 3), color: treeMeshColor(index) }
+    return { points, faces: mesh.faces.filter(face => face.length === 3), color: color(instance.index) }
   })
 
   if (meshes.length === 0) {
-    throw new Error('trees.fbx has no meshes')
+    throw new Error(`${name} has no meshes`)
   }
 
-  return normalizeTreeMeshes(meshes)
+  return normalizeTreeMeshes(meshes, height, sourceUp)
 }
 
-function normalizeTreeMeshes(meshes: TreeMesh[]): TreeMesh[] {
+function collectMeshInstances(root: AssimpNode): MeshInstance[] {
+  const instances: MeshInstance[] = []
+  const visit = (node: AssimpNode, parent: Mat4) => {
+    const transform = multiply(parent, nodeTransform(node))
+
+    for (const index of node.meshes ?? []) {
+      instances.push({ index, transform })
+    }
+
+    for (const child of node.children ?? []) {
+      visit(child, transform)
+    }
+  }
+
+  visit(root, identity())
+
+  return instances
+}
+
+function transformPoint(point: Vec3, transform: Mat4): Vec3 {
+  return [
+    transform[0] * point[0] + transform[1] * point[1] + transform[2] * point[2] + transform[3],
+    transform[4] * point[0] + transform[5] * point[1] + transform[6] * point[2] + transform[7],
+    transform[8] * point[0] + transform[9] * point[1] + transform[10] * point[2] + transform[11],
+  ]
+}
+
+function normalizeTreeMeshes(meshes: TreeMesh[], height: number, sourceUp: SourceUp): TreeMesh[] {
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
 
@@ -36,9 +81,10 @@ function normalizeTreeMeshes(meshes: TreeMesh[]): TreeMesh[] {
   }
 
   const centerX = (min[0] + max[0]) * 0.5
+  const yUp = sourceUp === 'y'
   const centerZ = (min[2] + max[2]) * 0.5
-  const height = max[1] - min[1]
-  const amount = 12.9 / height
+  const sourceHeight = yUp ? max[1] - min[1] : max[2] - min[2]
+  const amount = height / sourceHeight
   const turn = Math.PI / 4
   const turnX = Math.cos(turn)
   const turnZ = Math.sin(turn)
@@ -46,8 +92,8 @@ function normalizeTreeMeshes(meshes: TreeMesh[]): TreeMesh[] {
   return meshes.map(mesh => ({
     points: mesh.points.map(point => {
       const x = (point[0] - centerX) * amount
-      const y = (point[2] - centerZ) * amount
-      const z = -(point[1] - min[1]) * amount
+      const y = yUp ? (point[1] - min[1]) * amount : (point[2] - centerZ) * amount
+      const z = yUp ? (point[2] - centerZ) * amount : -(point[1] - min[1]) * amount
 
       return [
         x * turnX - z * turnZ,
@@ -60,7 +106,7 @@ function normalizeTreeMeshes(meshes: TreeMesh[]): TreeMesh[] {
   }))
 }
 
-function treeMeshColor(index: number): Vec3 {
+export function treeMeshColor(index: number): Vec3 {
   if (index === 1) {
     return [0, 0, 0]
   }

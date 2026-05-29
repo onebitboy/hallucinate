@@ -138,11 +138,30 @@ export function sampleCharacterPose(
 
   const { stand, run } = basePose
 
+  if (player.mode === 'wave') {
+    const pose = blendCharacterPose(stand, run, player.motionBlend, characterPoseJoints)
+    const wave = sampleClipPose(rig, rig.clips.wave, player.modeTime ?? time, characterPoseJoints, characterPoseJointSet)
+
+    blendUpperPose(pose, wave, characterPoseJoints)
+
+    return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
+      characterScale, placedPose)
+  }
+
   if (!blendCache) {
     return placeBlendedCharacterPose(stand, run, blend, player.position, player.turn, characterPoseJoints,
       characterGroundJointIndices, characterScale, placedPose)
   }
 
+  const pose = blendCharacterPose(stand, run, blend, characterPoseJoints)
+
+  blendCache?.set(blendKey, pose)
+
+  return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
+    characterScale, placedPose)
+}
+
+function blendCharacterPose(stand: Vec3[], run: Vec3[], blend: number, characterPoseJoints: string[]) {
   const pose = new Array<Vec3>(characterPoseJoints.length)
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
@@ -156,10 +175,28 @@ export function sampleCharacterPose(
     ]
   }
 
-  blendCache?.set(blendKey, pose)
+  return pose
+}
 
-  return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-    characterScale, placedPose)
+function blendUpperPose(pose: Vec3[], wave: Vec3[], characterPoseJoints: string[]) {
+  const anchorIndex = characterPoseJoints.indexOf('mixamorig:Spine2')
+  const anchor = pose[anchorIndex]!
+  const waveAnchor = wave[anchorIndex]!
+
+  for (let i = 0; i < characterPoseJoints.length; i++) {
+    if (upperPoseJoint(characterPoseJoints[i]!)) {
+      pose[i] = [
+        anchor[0] + wave[i]![0] - waveAnchor[0],
+        anchor[1] + wave[i]![1] - waveAnchor[1],
+        anchor[2] + wave[i]![2] - waveAnchor[2],
+      ]
+    }
+  }
+}
+
+function upperPoseJoint(name: string) {
+  return name.includes('Shoulder') || name.includes('Arm') || name.includes('ForeArm') || name.includes('Hand')
+    || name.includes('Neck') || name.includes('Head')
 }
 
 function placeBlendedCharacterPose(

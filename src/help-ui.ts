@@ -18,6 +18,7 @@ const leftRows: HelpKey[][] = [
   ],
   [
     { keys: ['z', 'x'], label: 'bottom wear' },
+    { keys: ['v'], label: 'wave' },
     { keys: ['b'], label: 'bounce' },
   ],
 ]
@@ -37,6 +38,7 @@ const alternativeLeftRows: HelpKey[][] = [
   ],
   [
     { keys: ['m', ','], label: 'bottom wear' },
+    { keys: ['v'], label: 'wave' },
     { keys: ['b'], label: 'bounce' },
   ],
 ]
