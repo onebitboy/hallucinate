@@ -22,6 +22,7 @@ import {
   encodeSpawn,
   encodeVideoState,
   MESSAGE,
+  modeCount,
   positionScale,
   protocolVersion,
   protocolToScene,
@@ -546,7 +547,8 @@ function changeRoom(client: Client, room: number) {
   }
 
   if (client.poseSynced && room !== clientPoseRoom(client)) {
-    throw new Error(`Invalid room change ${room}`)
+    sendRoomState(client)
+    return
   }
 
   if (client.room === room) {
@@ -695,7 +697,7 @@ function validateMotionValues(motion: MotionPacket) {
     throw new Error(`Invalid keys ${motion.keys}`)
   }
 
-  if (motion.mode < 0 || motion.mode > 4) {
+  if (motion.mode < 0 || motion.mode >= modeCount) {
     throw new Error(`Invalid mode ${motion.mode}`)
   }
 
