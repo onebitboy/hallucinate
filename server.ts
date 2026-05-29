@@ -192,9 +192,7 @@ const server = Bun.serve<SocketData>({
         throw new Error(`Invalid client packet type ${type}`)
       }
       catch (e) {
-        clients.delete(socket)
-        removeFromRoom(client)
-        broadcastOnline()
+        removeClient(client)
         socket.close(1012, 'protocol')
       }
     },
@@ -205,9 +203,7 @@ const server = Bun.serve<SocketData>({
         return
       }
 
-      clients.delete(socket)
-      removeFromRoom(client)
-      broadcastOnline()
+      removeClient(client)
     },
   },
 })
@@ -736,9 +732,7 @@ function syncRooms() {
 
   for (const client of clients.values()) {
     if (now - client.lastSeen > clientTimeout) {
-      clients.delete(client.socket)
-      removeFromRoom(client)
-      broadcastOnline()
+      removeClient(client)
       client.socket.close(1001, 'timeout')
     }
   }
@@ -746,6 +740,15 @@ function syncRooms() {
   for (const client of clients.values()) {
     sendRoomState(client)
   }
+}
+
+function removeClient(client: Client) {
+  if (!clients.delete(client.socket)) {
+    return
+  }
+
+  removeFromRoom(client)
+  broadcastOnline()
 }
 
 function broadcastOnline() {

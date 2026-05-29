@@ -5,6 +5,7 @@ import { collideBuildingWalls, isOutside, roomAt, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
 const insideCameraFront = roomBounds.front - 0.2
+const manualCameraHoldTime = 5000
 
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {
   const position: Vec3 = [-2.2, 0.15, -9.0]
@@ -15,6 +16,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let pitch = 0
   let dragging = false
   let holdingManualCamera = false
+  let manualCameraHoldUntil = 0
   let returning = false
   let wasMoving = false
 
@@ -32,6 +34,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       turn -= (event.clientX - dragX) * 0.005
       pitch = clamp(pitch + (event.clientY - dragY) * 0.018, -2.4, 4.2)
       holdingManualCamera = true
+      manualCameraHoldUntil = performance.now() + manualCameraHoldTime
       dragX = event.clientX
       dragY = event.clientY
     }
@@ -65,6 +68,10 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean, lookDown = false) {
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
+
+      if (holdingManualCamera && !dragging && performance.now() > manualCameraHoldUntil) {
+        holdingManualCamera = false
+      }
 
       if (lookDown && !dragging) {
         pitch = mix(pitch, 0.9, 1 - Math.exp(-7 * delta))

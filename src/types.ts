@@ -270,5 +270,6 @@ export type HairRenderMesh = {
 export type ClubGlobal = typeof globalThis & {
   clubFrameId?: number
   clubPixelRatio?: number
+  clubMultiplayerClose?: () => void
   clubCharacterRigLoad?: Promise<CharacterRig>
 }

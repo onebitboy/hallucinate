@@ -75,6 +75,8 @@ if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
 }
 
+clubGlobal.clubMultiplayerClose?.()
+
 const {
   canvas,
   djVideo,
@@ -474,6 +476,7 @@ multiplayer = createMultiplayer({
   onVideoState: (entries, preserveSameTrack) => djVideoUi.applyStates(entries, preserveSameTrack),
   videoState: () => djVideoUi.states(),
 })
+clubGlobal.clubMultiplayerClose = () => multiplayer.close()
 
 const styleActions: Record<'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants',
   (direction: number) => void> = {
