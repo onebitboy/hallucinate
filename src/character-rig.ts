@@ -17,6 +17,10 @@ const samplePosition: Vec3 = [0, 0, 0]
 const sampleRotation: Quat = [1, 0, 0, 0]
 const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
+const waveDuration = 95 / 30
+const waveLoopStart = 28 / 30
+const waveLoopEnd = 62 / 30
+const waveLoopDuration = waveLoopEnd - waveLoopStart
 
 export function idleClip(rig: CharacterRig, index: number) {
   if (index === 0) {
@@ -138,9 +142,10 @@ export function sampleCharacterPose(
 
   const { stand, run } = basePose
 
-  if (player.mode === 'wave') {
+  if (player.mode === 'wave' || player.mode === 'waveOut') {
     const pose = blendCharacterPose(stand, run, player.motionBlend, characterPoseJoints)
-    const wave = sampleClipPose(rig, rig.clips.wave, player.modeTime ?? time, characterPoseJoints, characterPoseJointSet)
+    const wave = sampleClipPose(rig, rig.clips.wave, waveClipTime(player.mode, player.modeTime ?? time),
+      characterPoseJoints, characterPoseJointSet)
 
     blendUpperPose(pose, wave, characterPoseJoints)
 
@@ -197,6 +202,18 @@ function blendUpperPose(pose: Vec3[], wave: Vec3[], characterPoseJoints: string[
 function upperPoseJoint(name: string) {
   return name.includes('Shoulder') || name.includes('Arm') || name.includes('ForeArm') || name.includes('Hand')
     || name.includes('Neck') || name.includes('Head')
+}
+
+function waveClipTime(mode: CharacterMode | undefined, time: number) {
+  if (mode === 'waveOut') {
+    return Math.min(waveLoopEnd + time, waveDuration - 0.001)
+  }
+
+  if (time < waveLoopStart) {
+    return time
+  }
+
+  return waveLoopStart + (time - waveLoopStart) % waveLoopDuration
 }
 
 function placeBlendedCharacterPose(

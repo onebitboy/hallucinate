@@ -46,6 +46,8 @@ import {
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
 import type { BeachBall, CharacterMode, CircleBounds, GraffitiSplat, Player, Vec3 } from './types.ts'
 
+const waveOutDuration = (95 - 62) / 30
+
 export function createMultiplayer(options: {
   localPosition: Vec3
   localTurn: () => number
@@ -337,8 +339,13 @@ export function updateRemotePlayers(players: Iterable<Player>, delta: number, ou
     const moving = lengthSq(player.input) > 0
 
     player.motionBlend = mix(player.motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
-    if (player.mode === 'jump' || player.mode === 'wave') {
+    if (player.mode === 'jump' || player.mode === 'wave' || player.mode === 'waveOut') {
       player.modeTime = (player.modeTime ?? 0) + delta
+
+      if (player.mode === 'waveOut' && player.modeTime >= waveOutDuration) {
+        player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
+        player.modeTime = undefined
+      }
     }
     else if (player.mode !== 'manSitting' && player.mode !== 'womanSitting') {
       player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
@@ -363,7 +370,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     turn: protocolToAngle(packet.angle),
     motionBlend: packet.keys === 0 ? 0 : 1,
     mode: protocolToMode(packet.mode),
-    modeTime: protocolToMode(packet.mode) === 'jump' || protocolToMode(packet.mode) === 'wave' ? 0 : undefined,
+    modeTime: oneShotMode(protocolToMode(packet.mode)) ? 0 : undefined,
     idleClipIndex: packet.idleClipIndex,
     input: decodeKeys(packet.keys, packet.angle),
     nextDecision: 0,
@@ -389,7 +396,7 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
   player.motionBlend = packet.keys === 0 ? 0 : 1
   const mode = protocolToMode(packet.mode)
 
-  player.modeTime = mode === 'jump' || mode === 'wave'
+  player.modeTime = oneShotMode(mode)
     ? player.mode === mode
       ? player.modeTime
       : 0
@@ -410,6 +417,10 @@ function validRemotePose(packet: SpawnPacket) {
 
 function seatedMode(mode: CharacterMode | undefined) {
   return mode === 'manSitting' || mode === 'womanSitting'
+}
+
+function oneShotMode(mode: CharacterMode | undefined) {
+  return mode === 'jump' || mode === 'wave' || mode === 'waveOut'
 }
 
 function remoteSeatHeight(player: Player) {

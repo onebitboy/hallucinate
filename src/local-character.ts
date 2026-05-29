@@ -17,7 +17,6 @@ const jumpRiseDuration = 0.4
 const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
 const waveLoopEnd = 62 / 30
-const waveLoopDuration = waveLoopEnd - waveLoopStart
 
 export function createLocalCharacter(keys: Set<string>) {
   const position: Vec3 = [-2.2, -1.95, -6.8]
@@ -42,7 +41,7 @@ export function createLocalCharacter(keys: Set<string>) {
   let waveActive = false
   let waveHeld = false
   let waveElapsed = 0
-  let waveOutroElapsed = -1
+  let waveOutElapsed = 0
 
   function startJump() {
     hasDestination = false
@@ -73,7 +72,7 @@ export function createLocalCharacter(keys: Set<string>) {
       return jumpTime > 0
     },
     get modeTime() {
-      return mode === 'wave' ? waveClipTime(waveElapsed, waveOutroElapsed, waveHeld) : jumpElapsed
+      return mode === 'wave' ? waveElapsed : mode === 'waveOut' ? waveOutElapsed : jumpElapsed
     },
     get velocityY() {
       return velocityY
@@ -116,7 +115,6 @@ export function createLocalCharacter(keys: Set<string>) {
 
       if (waveActive) {
         waveHeld = true
-        waveOutroElapsed = -1
         return
       }
 
@@ -126,16 +124,12 @@ export function createLocalCharacter(keys: Set<string>) {
       waveActive = true
       waveHeld = true
       waveElapsed = 0
-      waveOutroElapsed = -1
+      waveOutElapsed = 0
       mode = 'wave'
       motionBlend = 0
     },
     stopWave() {
       waveHeld = false
-
-      if (waveActive && waveElapsed >= waveLoopStart && waveOutroElapsed < 0) {
-        waveOutroElapsed = 0
-      }
     },
     update(
       delta: number,
@@ -200,12 +194,17 @@ export function createLocalCharacter(keys: Set<string>) {
         waveElapsed += delta
 
         if (!waveHeld && waveElapsed >= waveLoopStart) {
-          waveOutroElapsed = Math.max(0, waveOutroElapsed) + delta
-        }
-
-        if (waveOutroElapsed >= waveDuration - waveLoopEnd) {
           waveActive = false
-          waveOutroElapsed = -1
+          waveOutElapsed = 0
+          mode = 'waveOut'
+        }
+      }
+      else if (mode === 'waveOut') {
+        waveOutElapsed += delta
+
+        if (waveOutElapsed >= waveDuration - waveLoopEnd) {
+          waveActive = false
+          mode = moving ? 'run' : 'stand'
         }
       }
 
@@ -233,7 +232,7 @@ export function createLocalCharacter(keys: Set<string>) {
         motionBlend = 0
         waveActive = false
         waveHeld = false
-        waveOutroElapsed = -1
+        waveOutElapsed = 0
       }
       else if (waveActive && !moving) {
         mode = 'wave'
@@ -242,6 +241,12 @@ export function createLocalCharacter(keys: Set<string>) {
       else if (waveActive) {
         motionBlend = mix(motionBlend, 1, 1 - Math.exp(-8 * delta))
         mode = 'wave'
+      }
+      else if (mode === 'waveOut' && !moving) {
+        motionBlend = 0
+      }
+      else if (mode === 'waveOut') {
+        motionBlend = mix(motionBlend, 1, 1 - Math.exp(-8 * delta))
       }
       else {
         motionBlend = mix(motionBlend, moving ? 1 : 0, 1 - Math.exp(-8 * delta))
@@ -319,18 +324,6 @@ export function createLocalCharacter(keys: Set<string>) {
       collideRoom(position, outsideTree)
     },
   }
-}
-
-function waveClipTime(elapsed: number, outroElapsed: number, held: boolean) {
-  if (elapsed < waveLoopStart) {
-    return elapsed
-  }
-
-  if (held) {
-    return waveLoopStart + (elapsed - waveLoopStart) % waveLoopDuration
-  }
-
-  return waveLoopEnd + Math.max(0, outroElapsed)
 }
 
 function waypointReached(position: Vec3, waypoint: Vec3) {
