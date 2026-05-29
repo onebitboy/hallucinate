@@ -171,11 +171,13 @@ function addChatLogMessage(id: number, text: string) {
   ban.type = 'button'
   ban.className = 'chat-ban-button'
   ban.textContent = 'ban'
-  ban.addEventListener('click', event => {
+  const sendBan = (event: Event) => {
     event.preventDefault()
     event.stopPropagation()
     multiplayer.sendAdmin(adminPass, 'ban', id)
-  })
+  }
+  ban.addEventListener('pointerdown', sendBan, { capture: true })
+  ban.addEventListener('click', sendBan)
   row.append(ban, message)
   chatLog.append(row)
 
