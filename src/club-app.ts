@@ -962,7 +962,7 @@ const draw = (stamp: number) => {
       styleController,
     }))
   const camera = cameraController.get()
-  strobeController.updateInstances(stamp * 0.001, djVideoUi.zone)
+  strobeController.updateInstances(stamp * 0.001, zone)
   const lightCount = lightPoints.length / vertexSize
 
   const projector = createWallProjector(camera, canvas, wallProjector)
