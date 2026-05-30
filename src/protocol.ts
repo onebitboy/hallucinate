@@ -19,7 +19,7 @@ export const MODERATION = 15
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 19
+export const protocolVersion = 20
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
