@@ -33,9 +33,17 @@ type CharacterInput = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
+  glowstickTrailKey?: number
   idleClipIndex: number
   style: PlayerStyle
   resolvedStyle?: ResolvedPlayerStyle
+}
+
+type GlowstickTrailPoint = {
+  a: Vec3
+  b: Vec3
+  side: Vec3
+  time: number
 }
 
 type BuildOptions = {
@@ -62,6 +70,7 @@ export type CharacterDrawCache = {
   basePose?: SampledPose
   basePoses: Map<number, SampledPose>
   boxInstances: VertexWriter
+  glowstickTrails: Map<number, GlowstickTrailPoint[]>
   hairInstances: VertexWriter
   npcBlendCache: PoseBlendCache
   poses: Vec3[][]
@@ -112,12 +121,18 @@ const hairForward: Vec3 = [0, 0, 0]
 const glowstickA: Vec3 = [0, 0, 0]
 const glowstickB: Vec3 = [0, 0, 0]
 const glowstickSide: Vec3 = [0, 0, 0]
+const trailA: Vec3 = [0, 0, 0]
+const trailB: Vec3 = [0, 0, 0]
+const trailColor: Vec3 = [0, 0, 0]
+const trailSide: Vec3 = [0, 0, 0]
 const sprayCanNozzleSide: Vec3 = [0, 1, 0]
 const sprayCanCapA: Vec3 = [0, 0, 0]
 const sprayCanCapB: Vec3 = [0, 0, 0]
 const sprayCanNozzleA: Vec3 = [0, 0, 0]
 const sprayCanNozzleB: Vec3 = [0, 0, 0]
 const farHairDistanceSq = 34 * 34
+const glowstickTrailDuration = 0.42
+const glowstickTrailSamples = 10
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -142,6 +157,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   resetVertexWriter(hairInstances)
   usedBasePoseKeys.clear()
   usedNpcBlendKeys.clear()
+  pruneGlowstickTrails(cache?.glowstickTrails, options.time)
 
   addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true, basePose, undefined,
     poses[poseIndex] ??= [])
@@ -229,7 +245,8 @@ function addRenderedCharacter(
 
   if (style.accessory) {
     if (style.accessoryKind === 'glowstick') {
-      addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+      addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection,
+        options.drawCache?.glowstickTrails, player.glowstickTrailKey ?? 0, options.time)
     }
     else {
       addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
@@ -255,13 +272,16 @@ function addGlowsticks(
   style: ResolvedPlayerStyle,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   localReflection: boolean,
+  trails: Map<number, GlowstickTrailPoint[]> | undefined,
+  trailKey: number,
+  time: number,
 ) {
   const torso = pose[spine2Index]!
 
   addGlowstick(target, boxInstances, torso, pose[leftForeArmIndex]!, pose[leftHandIndex]!, player, turn, style, light,
-    localReflection)
+    localReflection, trails, trailKey * 2, time)
   addGlowstick(target, boxInstances, torso, pose[rightForeArmIndex]!, pose[rightHandIndex]!, player, turn, style, light,
-    localReflection)
+    localReflection, trails, trailKey * 2 + 1, time)
 }
 
 function addGlowstick(
@@ -275,6 +295,9 @@ function addGlowstick(
   style: ResolvedPlayerStyle,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   localReflection: boolean,
+  trails: Map<number, GlowstickTrailPoint[]> | undefined,
+  trailKey: number,
+  time: number,
 ) {
   const dx = hand[0] - foreArm[0]
   const dy = hand[1] - foreArm[1]
@@ -303,8 +326,90 @@ function addGlowstick(
   glowstickSide[0] = sideX * handSide
   glowstickSide[1] = 0
   glowstickSide[2] = sideZ * handSide
+  addGlowstickTrail(target, boxInstances, player, turn, style, light, trails, trailKey, time)
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.025, 0.025, style.accessory!, 1.4, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: glowstickSide })
+}
+
+function addGlowstickTrail(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  player: { turn: number },
+  turn: TurnBasis,
+  style: ResolvedPlayerStyle,
+  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  trails: Map<number, GlowstickTrailPoint[]> | undefined,
+  trailKey: number,
+  time: number,
+) {
+  if (!trails) {
+    return
+  }
+
+  const cutoff = time - glowstickTrailDuration
+  const trail = trails.get(trailKey) ?? []
+  let start = 0
+
+  while (trail[start] && trail[start]!.time < cutoff) {
+    start++
+  }
+
+  if (start > 0) {
+    trail.splice(0, start)
+  }
+
+  for (let i = 0; i < trail.length; i++) {
+    const point = trail[i]!
+    const fade = (point.time - cutoff) / glowstickTrailDuration
+    const width = 0.008 + fade * 0.018
+    const glow = 0.12 + fade * 0.72
+
+    trailA[0] = point.a[0]
+    trailA[1] = point.a[1]
+    trailA[2] = point.a[2]
+    trailB[0] = point.b[0]
+    trailB[1] = point.b[1]
+    trailB[2] = point.b[2]
+    trailSide[0] = point.side[0]
+    trailSide[1] = point.side[1]
+    trailSide[2] = point.side[2]
+    trailColor[0] = style.accessory![0] * fade
+    trailColor[1] = style.accessory![1] * fade
+    trailColor[2] = style.accessory![2] * fade
+    addCharacterBox(target, boxInstances, trailA, trailB, width, width, trailColor, glow, player.turn, false, light, 0,
+      turn.sin, turn.cos, { side: trailSide })
+  }
+
+  const last = trail.at(-1)
+  const moved = !last || Math.hypot(glowstickA[0] - last.a[0], glowstickA[1] - last.a[1],
+    glowstickA[2] - last.a[2]) > 0.025
+
+  if (moved) {
+    trail.push({
+      a: [glowstickA[0], glowstickA[1], glowstickA[2]],
+      b: [glowstickB[0], glowstickB[1], glowstickB[2]],
+      side: [glowstickSide[0], glowstickSide[1], glowstickSide[2]],
+      time,
+    })
+  }
+
+  while (trail.length > glowstickTrailSamples) {
+    trail.shift()
+  }
+
+  trails.set(trailKey, trail)
+}
+
+function pruneGlowstickTrails(trails: Map<number, GlowstickTrailPoint[]> | undefined, time: number) {
+  if (!trails) {
+    return
+  }
+
+  for (const [key, trail] of trails) {
+    if (trail.length === 0 || time - trail.at(-1)!.time > glowstickTrailDuration) {
+      trails.delete(key)
+    }
+  }
 }
 
 function addSprayCan(

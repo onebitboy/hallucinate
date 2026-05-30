@@ -59,6 +59,7 @@ export function createPlayers(count: number, outsideTree: CircleBounds, occupied
       position,
       turn: seededRange(seed, 12, -Math.PI, Math.PI),
       motionBlend: 0,
+      glowstickTrailKey: seed,
       idleClipIndex: Math.floor(seededRange(seed, 18, 1, 20)),
       input: [0, 0, 0],
       nextDecision: seededRange(seed, 13, 0.3, 2.8),

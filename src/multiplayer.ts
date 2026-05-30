@@ -372,6 +372,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     motionBlend: packet.keys === 0 ? 0 : 1,
     mode: protocolToMode(packet.mode),
     modeTime: oneShotMode(protocolToMode(packet.mode)) ? 0 : undefined,
+    glowstickTrailKey: 100000 + packet.id,
     idleClipIndex: packet.idleClipIndex,
     input: decodeKeys(packet.keys, packet.angle),
     nextDecision: 0,
