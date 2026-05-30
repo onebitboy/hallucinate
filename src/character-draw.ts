@@ -12,7 +12,7 @@ import { characterParts, characterPoseJoints, characterPoseJointSet } from './ch
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { characterView, characterVisibility } from './character-visibility.ts'
-import { normalizeIndex } from './math.ts'
+import { clamp, normalizeIndex } from './math.ts'
 import { roomAt } from './scene.ts'
 import type {
   CharacterMode,
@@ -42,7 +42,6 @@ type CharacterInput = {
 type GlowstickTrailPoint = {
   a: Vec3
   b: Vec3
-  side: Vec3
   time: number
 }
 
@@ -123,8 +122,9 @@ const glowstickB: Vec3 = [0, 0, 0]
 const glowstickSide: Vec3 = [0, 0, 0]
 const trailA: Vec3 = [0, 0, 0]
 const trailB: Vec3 = [0, 0, 0]
+const trailC: Vec3 = [0, 0, 0]
+const trailD: Vec3 = [0, 0, 0]
 const trailColor: Vec3 = [0, 0, 0]
-const trailSide: Vec3 = [0, 0, 0]
 const sprayCanNozzleSide: Vec3 = [0, 1, 0]
 const sprayCanCapA: Vec3 = [0, 0, 0]
 const sprayCanCapB: Vec3 = [0, 0, 0]
@@ -133,6 +133,8 @@ const sprayCanNozzleB: Vec3 = [0, 0, 0]
 const farHairDistanceSq = 34 * 34
 const glowstickTrailDuration = 0.42
 const glowstickTrailSamples = 10
+const glowstickTrailFastSpeed = 2.2
+const glowstickTrailSpeedAge = 0.028
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -326,16 +328,13 @@ function addGlowstick(
   glowstickSide[0] = sideX * handSide
   glowstickSide[1] = 0
   glowstickSide[2] = sideZ * handSide
-  addGlowstickTrail(target, boxInstances, player, turn, style, light, trails, trailKey, time)
+  addGlowstickTrail(target, style, light, trails, trailKey, time)
   addCharacterBox(target, boxInstances, glowstickA, glowstickB, 0.025, 0.025, style.accessory!, 1.4, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: glowstickSide })
 }
 
 function addGlowstickTrail(
   target: VertexWriter,
-  boxInstances: VertexWriter,
-  player: { turn: number },
-  turn: TurnBasis,
   style: ResolvedPlayerStyle,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
   trails: Map<number, GlowstickTrailPoint[]> | undefined,
@@ -358,28 +357,6 @@ function addGlowstickTrail(
     trail.splice(0, start)
   }
 
-  for (let i = 0; i < trail.length; i++) {
-    const point = trail[i]!
-    const fade = (point.time - cutoff) / glowstickTrailDuration
-    const width = 0.008 + fade * 0.018
-    const glow = 0.12 + fade * 0.72
-
-    trailA[0] = point.a[0]
-    trailA[1] = point.a[1]
-    trailA[2] = point.a[2]
-    trailB[0] = point.b[0]
-    trailB[1] = point.b[1]
-    trailB[2] = point.b[2]
-    trailSide[0] = point.side[0]
-    trailSide[1] = point.side[1]
-    trailSide[2] = point.side[2]
-    trailColor[0] = style.accessory![0] * fade
-    trailColor[1] = style.accessory![1] * fade
-    trailColor[2] = style.accessory![2] * fade
-    addCharacterBox(target, boxInstances, trailA, trailB, width, width, trailColor, glow, player.turn, false, light, 0,
-      turn.sin, turn.cos, { side: trailSide })
-  }
-
   const last = trail.at(-1)
   const moved = !last || Math.hypot(glowstickA[0] - last.a[0], glowstickA[1] - last.a[1],
     glowstickA[2] - last.a[2]) > 0.025
@@ -388,7 +365,6 @@ function addGlowstickTrail(
     trail.push({
       a: [glowstickA[0], glowstickA[1], glowstickA[2]],
       b: [glowstickB[0], glowstickB[1], glowstickB[2]],
-      side: [glowstickSide[0], glowstickSide[1], glowstickSide[2]],
       time,
     })
   }
@@ -397,7 +373,47 @@ function addGlowstickTrail(
     trail.shift()
   }
 
+  for (let i = 0; i < trail.length - 1; i++) {
+    const from = trail[i]!
+    const to = trail[i + 1]!
+    const speedAge = trailSegmentSpeedAge(from, to)
+    const fade = clamp((to.time - cutoff - speedAge) / glowstickTrailDuration, 0, 1)
+    const falloff = fade * fade * fade
+    const glow = falloff * 0.72
+    const alpha = falloff * 0.46
+
+    trailA[0] = from.a[0]
+    trailA[1] = from.a[1]
+    trailA[2] = from.a[2]
+    trailB[0] = from.b[0]
+    trailB[1] = from.b[1]
+    trailB[2] = from.b[2]
+    trailC[0] = to.b[0]
+    trailC[1] = to.b[1]
+    trailC[2] = to.b[2]
+    trailD[0] = to.a[0]
+    trailD[1] = to.a[1]
+    trailD[2] = to.a[2]
+    trailColor[0] = style.accessory![0] * (0.28 + falloff * 0.72)
+    trailColor[1] = style.accessory![1] * (0.28 + falloff * 0.72)
+    trailColor[2] = style.accessory![2] * (0.28 + falloff * 0.72)
+    addCharacterQuad(target, trailA, trailB, trailC, trailD, trailColor, glow, false, light, -alpha)
+  }
+
   trails.set(trailKey, trail)
+}
+
+function trailSegmentSpeedAge(from: GlowstickTrailPoint, to: GlowstickTrailPoint) {
+  const fromX = (from.a[0] + from.b[0]) * 0.5
+  const fromY = (from.a[1] + from.b[1]) * 0.5
+  const fromZ = (from.a[2] + from.b[2]) * 0.5
+  const toX = (to.a[0] + to.b[0]) * 0.5
+  const toY = (to.a[1] + to.b[1]) * 0.5
+  const toZ = (to.a[2] + to.b[2]) * 0.5
+  const distance = Math.hypot(toX - fromX, toY - fromY, toZ - fromZ)
+  const speed = distance / Math.max(1 / 90, to.time - from.time)
+
+  return clamp((speed - glowstickTrailFastSpeed) * glowstickTrailSpeedAge, 0, glowstickTrailDuration * 0.75)
 }
 
 function pruneGlowstickTrails(trails: Map<number, GlowstickTrailPoint[]> | undefined, time: number) {

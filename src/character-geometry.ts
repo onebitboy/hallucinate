@@ -185,12 +185,13 @@ export function addCharacterQuad(
   glow: number,
   localReflection: boolean,
   light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  strobe = 0,
 ) {
   if (localReflection) {
     addLitQuad(target, a, b, c, d, color, glow, light)
   }
   else {
-    addFlatQuad(target, a, b, c, d, color, glow)
+    addFlatQuad(target, a, b, c, d, color, glow, strobe)
   }
 }
 

@@ -116,16 +116,18 @@ void main() {
     discard;
   }
 
+  float alpha = strobeId < 0.0 ? clamp(-strobeId, 0.0, 1.0) : 1.0;
+
   if (bloomPass == 1) {
     if (light < 0.15) {
       discard;
     }
 
-    pixel = vec4(shade * light * 2.2, 1.0);
+    pixel = vec4(shade * light * 2.2 * alpha, alpha);
     return;
   }
 
-  pixel = vec4(shade + shade * light * 2.2, 1.0);
+  pixel = vec4(shade + shade * light * 2.2, alpha);
 }
 `
 

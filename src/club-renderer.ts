@@ -156,8 +156,10 @@ export function renderClubFrame(options: {
   drawGraffiti(options)
   gl.depthMask(true)
   gl.depthFunc(gl.LESS)
-  gl.disable(gl.BLEND)
+  gl.enable(gl.BLEND)
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   drawCharacters(options, options.width, options.height, true)
+  gl.disable(gl.BLEND)
 
   drawRoomDepth({
     array: options.arrays.room,
