@@ -19,8 +19,14 @@ const outsideDanceFloorBackRange = [0, 8.4] as const
 const outsideDanceFloorDistance = 0.9
 const kioskDestinationRadius = [1.9, 6.4] as const
 const treeDestinationRadius = [2.6, 9.5] as const
+const waypointArriveRadius = 0.75
+const destinationArriveRadius = 1.35
+const seatArriveRadius = 0.7
 const destinationLinger = [10, 30] as const
 const destinationJitter = [0.35, 0.9] as const
+const travelTargetJitter = 0.85
+const travelTargetJitterTime = [5, 10] as const
+const travelLateralTime = [0.6, 1.4] as const
 const randomPause = [2, 5] as const
 const blockedPause = [10, 30] as const
 const initialSeatedPlayerCount = 4
@@ -53,7 +59,7 @@ export function createPlayers(count: number, outsideTree: CircleBounds, occupied
       position,
       turn: seededRange(seed, 12, -Math.PI, Math.PI),
       motionBlend: 0,
-      idleClipIndex: Math.floor(seededRange(seed, 18, 0, 20)),
+      idleClipIndex: Math.floor(seededRange(seed, 18, 1, 20)),
       input: [0, 0, 0],
       nextDecision: seededRange(seed, 13, 0.3, 2.8),
       destination,
@@ -126,6 +132,8 @@ export function updatePlayers(
     if (player.leavingSeatUntil && time < player.leavingSeatUntil) {
       player.pauseUntil = undefined
       player.sidestepUntil = undefined
+      player.travelLateralUntil = undefined
+      player.travelLateralDirection = undefined
     }
     else if (updateRandomPause(player, time)) {
       player.motionBlend = mix(player.motionBlend, 0, 1 - Math.exp(-7 * delta))
@@ -273,19 +281,27 @@ function updateDestinationPlayer(
     }
   }
 
-  const target = activePlayerTarget(player)
+  const target = activePlayerTarget(player, time)
   const dx = target[0] - player.position[0]
   const dz = target[2] - player.position[2]
   const distance = Math.sqrt(dx * dx + dz * dz)
+  const atDestinationSide = isOutside(player.position) === player.destination.outside
+  const destinationDx = player.destination.position[0] - player.position[0]
+  const destinationDz = player.destination.position[2] - player.position[2]
+  const destinationDistance = Math.sqrt(destinationDx * destinationDx + destinationDz * destinationDz)
 
-  if (target !== player.destination.position && distance < 0.55) {
+  if (!atDestinationSide && distance < waypointArriveRadius) {
     player.input[0] = 0
     player.input[1] = 0
     player.input[2] = 0
     return
   }
 
-  if (target === player.destination.position && distance < 0.55) {
+  const arriveRadius = player.destination.kind === 'lounge' || player.destination.kind === 'stool'
+    ? seatArriveRadius
+    : destinationArriveRadius
+
+  if (atDestinationSide && destinationDistance < arriveRadius) {
     if (player.destination.kind === 'lounge' || player.destination.kind === 'stool') {
       if (trySitPlayer(player, time, occupiedSeats)) {
         return
@@ -318,18 +334,38 @@ function updateDestinationPlayer(
 
   player.sidestepUntil = undefined
 
-  chooseTravelInput(player, dx / distance, dz / distance, delta)
+  chooseTravelInput(player, dx / distance, dz / distance, delta, time)
 }
 
-function chooseTravelInput(player: Player, targetX: number, targetZ: number, delta: number) {
+function chooseTravelInput(player: Player, targetX: number, targetZ: number, delta: number, time: number) {
   const targetAngle = Math.atan2(targetX, targetZ)
   const turnDistance = Math.abs(Math.atan2(Math.sin(targetAngle - player.turn), Math.cos(targetAngle - player.turn)))
   const speed = clamp(1 - turnDistance / (Math.PI * 0.55), 0, 1)
+  const lateral = travelLateralInput(player, time)
 
   player.turn = smoothAngle(player.turn, targetAngle, 4.5, delta)
-  player.input[0] = 0
+  player.input[0] = lateral
   player.input[1] = 0
-  player.input[2] = speed
+  player.input[2] = lateral ? Math.max(speed * 0.75, 0.35) : speed
+}
+
+function travelLateralInput(player: Player, time: number) {
+  if (player.travelLateralUntil && time < player.travelLateralUntil) {
+    return player.travelLateralDirection!
+  }
+
+  player.travelLateralUntil = undefined
+  player.travelLateralDirection = undefined
+
+  if (seededRandom(player.seed, Math.floor(time * 1.7)) >= 0.006) {
+    return 0
+  }
+
+  player.travelLateralUntil = time + seededRange(player.seed, Math.floor(time * 2.1),
+    travelLateralTime[0], travelLateralTime[1])
+  player.travelLateralDirection = seededRandom(player.seed, Math.floor(time * 2.7)) < 0.5 ? -1 : 1
+
+  return player.travelLateralDirection
 }
 
 function playerInputDirection(player: Player): Vec3 {
@@ -383,14 +419,37 @@ function turnTowardDestination(player: Player, delta: number) {
   player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
 }
 
-function activePlayerTarget(player: Player) {
+function activePlayerTarget(player: Player, time: number) {
   const outside = isOutside(player.position)
 
   if (outside === player.destination.outside) {
-    return player.destination.position
+    return travelTarget(player, time)
   }
 
   return outside ? doorInside : doorOutside
+}
+
+function travelTarget(player: Player, time: number) {
+  if (player.destination.kind === 'lounge' || player.destination.kind === 'stool') {
+    return player.destination.position
+  }
+
+  if (player.travelTarget && time < player.nextTravelTargetAt!) {
+    return player.travelTarget
+  }
+
+  const angle = seededRange(player.seed, Math.floor(time * 2.9), -Math.PI, Math.PI)
+  const radius = seededRange(player.seed, Math.floor(time * 3.7), 0, travelTargetJitter)
+
+  player.travelTarget = [
+    player.destination.position[0] + Math.sin(angle) * radius,
+    characterFloor,
+    player.destination.position[2] + Math.cos(angle) * radius,
+  ]
+  player.nextTravelTargetAt = time + seededRange(player.seed, Math.floor(time * 4.1),
+    travelTargetJitterTime[0], travelTargetJitterTime[1])
+
+  return player.travelTarget
 }
 
 function trySitPlayer(player: Player, time: number, occupiedSeats: Set<string>) {
@@ -429,6 +488,10 @@ function sitPlayer(
   player.lingeringUntil = undefined
   player.pauseUntil = undefined
   player.sidestepUntil = undefined
+  player.travelLateralUntil = undefined
+  player.travelLateralDirection = undefined
+  player.travelTarget = undefined
+  player.nextTravelTargetAt = undefined
   player.leavingSeatUntil = undefined
 }
 
@@ -444,9 +507,10 @@ function chooseRandomInput(player: Player, delta: number, time: number) {
 
   const angle = seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI)
   const turnDistance = Math.abs(Math.atan2(Math.sin(angle - player.turn), Math.cos(angle - player.turn)))
+  const lateral = travelLateralInput(player, time)
 
   player.turn = smoothAngle(player.turn, angle, 4.5, delta)
-  player.input[0] = 0
+  player.input[0] = lateral
   player.input[1] = 0
   player.input[2] = clamp(1 - turnDistance / (Math.PI * 0.55), 0, 1)
 }
@@ -478,27 +542,27 @@ function playerDestination(
 ): PlayerDestination {
   const pick = seededRandom(seed, step + 100)
 
-  if (pick < 0.25) {
+  if (pick < 0.35) {
     return djDestination(seed, step, true)
   }
 
-  if (pick < 0.55) {
+  if (pick < 0.75) {
     return djDestination(seed, step, false)
   }
 
-  if (pick < 0.65) {
+  if (pick < 0.83) {
     return treeDestination(seed, step, outsideTree)
   }
 
-  if (pick < 0.77) {
+  if (pick < 0.88) {
     return kioskDestination(seed, step)
   }
 
-  if (pick < 0.88) {
+  if (pick < 0.95) {
     return seatDestination(seed, step, occupiedSeats, 'lounge') ?? treeDestination(seed, step, outsideTree)
   }
 
-  if (pick < 0.96) {
+  if (pick < 0.98) {
     return seatDestination(seed, step, occupiedSeats, 'stool') ?? kioskDestination(seed, step)
   }
 
@@ -519,6 +583,10 @@ function choosePlayerDestination(
   player.nextPauseDecision = time + seededRange(player.seed, Math.floor(time * 4.7), 2, 6)
   player.pauseUntil = undefined
   player.sidestepUntil = undefined
+  player.travelLateralUntil = undefined
+  player.travelLateralDirection = undefined
+  player.travelTarget = undefined
+  player.nextTravelTargetAt = time
   player.destinationUntil = time + 30
 }
 

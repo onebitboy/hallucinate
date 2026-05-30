@@ -20,6 +20,7 @@ export function getDomElements() {
 
   canvas.id = 'scene'
   canvas.className = 'block h-dvh w-dvw'
+  canvas.tabIndex = -1
 
   djVideo.id = 'dj-video'
   djVideo.className = 'absolute border-0 opacity-0'

@@ -150,7 +150,9 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
-const djVideoUi = createDjVideoUi(djVideo, characterPosition)
+const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
+  recoverFocus: () => canvas.focus(),
+})
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
 const cameraController = createCameraController(canvas, characterPosition)

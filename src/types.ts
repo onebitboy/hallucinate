@@ -180,8 +180,12 @@ export type Player = {
   input: Vec3
   nextDecision: number
   nextPauseDecision?: number
+  nextTravelTargetAt?: number
   pauseUntil?: number
   sidestepUntil?: number
+  travelLateralUntil?: number
+  travelLateralDirection?: -1 | 1
+  travelTarget?: Vec3
   destinationUntil?: number
   leavingSeatUntil?: number
   destination: PlayerDestination

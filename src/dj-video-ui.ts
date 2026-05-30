@@ -15,6 +15,9 @@ export function videoZones(): VideoZone[] {
 export function createDjVideoUi(
   element: HTMLElement,
   position: Vec3,
+  options: {
+    recoverFocus?: () => void
+  } = {},
 ) {
   const layers: Record<VideoZone, HTMLElement> = {
     inside: document.createElement('div'),
@@ -58,6 +61,20 @@ export function createDjVideoUi(
   const pointC: ProjectedPoint = { x: 0, y: 0 }
   const pointD: ProjectedPoint = { x: 0, y: 0 }
   const points = [pointA, pointB, pointC, pointD]
+  let pointerPassthroughUntil = 0
+
+  addEventListener('blur', () => {
+    setTimeout(() => {
+      const active = document.activeElement
+
+      if (!(active instanceof HTMLIFrameElement) || !element.contains(active)) {
+        return
+      }
+
+      pointerPassthroughUntil = performance.now() + 1200
+      options.recoverFocus?.()
+    })
+  })
 
   for (const area of videoZones()) {
     const layer = layers[area]
@@ -256,9 +273,11 @@ export function createDjVideoUi(
       setInsideStyle('opacity', zone === 'inside' ? '1' : '0')
       setOutsideStyle('opacity', zone === 'outside' ? '1' : '0')
       layers.tent.style.opacity = zone === 'tent' ? '1' : '0'
-      setInsideStyle('pointerEvents', zone === 'inside' ? 'auto' : 'none')
-      setOutsideStyle('pointerEvents', zone === 'outside' ? 'auto' : 'none')
-      layers.tent.style.pointerEvents = zone === 'tent' ? 'auto' : 'none'
+      const pointerEvents = performance.now() > pointerPassthroughUntil ? 'auto' : 'none'
+
+      setInsideStyle('pointerEvents', zone === 'inside' ? pointerEvents : 'none')
+      setOutsideStyle('pointerEvents', zone === 'outside' ? pointerEvents : 'none')
+      layers.tent.style.pointerEvents = zone === 'tent' ? pointerEvents : 'none'
       setElementStyle('width', `${wall.width * 120}px`)
       setElementStyle('height', `${wall.height * 120}px`)
       setElementStyle('transform', projectedQuadTransform(
