@@ -20,7 +20,7 @@ export const VIDEO_AUTHORITY = 16
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 23
+export const protocolVersion = 24
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()

@@ -88,6 +88,7 @@ export function createMultiplayer(options: {
   let closed = false
   let connectedOnce = false
   let preserveVideoState = false
+  let receivedVideoState = false
   const pending: ArrayBuffer[] = []
   let selfId = 0
   let room = options.initialRoom
@@ -215,7 +216,8 @@ export function createMultiplayer(options: {
     }
 
     if (type === VIDEO_STATE) {
-      options.onVideoState(decodeVideoState(view).entries, preserveVideoState)
+      options.onVideoState(decodeVideoState(view).entries, preserveVideoState || receivedVideoState)
+      receivedVideoState = true
       preserveVideoState = false
       return
     }

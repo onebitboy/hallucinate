@@ -46,6 +46,7 @@ export function createDjVideoUi(
     outside: videoTracks.outside,
     tent: videoTracks.tent,
   }
+  const playlistIds: Partial<Record<VideoZone, string[]>> = {}
   const players: Partial<Record<VideoZone, YouTubePlayer>> = {}
   const ready: Partial<Record<VideoZone, boolean>> = {}
   const pendingStarts: Partial<Record<VideoZone, number>> = {}
@@ -104,11 +105,11 @@ export function createDjVideoUi(
       zone = roomAt(position)
     },
     syncCurrentTime() {
-      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds)
+      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
       pauseOtherVideos(zone, players, ready)
     },
     states() {
-      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds)
+      syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
       pauseOtherVideos(zone, players, ready)
 
       return videoZones().map(area => ({
@@ -131,18 +132,20 @@ export function createDjVideoUi(
 
         if (ready[state.zone]) {
           if (sameTrack && state.zone === zone) {
-            players[state.zone]!.seekTo(times[state.zone], true)
+            if (!preserveSameTrack) {
+              playVideoFromTime(state.zone, players, pendingStarts, times)
+            }
           }
           else if (sameTrack) {
-            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             players[state.zone]!.pauseVideo()
           }
           else if (state.zone !== zone) {
-            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             players[state.zone]!.pauseVideo()
           }
           else {
-            loadVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds)
+            loadVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             pauseOtherVideos(state.zone, players, ready)
           }
         }
@@ -166,7 +169,7 @@ export function createDjVideoUi(
                 players[area]!.setLoop(true)
 
                 if (area === zone) {
-                  cueVideoFromTime(area, players, pendingStarts, times, trackIndexes, trackIds)
+                  cueVideoFromTime(area, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
                 }
                 else {
                   players[area]!.pauseVideo()
@@ -182,7 +185,7 @@ export function createDjVideoUi(
                   if (videoPlaylists[area]) {
                     if (options.isAuthority?.(area) ?? true) {
                       nextPlaylistVideo(area, zone, players, pendingStarts, pendingLoops, times, trackIndexes, trackIds,
-                        options.onStateChanged)
+                        playlistIds, options.onStateChanged)
                     }
                     else {
                       pendingStarts[area] = times[area]
@@ -195,7 +198,7 @@ export function createDjVideoUi(
                   pauseOtherVideos(area, players, ready)
                 }
                 else {
-                  syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes, trackIds)
+                  syncVideoTime(area, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
                 }
               },
             },
@@ -218,14 +221,14 @@ export function createDjVideoUi(
 
       if (nextZone !== zone) {
         if (ready[zone]) {
-          syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds)
+          syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
           players[zone]!.pauseVideo()
         }
 
         zone = nextZone
 
         if (ready[zone]) {
-          loadVideoFromTime(zone, players, pendingStarts, times, trackIndexes, trackIds)
+          loadVideoFromTime(zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
           pauseOtherVideos(zone, players, ready)
         }
       }
@@ -302,6 +305,12 @@ export function createDjVideoUi(
     },
     play() {
       if (ready[zone]) {
+        if (videoPlaylists[zone] && (options.isAuthority?.(zone) ?? true) && trackIds[zone] === videoTracks[zone]
+          && playlistActive(zone, players))
+        {
+          loadRandomPlaylistVideo(zone, players, pendingStarts, times, trackIndexes, trackIds)
+          setTimeout(() => options.onStateChanged?.(), 750)
+        }
         playVideoFromTime(zone, players, pendingStarts, times)
         pauseOtherVideos(zone, players, ready)
         return true
@@ -330,9 +339,10 @@ function cueVideoFromTime(
   times: Record<VideoZone, number>,
   trackIndexes: Record<VideoZone, number>,
   trackIds: Record<VideoZone, string>,
+  playlistIds: Partial<Record<VideoZone, string[]>>,
 ) {
   pendingStarts[area] = times[area]
-  const playlist = trackIds[area] === videoTracks[area] ? videoPlaylists[area] : undefined
+  const playlist = shouldLoadPlaylist(area, trackIds, playlistIds) ? videoPlaylists[area] : undefined
 
   if (playlist) {
     players[area]!.cuePlaylist({
@@ -358,9 +368,10 @@ function loadVideoFromTime(
   times: Record<VideoZone, number>,
   trackIndexes: Record<VideoZone, number>,
   trackIds: Record<VideoZone, string>,
+  playlistIds: Partial<Record<VideoZone, string[]>>,
 ) {
   pendingStarts[area] = times[area]
-  const playlist = trackIds[area] === videoTracks[area] ? videoPlaylists[area] : undefined
+  const playlist = shouldLoadPlaylist(area, trackIds, playlistIds) ? videoPlaylists[area] : undefined
 
   if (playlist) {
     players[area]!.loadPlaylist({
@@ -441,6 +452,7 @@ function nextPlaylistVideo(
   times: Record<VideoZone, number>,
   trackIndexes: Record<VideoZone, number>,
   trackIds: Record<VideoZone, string>,
+  playlistIds: Partial<Record<VideoZone, string[]>>,
   onStateChanged?: () => void,
 ) {
   if (pendingLoops[area]) {
@@ -459,7 +471,7 @@ function nextPlaylistVideo(
     }
 
     if (playlistActive(area, players)) {
-      players[area]!.nextVideo()
+      loadRandomPlaylistVideo(area, players, pendingStarts, times, trackIndexes, trackIds)
     }
     else {
       trackIndexes[area] = 0
@@ -470,14 +482,22 @@ function nextPlaylistVideo(
         startSeconds: 0,
       })
       shufflePlaylist(area, players)
-      setTimeout(() => players[area]!.nextVideo(), 250)
+      setTimeout(() => loadRandomPlaylistVideo(area, players, pendingStarts, times, trackIndexes, trackIds), 250)
     }
     players[area]!.playVideo()
     setTimeout(() => {
-      syncVideoTime(area, players, { [area]: true }, pendingStarts, times, trackIndexes, trackIds)
+      syncVideoTime(area, players, { [area]: true }, pendingStarts, times, trackIndexes, trackIds, playlistIds)
       onStateChanged?.()
-    }, 250)
+    }, 750)
   }, 0)
+}
+
+function shouldLoadPlaylist(
+  area: VideoZone,
+  trackIds: Record<VideoZone, string>,
+  playlistIds: Partial<Record<VideoZone, string[]>>,
+) {
+  return Boolean(videoPlaylists[area] && (trackIds[area] === videoTracks[area] || playlistIds[area]?.includes(trackIds[area])))
 }
 
 function playlistActive(area: VideoZone, players: Partial<Record<VideoZone, YouTubePlayer>>) {
@@ -492,6 +512,31 @@ function shufflePlaylist(area: VideoZone, players: Partial<Record<VideoZone, You
 
 function trackIdForLoop(area: VideoZone, players: Partial<Record<VideoZone, YouTubePlayer>>) {
   return players[area]!.getVideoData()?.video_id || videoTracks[area]
+}
+
+function loadRandomPlaylistVideo(
+  area: VideoZone,
+  players: Partial<Record<VideoZone, YouTubePlayer>>,
+  pendingStarts: Partial<Record<VideoZone, number>>,
+  times: Record<VideoZone, number>,
+  trackIndexes: Record<VideoZone, number>,
+  trackIds: Record<VideoZone, string>,
+) {
+  const playlist = players[area]!.getPlaylist()!
+  const current = players[area]!.getVideoData()?.video_id || trackIds[area]
+  const next = randomPlaylistTrack(playlist, current)
+
+  trackIndexes[area] = playlist.indexOf(next)
+  trackIds[area] = next
+  times[area] = 0
+  pendingStarts[area] = 0
+  players[area]!.loadVideoById({ videoId: next, startSeconds: 0 })
+}
+
+function randomPlaylistTrack(playlist: string[], current: string) {
+  const choices = playlist.filter(id => id !== current)
+
+  return choices[Math.floor(Math.random() * choices.length)] ?? playlist[0]!
 }
 
 function videoStateTime(zone: VideoZone, id: string, time: number) {
@@ -512,6 +557,7 @@ function syncVideoTime(
   times: Record<VideoZone, number>,
   trackIndexes: Record<VideoZone, number>,
   trackIds: Record<VideoZone, string>,
+  playlistIds: Partial<Record<VideoZone, string[]>>,
 ) {
   if (ready[area]) {
     const time = players[area]!.getCurrentTime()
@@ -519,6 +565,11 @@ function syncVideoTime(
 
     if (videoPlaylists[area]) {
       trackIndexes[area] = players[area]!.getPlaylistIndex()
+      const playlist = players[area]!.getPlaylist()
+
+      if (playlist?.length) {
+        playlistIds[area] = playlist
+      }
     }
 
     trackIds[area] = players[area]!.getVideoData()?.video_id || trackIds[area]
