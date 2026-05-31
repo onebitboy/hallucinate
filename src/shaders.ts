@@ -531,7 +531,9 @@ precision highp float;
 
 uniform sampler2D scene;
 uniform sampler2D bloom;
+uniform sampler2D feedback;
 uniform vec2 bloomResolution;
+uniform float feedbackAmount;
 uniform int renderSky;
 uniform vec3 skyForward;
 uniform vec3 skyRight;
@@ -632,6 +634,10 @@ void main() {
   color = vec3(1.0) - exp(-color * 1.05);
   color *= vec3(1.02, 0.98, 0.96);
 
-  pixel = vec4(pow(color, vec3(0.9)), 1.0);
+  vec3 current = pow(color, vec3(0.9));
+  vec2 feedbackUv = (uv - 0.5) * 0.992 + 0.5;
+  vec3 history = texture(feedback, feedbackUv).rgb * feedbackAmount;
+
+  pixel = vec4(max(current, history), 1.0);
 }
 `

@@ -81,6 +81,11 @@ export function renderClubFrame(options: {
   characterPosition: Vec3
   gl: WebGL2RenderingContext
   height: number
+  feedback: {
+    amount: number
+    current: Target
+    next: Target
+  }
   light: {
     count: number
     program: WebGLProgram
@@ -96,6 +101,8 @@ export function renderClubFrame(options: {
   post: {
     bloom: WebGLUniformLocation
     bloomResolution: WebGLUniformLocation
+    feedback: WebGLUniformLocation
+    feedbackAmount: WebGLUniformLocation
     program: WebGLProgram
     renderSky: WebGLUniformLocation
     scene: WebGLUniformLocation
@@ -256,7 +263,7 @@ export function renderClubFrame(options: {
   gl.depthMask(true)
   gl.disable(gl.BLEND)
 
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, options.feedback.next.frame)
   gl.viewport(0, 0, options.width, options.height)
   gl.disable(gl.DEPTH_TEST)
   gl.disable(gl.BLEND)
@@ -269,6 +276,10 @@ export function renderClubFrame(options: {
   gl.activeTexture(gl.TEXTURE1)
   gl.bindTexture(gl.TEXTURE_2D, options.bloomTarget.color)
   gl.uniform1i(options.post.bloom, 1)
+  gl.activeTexture(gl.TEXTURE2)
+  gl.bindTexture(gl.TEXTURE_2D, options.feedback.current.color)
+  gl.uniform1i(options.post.feedback, 2)
+  gl.uniform1f(options.post.feedbackAmount, options.feedback.amount)
   gl.uniform2f(options.post.bloomResolution, options.bloomTarget.width, options.bloomTarget.height)
   gl.uniform1i(options.post.renderSky, options.sky ? 1 : 0)
   if (options.sky) {
@@ -279,6 +290,16 @@ export function renderClubFrame(options: {
   }
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, options.feedback.next.frame)
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null)
+  gl.blitFramebuffer(0, 0, options.width, options.height, 0, 0, options.width, options.height, gl.COLOR_BUFFER_BIT,
+    gl.NEAREST)
+
+  const current = options.feedback.current
+
+  options.feedback.current = options.feedback.next
+  options.feedback.next = current
 }
 
 function drawCharacterVertexGeometry(options: Parameters<typeof renderClubFrame>[0]) {

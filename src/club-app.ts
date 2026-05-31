@@ -379,8 +379,14 @@ useAlternativeInput(alternativeInput)
 const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
 const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
+const feedbackMaxAmount = 0.97
+const feedbackRampSeconds = 60 * 30 // 30 mins
+const feedbackSitResetSeconds = 3
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
+let feedbackStartStamp = 0
+let feedbackSitSeconds = 0
+let feedbackSitReset = false
 let buddhaLoaded = false
 let palmTreeLoaded = false
 let rocksLoaded = false
@@ -474,7 +480,9 @@ const roomSmokeCameraRight = gl.getUniformLocation(smokeProgram, 'cameraRight')
 const roomSmokeCameraUp = gl.getUniformLocation(smokeProgram, 'cameraUp')
 const postScene = gl.getUniformLocation(postProgram, 'scene')
 const postBloom = gl.getUniformLocation(postProgram, 'bloom')
+const postFeedback = gl.getUniformLocation(postProgram, 'feedback')
 const postBloomResolution = gl.getUniformLocation(postProgram, 'bloomResolution')
+const postFeedbackAmount = gl.getUniformLocation(postProgram, 'feedbackAmount')
 const postRenderSky = gl.getUniformLocation(postProgram, 'renderSky')
 const postSkyForward = gl.getUniformLocation(postProgram, 'skyForward')
 const postSkyRight = gl.getUniformLocation(postProgram, 'skyRight')
@@ -501,6 +509,11 @@ const graffitiArray = gl.createVertexArray()
 const graffitiBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
 const bloomTarget = createTarget(gl, 1, 1)
+const feedback = {
+  amount: 0,
+  current: createTarget(gl, 1, 1),
+  next: createTarget(gl, 1, 1),
+}
 const stride = vertexSize * Float32Array.BYTES_PER_ELEMENT
 const strobeGeometry = createStrobeGeometry()
 const strobeInstanceSize = 14
@@ -516,7 +529,8 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisi
   || !lightViewProjection
   || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
   || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
-  || !roomSmokeCameraUp || !postScene || !postBloom || !postBloomResolution || !postRenderSky
+  || !roomSmokeCameraUp || !postScene || !postBloom || !postFeedback || !postBloomResolution || !postFeedbackAmount
+  || !postRenderSky
   || !postSkyForward || !postSkyRight || !postSkyUp || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
@@ -572,7 +586,8 @@ setupCharacterBoxArray({
 })
 setupPostArray({ array: postArray, buffer: postBuffer, gl })
 setupVertexArray({ array: beachBallArray, buffer: beachBallBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
-setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiPoints, gl, stride, usage: gl.STATIC_DRAW })
+setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiPoints, gl, stride,
+  usage: gl.STATIC_DRAW })
 
 gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
@@ -966,9 +981,13 @@ const resize = () => {
   const height = Math.floor(canvas.clientHeight * ratio)
   const bloomWidth = Math.max(1, Math.floor(width * bloomScale.scale()))
   const bloomHeight = Math.max(1, Math.floor(height * bloomScale.scale()))
+  const feedbackWidth = feedback.current.width
+  const feedbackHeight = feedback.current.height
 
   if (canvas.width === width && canvas.height === height
-    && bloomTarget.width === bloomWidth && bloomTarget.height === bloomHeight) {
+    && bloomTarget.width === bloomWidth && bloomTarget.height === bloomHeight
+    && feedbackWidth === width && feedbackHeight === height)
+  {
     return
   }
 
@@ -976,7 +995,25 @@ const resize = () => {
   canvas.height = height
   resizeTarget(gl, target, width, height)
   resizeTarget(gl, bloomTarget, bloomWidth, bloomHeight)
+  if (feedbackWidth !== width || feedbackHeight !== height) {
+    resizeTarget(gl, feedback.next, width, height)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, feedback.current.frame)
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, feedback.next.frame)
+    gl.blitFramebuffer(0, 0, feedbackWidth, feedbackHeight, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.LINEAR)
+    resizeTarget(gl, feedback.current, width, height)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, feedback.next.frame)
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, feedback.current.frame)
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+  }
   gl.viewport(0, 0, width, height)
+}
+
+function clearFeedback() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, feedback.current.frame)
+  gl.clearColor(0, 0, 0, 1)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, feedback.next.frame)
+  gl.clear(gl.COLOR_BUFFER_BIT)
 }
 
 const draw = (stamp: number) => {
@@ -989,8 +1026,27 @@ const draw = (stamp: number) => {
   bloomScale.update(delta, stamp)
   clubGlobal.clubPixelRatio = pixelRatio.ratio()
   resize()
+  if (feedbackStartStamp === 0) {
+    feedbackStartStamp = stamp
+  }
+  feedback.amount = mix(0, feedbackMaxAmount, Math.min((stamp - feedbackStartStamp) / (feedbackRampSeconds * 1000), 1))
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
+  const sitting = localCharacter.mode === 'manSitting' || localCharacter.mode === 'womanSitting'
+
+  if (sitting) {
+    feedbackSitSeconds += delta
+    if (!feedbackSitReset && feedbackSitSeconds >= feedbackSitResetSeconds) {
+      feedbackStartStamp = stamp
+      feedback.amount = 0
+      clearFeedback()
+      feedbackSitReset = true
+    }
+  }
+  else {
+    feedbackSitSeconds = 0
+    feedbackSitReset = false
+  }
   updateBeachBalls(beachBalls, delta, outsideTree)
   const hits = hitBeachBalls(beachBalls, characterPosition)
 
@@ -1095,6 +1151,7 @@ const draw = (stamp: number) => {
       hairUniforms,
     },
     characterPosition,
+    feedback,
     gl,
     height: canvas.height,
     light: {
@@ -1117,6 +1174,8 @@ const draw = (stamp: number) => {
     post: {
       bloom: postBloom,
       bloomResolution: postBloomResolution,
+      feedback: postFeedback,
+      feedbackAmount: postFeedbackAmount,
       program: postProgram,
       renderSky: postRenderSky,
       scene: postScene,
