@@ -81,7 +81,7 @@ export const tentPole: CircleBounds = { x: tent.x, z: tent.z, radius: 0.13 }
 export const tentCenterBench = { x: tent.x, z: tent.z, innerRadius: 0.34, outerRadius: 0.9 }
 export const videoTracks: Record<VideoZone, string> = {
   inside: 'CU0wjRIL1AQ', // '0oB97YhEukw',
-  outside: '5lthiQoQiRA', // 'HIn1BxT38mE', // '0oB97YhEukw', // 'mqz9HpVNSAQ', // '5lthiQoQiRA', // 'ZEaqqk8V1bY', // 'CU0wjRIL1AQ', // '5aqWdYBG_js', //  'mqz9HpVNSAQ', // 'JviNPyhY6U4', // 'DK5XBwLiWZY', // 'xda6KAXJESo', // 'IIbcGjZy6OM', // '5lthiQoQiRA', 'CsGauHXioos', // 'HIn1BxT38mE', // , //
+  outside: 'AJ7lbqyLbX8', // 'HIn1BxT38mE', // '0oB97YhEukw', // 'mqz9HpVNSAQ', // '5lthiQoQiRA', // 'ZEaqqk8V1bY', // 'CU0wjRIL1AQ', // '5aqWdYBG_js', //  'mqz9HpVNSAQ', // 'JviNPyhY6U4', // 'DK5XBwLiWZY', // 'xda6KAXJESo', // 'IIbcGjZy6OM', // '5lthiQoQiRA', 'CsGauHXioos', // 'HIn1BxT38mE', // , //
   tent: 'fz6nN5AtcYk',
 }
 export const videoStartTimes: Record<VideoZone, number> = {
