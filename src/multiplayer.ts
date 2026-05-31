@@ -148,16 +148,24 @@ export function createMultiplayer(options: {
 
       selfId = state.selfId
       room = state.room
-      players.clear()
 
       for (const player of state.players) {
         if (player.id !== selfId && validRemotePose(player)) {
-          players.set(player.id, createRemotePlayer(player))
+          const existing = players.get(player.id)
+
+          if (existing) {
+            applyRemotePose(existing, player)
+          }
+          else {
+            players.set(player.id, createRemotePlayer(player))
+          }
+
           previousIds.delete(player.id)
         }
       }
 
       for (const id of previousIds) {
+        players.delete(id)
         options.onLeave(id)
       }
 
