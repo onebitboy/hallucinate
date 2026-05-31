@@ -295,21 +295,21 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   z-index: 30;
 }
 
-#admin-id-root[data-admin="true"] {
-  pointer-events: auto;
-}
-
 .admin-id-label {
   background: rgb(255 40 120 / 0.32);
   border: 1px solid rgb(255 255 255 / 0.5);
   color: white;
-  cursor: pointer;
   font: 700 12px/1.1 monospace;
   left: 0;
   padding: 3px 6px;
+  pointer-events: none;
   position: absolute;
   text-shadow: 0 0 8px rgb(255 40 120 / 0.8);
   top: 0;
+}
+
+.admin-id-label[data-visible="false"] {
+  display: none;
 }
 
 #admin-dialog,

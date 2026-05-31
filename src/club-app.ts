@@ -123,7 +123,7 @@ const helpSeenKey = 'club-help-seen'
 const chatLogMax = 15
 let adminPass = ''
 let adminView = false
-const adminIdLabels = new Map<number, HTMLButtonElement>()
+const adminIdLabels = new Map<number, HTMLDivElement>()
 const adminLabelAnchor: Vec3 = [0, 0, 0]
 const adminLabelPoint: ProjectedPoint = { x: 0, y: 0 }
 const chatPalette = [
@@ -375,15 +375,9 @@ function updateAdminIdLabel(
   let label = adminIdLabels.get(id)
 
   if (!label) {
-    label = document.createElement('button')
-    label.type = 'button'
+    label = document.createElement('div')
     label.className = 'admin-id-label'
     label.textContent = String(id)
-    label.addEventListener('click', event => {
-      event.preventDefault()
-      event.stopPropagation()
-      openBanDialog(id, `id: ${id}`)
-    })
     adminIdRoot.append(label)
     adminIdLabels.set(id, label)
   }
@@ -391,10 +385,30 @@ function updateAdminIdLabel(
   adminLabelAnchor[0] = position[0]
   adminLabelAnchor[1] = position[1] + 1.75
   adminLabelAnchor[2] = position[2]
+  if (!adminLabelVisible(adminLabelAnchor, projector)) {
+    label.dataset.visible = 'false'
+    return
+  }
+
   projectWallPointInto(adminLabelAnchor, projector, adminLabelPoint)
+  label.dataset.visible = 'true'
   label.style.transform = `translate(-50%, -100%) translate(${Math.round(adminLabelPoint.x)}px, ${
     Math.round(adminLabelPoint.y)
   }px)`
+}
+
+function adminLabelVisible(position: Vec3, projector: ReturnType<typeof createWallProjector>) {
+  const relativeX = position[0] - projector.eyeX
+  const relativeY = position[1] - projector.eyeY
+  const relativeZ = position[2] - projector.eyeZ
+  const viewX = projector.cameraXX * relativeX + projector.cameraXY * relativeY + projector.cameraXZ * relativeZ
+  const viewY = projector.cameraYX * relativeX + projector.cameraYY * relativeY + projector.cameraYZ * relativeZ
+  const viewZ = projector.cameraZX * relativeX + projector.cameraZY * relativeY + projector.cameraZZ * relativeZ
+  const depth = -viewZ
+  const ndcX = (viewX * projector.f / projector.aspect) / depth
+  const ndcY = (viewY * projector.f) / depth
+
+  return depth > 0 && ndcX >= -1 && ndcX <= 1 && ndcY >= -1 && ndcY <= 1
 }
 
 function clearAdminIdLabels() {
