@@ -256,6 +256,7 @@ const adminInput = document.createElement('input')
 const adminSubmit = document.createElement('button')
 const adminBanIdInput = document.createElement('input')
 const adminBanIdSubmit = document.createElement('button')
+const adminRandomTrackSubmit = document.createElement('button')
 const banDialog = document.createElement('dialog')
 const banForm = document.createElement('form')
 const banMessage = document.createElement('p')
@@ -275,7 +276,9 @@ adminBanIdInput.step = '1'
 adminBanIdInput.placeholder = 'id'
 adminBanIdSubmit.type = 'button'
 adminBanIdSubmit.textContent = 'ban id'
-adminForm.append(adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit)
+adminRandomTrackSubmit.type = 'button'
+adminRandomTrackSubmit.textContent = 'random track'
+adminForm.append(adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminRandomTrackSubmit)
 adminDialog.append(adminForm)
 banDialog.id = 'ban-dialog'
 banForm.method = 'dialog'
@@ -308,6 +311,12 @@ adminBanIdSubmit.addEventListener('click', () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
   openBanDialog(id, `id: ${id}`)
+})
+
+adminRandomTrackSubmit.addEventListener('click', () => {
+  adminPass = adminInput.value
+  setAdminView(adminPass.length > 0)
+  multiplayer.sendAdmin(adminPass, 'randomTrack', 0)
 })
 
 banCancel.addEventListener('click', () => {

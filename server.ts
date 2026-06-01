@@ -1257,6 +1257,37 @@ async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) 
   if (packet.command === 'ban') {
     await banClient(packet.id)
   }
+  else if (packet.command === 'randomTrack') {
+    await randomizeVideoTracks()
+  }
+}
+
+async function randomizeVideoTracks() {
+  const now = Date.now()
+
+  for (const zone of Object.keys(videoPlaylists) as VideoZone[]) {
+    const order = videoPlaylistOrders.find(entry => entry.zone === zone)?.ids
+
+    if (!order) {
+      throw new Error(`Missing video playlist order ${zone}`)
+    }
+
+    const current = videoState.find(entry => entry.zone === zone)!
+    const id = randomVideoId(order, current.id)
+
+    videoState = videoState.map(entry => entry.zone === zone
+      ? { zone, id, time: 0, updatedAt: now }
+      : entry)
+  }
+
+  await saveVideoState()
+  broadcastVideoState()
+}
+
+function randomVideoId(ids: string[], currentId: string) {
+  const choices = ids.filter(id => id !== currentId)
+
+  return choices[Math.floor(Math.random() * choices.length)] ?? ids[Math.floor(Math.random() * ids.length)]!
 }
 
 async function banClient(id: number) {

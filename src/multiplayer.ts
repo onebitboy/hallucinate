@@ -337,7 +337,7 @@ export function createMultiplayer(options: {
 
       return next
     },
-    sendAdmin(pass: string, command: 'ban', id: number) {
+    sendAdmin(pass: string, command: 'ban' | 'randomTrack', id: number) {
       queue(encodeAdminMessage({ pass, command, id }))
     },
     sendMotion,

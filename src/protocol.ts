@@ -92,7 +92,7 @@ export type GraffitiPacket = {
 
 export type AdminPacket = {
   pass: string
-  command: 'ban'
+  command: 'ban' | 'randomTrack'
   id: number
 }
 
@@ -588,7 +588,7 @@ export function decodeAdminMessage(view: DataView): AdminPacket {
   expectTextSize(view, commandOffset + 2, commandLength)
   const command = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + commandOffset + 2, commandLength))
 
-  if (command !== 'ban') {
+  if (command !== 'ban' && command !== 'randomTrack') {
     throw new Error(`Invalid admin command ${command}`)
   }
 
