@@ -11,6 +11,7 @@ const leftRows: HelpKey[][] = [
   [
     { keys: ['q', 'w'], label: 'hair style' },
     { keys: ['e', 'r'], label: 'accessories' },
+    { keys: ['t'], label: 'talk' },
   ],
   [
     { keys: ['a', 's'], label: 'top wear' },
@@ -19,7 +20,6 @@ const leftRows: HelpKey[][] = [
   [
     { keys: ['z', 'x'], label: 'bottom wear' },
     { keys: ['v'], label: 'wave' },
-    { keys: ['b'], label: 'bounce' },
   ],
 ]
 
@@ -31,6 +31,7 @@ const alternativeLeftRows: HelpKey[][] = [
   [
     { keys: ['u', 'i'], label: 'hair style' },
     { keys: ['o', 'p'], label: 'accessories' },
+    { keys: ['t'], label: 'talk' },
   ],
   [
     { keys: ['j', 'k'], label: 'top wear' },
@@ -39,7 +40,6 @@ const alternativeLeftRows: HelpKey[][] = [
   [
     { keys: ['m', ','], label: 'bottom wear' },
     { keys: ['v'], label: 'wave' },
-    { keys: ['b'], label: 'bounce' },
   ],
 ]
 
@@ -65,7 +65,7 @@ export function createHelpUi() {
   const root = document.createElement('div')
   const left = document.createElement('div')
   const move = document.createElement('div')
-  const speak = helpBox({ keys: ['space'], label: 'speak' })
+  const speak = helpBox({ keys: ['space'], label: 'jump' })
   const alternative = helpBox({ keys: ['tab'], label: 'alt inputs' })
   const toggle = helpBox({ keys: ['h'], label: 'help' })
   const video = helpNote("If the video doesn't start, press play on it")

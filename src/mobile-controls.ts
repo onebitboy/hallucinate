@@ -56,7 +56,7 @@ export function createMobileControls(options: {
   toggle.textContent = '☰'
   speak.id = 'mobile-speak'
   speak.type = 'button'
-  speak.ariaLabel = 'Speak'
+  speak.ariaLabel = 'Talk'
   speak.textContent = '💬'
   panel.id = 'mobile-menu'
 

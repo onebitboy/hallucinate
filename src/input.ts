@@ -42,12 +42,6 @@ export function bindKeyboardInput(options: {
       return
     }
 
-    if (event.code === 'Space') {
-      event.preventDefault()
-      options.openChatInput()
-      return
-    }
-
     if (event.code === 'Tab') {
       event.preventDefault()
       alternativeInput = !alternativeInput
@@ -63,12 +57,20 @@ export function bindKeyboardInput(options: {
       return
     }
 
-    if (key === 'b') {
-      if (options.keys.has(key)) {
+    if (key === 't') {
+      event.preventDefault()
+      options.openChatInput()
+      return
+    }
+
+    if (event.code === 'Space') {
+      event.preventDefault()
+
+      if (options.keys.has(event.code)) {
         return
       }
 
-      options.keys.add(key)
+      options.keys.add(event.code)
       options.startJumping()
       return
     }
@@ -159,10 +161,12 @@ export function bindKeyboardInput(options: {
       return
     }
 
-    if (key === 'b') {
+    if (event.code === 'Space') {
+      event.preventDefault()
       options.stopJumping()
     }
 
     options.keys.delete(key)
+    options.keys.delete(event.code)
   })
 }

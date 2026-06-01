@@ -507,6 +507,13 @@ function playNextPlaylistVideo(
   playlistOrders: Partial<Record<VideoZone, string[]>>,
   nextTrackIds: Partial<Record<VideoZone, string>>,
 ) {
+  const playlist = players[area]!.getPlaylist()
+
+  if (playlist?.length) {
+    playlistOrders[area] = playlist
+  }
+
+  trackIds[area] = players[area]!.getVideoData()?.video_id || trackIds[area]
   prepareNextPlaylistTrack(area, trackIds, playlistOrders, nextTrackIds)
   const id = nextTrackIds[area]
 
@@ -536,8 +543,18 @@ function prepareNextPlaylistTrack(
   }
 
   const index = order.indexOf(trackIds[area])
+  const start = index < 0 ? 0 : index + 1
 
-  nextTrackIds[area] = order[(index + 1) % order.length]!
+  for (let offset = 0; offset < order.length; offset++) {
+    const id = order[(start + offset) % order.length]!
+
+    if (id !== trackIds[area]) {
+      nextTrackIds[area] = id
+      return
+    }
+  }
+
+  delete nextTrackIds[area]
 }
 
 function shouldLoadPlaylist(
@@ -582,6 +599,8 @@ function syncVideoTime(
 
       if (playlist?.length) {
         playlistIds[area] = playlist
+        playlistOrders[area] = playlist
+        prepareNextPlaylistTrack(area, trackIds, playlistOrders, nextTrackIds)
         reportPlaylist(area, playlist, reportedPlaylists, onPlaylistDiscovered)
       }
     }
