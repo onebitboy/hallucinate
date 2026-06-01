@@ -17,11 +17,12 @@ export const ADMIN = 14
 export const MODERATION = 15
 export const VIDEO_AUTHORITY = 16
 export const VIDEO_PLAYLIST = 17
+export const VIDEO_STATE_NOW = 18
 
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 25
+export const protocolVersion = 26
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -202,6 +203,14 @@ export function decodeOnline(view: DataView) {
 }
 
 export function encodeVideoState(packet: VideoStatePacket) {
+  return encodeVideoStateType(VIDEO_STATE, packet)
+}
+
+export function encodeVideoStateNow(packet: VideoStatePacket) {
+  return encodeVideoStateType(VIDEO_STATE_NOW, packet)
+}
+
+function encodeVideoStateType(type: number, packet: VideoStatePacket) {
   const encoded = packet.entries.map(entry => ({
     ...entry,
     bytes: textEncoder.encode(entry.id),
@@ -211,7 +220,7 @@ export function encodeVideoState(packet: VideoStatePacket) {
   const view = new DataView(data)
   let offset = 2
 
-  view.setUint8(0, VIDEO_STATE)
+  view.setUint8(0, type)
   view.setUint8(1, encoded.length)
 
   for (const entry of encoded) {

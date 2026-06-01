@@ -886,7 +886,7 @@ multiplayer = createMultiplayer({
     }
   },
   onVideoPlaylist: entries => djVideoUi.applyPlaylists(entries),
-  onVideoState: (entries, preserveSameTrack) => djVideoUi.applyStates(entries, preserveSameTrack),
+  onVideoState: (entries, preserveSameTrack, immediate) => djVideoUi.applyStates(entries, preserveSameTrack, immediate),
   onBeachBalls: balls => {
     const stamp = performance.now()
 

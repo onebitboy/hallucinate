@@ -47,6 +47,7 @@ import {
   GRAFFITI,
   MODERATION,
   VIDEO_STATE,
+  VIDEO_STATE_NOW,
   VIDEO_AUTHORITY,
   VIDEO_PLAYLIST,
 } from './protocol.ts'
@@ -78,7 +79,7 @@ export function createMultiplayer(options: {
   onOnlineCount: (count: number) => void
   onVideoAuthority: (entries: VideoAuthorityEntry[]) => void
   onVideoPlaylist: (entries: VideoPlaylistEntry[]) => void
-  onVideoState: (entries: VideoStateEntry[], preserveSameTrack: boolean) => void
+  onVideoState: (entries: VideoStateEntry[], preserveSameTrack: boolean, immediate: boolean) => void
   onBeachBalls: (balls: BeachBall[]) => void
   onGraffiti: (splats: GraffitiSplat[]) => void
   videoState: () => VideoStateEntry[]
@@ -221,7 +222,14 @@ export function createMultiplayer(options: {
     }
 
     if (type === VIDEO_STATE) {
-      options.onVideoState(decodeVideoState(view).entries, preserveVideoState || receivedVideoState)
+      options.onVideoState(decodeVideoState(view).entries, preserveVideoState || receivedVideoState, false)
+      receivedVideoState = true
+      preserveVideoState = false
+      return
+    }
+
+    if (type === VIDEO_STATE_NOW) {
+      options.onVideoState(decodeVideoState(view).entries, false, true)
       receivedVideoState = true
       preserveVideoState = false
       return

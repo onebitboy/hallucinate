@@ -30,6 +30,7 @@ import {
   encodeVideoAuthority,
   encodeVideoPlaylist,
   encodeVideoState,
+  encodeVideoStateNow,
   GRAFFITI,
   MESSAGE,
   modeCount,
@@ -826,6 +827,14 @@ function broadcastVideoState(skip?: Client) {
   }
 }
 
+function broadcastVideoStateNow() {
+  const data = encodeVideoStateNow({ entries: currentVideoState() })
+
+  for (const client of clients.values()) {
+    client.socket.send(data)
+  }
+}
+
 function broadcastVideoPlaylist() {
   const data = encodeVideoPlaylist({ entries: currentVideoPlaylist() })
 
@@ -1279,7 +1288,7 @@ async function randomizeVideoTracks() {
   }
 
   await saveVideoState()
-  broadcastVideoState()
+  broadcastVideoStateNow()
 }
 
 function randomVideoId(ids: string[], currentId: string) {

@@ -131,7 +131,7 @@ export function createDjVideoUi(
         time: times[zone],
       }
     },
-    applyStates(states: Array<{ zone: VideoZone; id: string; time: number }>, preserveSameTrack = false) {
+    applyStates(states: Array<{ zone: VideoZone; id: string; time: number }>, preserveSameTrack = false, immediate = false) {
       for (const state of states) {
         const sameTrack = trackIds[state.zone] === state.id
 
@@ -165,7 +165,7 @@ export function createDjVideoUi(
             cueVideoFromTime(state.zone, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
             players[state.zone]!.pauseVideo()
           }
-          else if (videoPlaylists[state.zone]) {
+          else if (videoPlaylists[state.zone] && !immediate) {
             pendingTracks[state.zone] = { id: state.id, time: videoStateTime(state.zone, state.id, state.time) }
             if (pendingEnded[state.zone]) {
               playPendingTrack(state.zone, players, pendingStarts, pendingEnded, pendingTracks, times, trackIds)
@@ -173,6 +173,8 @@ export function createDjVideoUi(
             }
           }
           else {
+            delete pendingEnded[state.zone]
+            delete pendingTracks[state.zone]
             trackIds[state.zone] = state.id
             times[state.zone] = videoStateTime(state.zone, state.id, state.time)
             pendingStarts[state.zone] = times[state.zone]
