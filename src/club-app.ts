@@ -932,7 +932,7 @@ multiplayer = createMultiplayer({
       scheduleGraffitiTexturePaint(appended, false)
     }
   },
-  videoState: () => djVideoUi.states(),
+  videoState: () => [djVideoUi.state()],
 })
 sendVideoStateNow = () => multiplayer.sendVideoState()
 sendVideoPlaylistNow = (zone, ids) => multiplayer.sendVideoPlaylist([{ zone, ids }])

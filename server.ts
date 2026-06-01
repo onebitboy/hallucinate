@@ -59,6 +59,7 @@ type Client = {
   room: number
   socket: Bun.ServerWebSocket<SocketData>
   pose: SpawnPacket
+  video?: StoredVideoStateEntry
 }
 
 type StoredVideoState = {
@@ -261,11 +262,6 @@ const server = Bun.serve<SocketData>({
           const nextVideoState = validateVideoState(decodeVideoState(view).entries)
 
           if (!client.poseSynced) {
-            return
-          }
-
-          if (!videoAuthority(client)) {
-            sendVideoState(client)
             return
           }
 
@@ -813,7 +809,7 @@ function sendRoomState(client: Client) {
 }
 
 function sendVideoState(client: Client) {
-  client.socket.send(encodeVideoState({ entries: currentVideoState() }))
+  client.socket.send(encodeVideoState({ entries: currentVideoStateForJoin() }))
 }
 
 function sendVideoAuthority(client: Client) {
@@ -866,6 +862,25 @@ function currentVideoState(now = Date.now()): VideoStateEntry[] {
     time: entry.time + (now - entry.updatedAt) / 1000,
     zone: entry.zone,
   }))
+}
+
+function currentVideoStateForJoin(now = Date.now()): VideoStateEntry[] {
+  return videoState.map(entry => videoStateFromRandomClient(entry.zone, now) ?? {
+    id: entry.id,
+    time: entry.time + (now - entry.updatedAt) / 1000,
+    zone: entry.zone,
+  })
+}
+
+function videoStateFromRandomClient(zone: VideoZone, now: number) {
+  const entries = [...clients.values()]
+    .filter(client => client.video?.zone === zone)
+    .map(client => client.video!)
+  const entry = entries[Math.floor(Math.random() * entries.length)]
+
+  return entry
+    ? { zone, id: entry.id, time: entry.time + (now - entry.updatedAt) / 1000 }
+    : undefined
 }
 
 function initialVideoState(now = Date.now()): StoredVideoStateEntry[] {
@@ -951,12 +966,22 @@ async function applyVideoState(client: Client, entries: VideoStateEntry[]) {
   const zone = clientVideoZone(client)
   const entry = entries.find(entry => entry.zone === zone)!
   const now = Date.now()
+  const current = videoState.find(current => current.zone === zone)!
+  const trackChanged = current.id !== entry.id
 
+  if (trackChanged && !videoAuthority(client)) {
+    sendVideoState(client)
+    return
+  }
+
+  client.video = { ...entry, updatedAt: now }
   videoState = videoState.map(current => current.zone === zone
     ? { ...entry, updatedAt: now }
     : current)
-  await saveVideoState()
-  broadcastVideoState(client)
+  if (trackChanged) {
+    await saveVideoState()
+    broadcastVideoState(client)
+  }
 }
 
 async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]) {
@@ -1060,7 +1085,7 @@ function validateVideoState(entries: VideoStateEntry[]) {
     seen.add(entry.zone)
   }
 
-  if (seen.size !== roomCount) {
+  if (seen.size === 0 || seen.size > roomCount) {
     throw new Error(`Invalid video state count ${seen.size}`)
   }
 

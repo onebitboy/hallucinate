@@ -111,15 +111,15 @@ export function createDjVideoUi(
       syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
       pauseOtherVideos(zone, players, ready)
     },
-    states() {
+    state() {
       syncVideoTime(zone, players, ready, pendingStarts, times, trackIndexes, trackIds, playlistIds)
       pauseOtherVideos(zone, players, ready)
 
-      return videoZones().map(area => ({
-        zone: area,
-        id: trackIds[area],
-        time: times[area],
-      }))
+      return {
+        zone,
+        id: trackIds[zone],
+        time: times[zone],
+      }
     },
     applyStates(states: Array<{ zone: VideoZone; id: string; time: number }>, preserveSameTrack = false) {
       for (const state of states) {
