@@ -49,6 +49,7 @@ import {
 import { outsideBounds, roomBounds, videoPlaylists, videoStartTimes, videoTracks } from './src/scene-data.ts'
 import { roomAt, seatAt } from './src/scene.ts'
 import type { GraffitiSplat, VideoZone } from './src/types.ts'
+import { videoStateTime } from './src/video-state.ts'
 
 type Client = {
   id: number
@@ -1141,7 +1142,7 @@ function validateVideoPlaylist(entries: VideoPlaylistEntry[]) {
 }
 
 function videoStateEntry(entry: VideoStateEntry): VideoStateEntry {
-  const time = entry.time >= 0.5 ? entry.time : videoStartTimes[entry.zone]
+  const time = videoStateTime(entry.zone, entry.id, entry.time)
 
   return { zone: entry.zone, id: entry.id, time }
 }

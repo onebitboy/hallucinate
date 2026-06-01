@@ -3,6 +3,7 @@ import type { ProjectedPoint, WallProjector } from './projection.ts'
 import { djVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists, videoStartTimes, videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
+import { videoStateTime } from './video-state.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
 type Wall = typeof djVideoWall
@@ -210,7 +211,8 @@ export function createDjVideoUi(
             events: {
               onReady() {
                 ready[area] = true
-                players[area]!.setLoop(true)
+                // Native looping reuses the iframe startSeconds; app code owns endings.
+                players[area]!.setLoop(false)
 
                 if (area === zone) {
                   cueVideoFromTime(area, players, pendingStarts, times, trackIndexes, trackIds, playlistIds)
@@ -548,10 +550,6 @@ function shouldLoadPlaylist(
 
 function trackIdForLoop(area: VideoZone, players: Partial<Record<VideoZone, YouTubePlayer>>) {
   return players[area]!.getVideoData()?.video_id || videoTracks[area]
-}
-
-function videoStateTime(zone: VideoZone, id: string, time: number) {
-  return id === videoTracks[zone] && time < 0.5 ? videoStartTimes[zone] : time
 }
 
 function setPoint(target: Vec3, x: number, y: number, z: number) {
