@@ -23,6 +23,7 @@ export function bindKeyboardInput(options: {
   activeInput: HTMLInputElement
   keys: Set<string>
   openChatInput: () => void
+  promptNickname: () => void
   setAlternativeInput: (value: boolean) => void
   toggleHelp: () => void
   startJumping: () => void
@@ -60,6 +61,12 @@ export function bindKeyboardInput(options: {
 
     if (key === 'h') {
       options.toggleHelp()
+      return
+    }
+
+    if (key === 'n') {
+      event.preventDefault()
+      options.promptNickname()
       return
     }
 

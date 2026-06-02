@@ -36,11 +36,12 @@ export function createChatUi(
 
       return text
     },
-    show(id: number, text: string, bubblePosition: Vec3, stamp: number) {
+    show(id: number, text: string, bubblePosition: Vec3, stamp: number, color: string) {
       const key = ++bubbleId
       const bubble = createBubble(bubbleRoot, id, bubblePosition)
 
       bubble.element.textContent = text
+      bubble.element.style.color = color
       bubble.position = bubblePosition
       bubble.hideAt = stamp + 4000
       bubbles.set(key, bubble)

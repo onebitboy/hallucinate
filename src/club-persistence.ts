@@ -72,6 +72,7 @@ export function saveClubState(options: {
   idleClipIndex: number
   key: string
   localCharacter: ReturnType<typeof createLocalCharacter>
+  nickname: string
   room: number
   styleController: ReturnType<typeof createCharacterStyleController>
 }) {
@@ -97,6 +98,7 @@ export function saveClubState(options: {
     bottomStyleIndex: options.styleController.bottomStyleIndex,
     accessoryIndex: options.styleController.accessoryIndex,
     alternativeInput: options.alternativeInput,
+    nickname: options.nickname,
     room: options.room,
     videoTrackIds: videoTracks,
     videoTimes: options.djVideoUi.times,

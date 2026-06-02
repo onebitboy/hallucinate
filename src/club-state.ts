@@ -16,6 +16,7 @@ export type ClubState = {
   bottomStyleIndex?: number
   accessoryIndex?: number
   alternativeInput?: boolean
+  nickname?: string
   room?: number
   videoTrackIds?: Partial<Record<VideoZone, string>>
   videoTimes?: Partial<Record<VideoZone, number>>

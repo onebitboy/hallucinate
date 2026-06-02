@@ -665,7 +665,7 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
   color: rgb(255 238 238);
   font: 600 13px/1.2 ui-sans-serif, system-ui, sans-serif;
   text-align: center;
-  text-shadow: 0 0 8px rgb(255 20 20 / 0.55);
+  text-shadow: 0 0 8px currentColor;
   box-shadow: 0 0 18px rgb(255 0 0 / 0.18);
 }
 

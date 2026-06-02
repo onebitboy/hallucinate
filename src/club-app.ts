@@ -120,6 +120,7 @@ const vertexSize = 11
 let frameId = 0
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
+const savedState = readClubState(saveKey)
 const chatLogMax = 15
 let adminPass = ''
 let adminView = false
@@ -186,6 +187,7 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
+let nickname = savedState?.nickname ?? ''
 const adminIdRoot = document.createElement('div')
 const videoAuthorityZones = new Set<VideoZone>()
 let sendVideoStateNow = () => {}
@@ -211,9 +213,10 @@ function addChatLogMessage(id: number, text: string) {
   const row = document.createElement('div')
   const message = document.createElement('span')
   const ban = document.createElement('button')
+  const color = chatMessageColor(id, text)
 
   row.className = 'chat-log-message'
-  row.style.color = chatUserColor(id)
+  row.style.color = color
   row.dataset.userId = String(id)
   message.textContent = text
   ban.type = 'button'
@@ -240,6 +243,8 @@ function addChatLogMessage(id: number, text: string) {
   while (chatLog.childElementCount > chatLogMax) {
     chatLog.firstElementChild!.remove()
   }
+
+  return color
 }
 
 function deleteChatLogMessages(id: number) {
@@ -444,8 +449,24 @@ function clearAdminIdLabels() {
   adminIdLabels.clear()
 }
 
-function chatUserColor(id: number) {
-  return chatPalette[id % chatPalette.length]!
+function chatMessageColor(id: number, text: string) {
+  const name = chatMessageNickname(text)
+
+  return chatPalette[(name ? chatNicknameHash(name) : id) % chatPalette.length]!
+}
+
+function chatMessageNickname(text: string) {
+  return /^<([^>\n]+)> /.exec(text)?.[1]
+}
+
+function chatNicknameHash(name: string) {
+  let hash = 2166136261
+
+  for (const char of name) {
+    hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619) >>> 0
+  }
+
+  return hash
 }
 
 function cycleIdle(direction: number) {
@@ -565,7 +586,6 @@ addEventListener('keydown', event => {
 })
 let wasOutside = isOutside(characterPosition)
 let doorCoverReleased = true
-const savedState = readClubState(saveKey)
 let activeRoom = savedState ? roomIndex(roomAt(savedState.character)) : 0
 let requestedRoom = activeRoom
 let lastPoseLog = 0
@@ -842,19 +862,7 @@ multiplayer = createMultiplayer({
   onRoomState: room => {
     activeRoom = room
     requestedRoom = room
-    saveClubState({
-      camera: cameraController,
-      characterAssetsLoaded: true,
-      characterPosition,
-      djVideoUi,
-      alternativeInput,
-      hairController,
-      idleClipIndex,
-      key: saveKey,
-      localCharacter,
-      room,
-      styleController,
-    })
+    saveCurrentClubState(true, room)
   },
   onMessage: (id, text) => {
     if (id === multiplayer.selfId && predictedMessages.has(text)) {
@@ -874,9 +882,9 @@ multiplayer = createMultiplayer({
       ? characterPosition
       : multiplayer.players.get(id)?.position
 
-    addChatLogMessage(id, text)
+    const color = addChatLogMessage(id, text)
     if (position) {
-      chatUi.show(id, text, position, performance.now())
+      chatUi.show(id, text, position, performance.now(), color)
     }
   },
   onDeleteMessages: id => {
@@ -989,6 +997,36 @@ const styleActions: Record<
   },
 }
 
+function promptNickname() {
+  const next = prompt('nickname', nickname)
+
+  if (next !== null) {
+    nickname = next.trim()
+    saveCurrentClubState(true)
+  }
+}
+
+function messageWithNickname(text: string) {
+  return nickname && text ? `<${nickname}> ${text}` : text
+}
+
+function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(roomAt(characterPosition))) {
+  saveClubState({
+    camera: cameraController,
+    characterAssetsLoaded,
+    characterPosition,
+    djVideoUi,
+    alternativeInput,
+    hairController,
+    idleClipIndex,
+    key: saveKey,
+    localCharacter,
+    nickname,
+    room,
+    styleController,
+  })
+}
+
 bindKeyboardInput({
   activeInput: chatInput,
   keys,
@@ -997,6 +1035,7 @@ bindKeyboardInput({
   startWave: () => localCharacter.startWave(),
   stopWave: () => localCharacter.stopWave(),
   openChatInput: () => chatUi.open(),
+  promptNickname,
   setAlternativeInput: useAlternativeInput,
   toggleHelp: () => {
     const open = helpUi.toggle()
@@ -1142,12 +1181,13 @@ function graffitiKey(splat: import('./types.ts').GraffitiSplat) {
 
 chatForm.addEventListener('submit', event => {
   event.preventDefault()
-  const text = multiplayer.sendMessage(chatUi.submit())
+  const text = multiplayer.sendMessage(messageWithNickname(chatUi.submit()))
 
   if (text) {
     predictedMessages.set(text, (predictedMessages.get(text) ?? 0) + 1)
-    addChatLogMessage(multiplayer.selfId, text)
-    chatUi.show(multiplayer.selfId, text, characterPosition, performance.now())
+    const color = addChatLogMessage(multiplayer.selfId, text)
+
+    chatUi.show(multiplayer.selfId, text, characterPosition, performance.now(), color)
   }
 })
 
@@ -1279,20 +1319,7 @@ const draw = (stamp: number) => {
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
     || dancing, localCharacter.jumping)
-  saveTimer.update(delta, () =>
-    saveClubState({
-      camera: cameraController,
-      characterAssetsLoaded: characterRenderSystem.assetsLoaded,
-      characterPosition,
-      djVideoUi,
-      alternativeInput,
-      hairController,
-      idleClipIndex,
-      key: saveKey,
-      localCharacter,
-      room: roomIndex(roomAt(characterPosition)),
-      styleController,
-    }))
+  saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
   const camera = cameraController.get()
   strobeController.updateInstances(stamp * 0.001, zone)
   const lightCount = lightPoints.length / vertexSize
