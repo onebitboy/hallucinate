@@ -16,8 +16,9 @@ import {
   decodeClientMotion,
   decodeGraffiti,
   decodeRoomChange,
+  decodeVideoEnded,
   decodeVideoPlaylist,
-  decodeVideoState,
+  decodeVideoProgress,
   encodeBeachBalls,
   encodeGraffiti,
   encodeLeave,
@@ -27,10 +28,8 @@ import {
   encodeServerMessage,
   encodeServerMotion,
   encodeSpawn,
-  encodeVideoAuthority,
-  encodeVideoPlaylist,
-  encodeVideoState,
-  encodeVideoStateNow,
+  encodeVideoPlaylistRequest,
+  encodeVideoSync,
   GRAFFITI,
   MESSAGE,
   modeCount,
@@ -41,15 +40,17 @@ import {
   roomCount,
   type SpawnPacket,
   truncateMessage,
-  VIDEO_STATE,
+  VIDEO_ENDED,
   VIDEO_PLAYLIST,
-  type VideoStateEntry,
+  VIDEO_PROGRESS,
+  type VideoEndedEntry,
+  type VideoProgressEntry,
   type VideoPlaylistEntry,
+  type VideoSyncEntry,
 } from './src/protocol.ts'
-import { outsideBounds, roomBounds, videoPlaylists, videoStartTimes, videoTracks } from './src/scene-data.ts'
+import { outsideBounds, roomBounds, videoPlaylists } from './src/scene-data.ts'
 import { roomAt, seatAt } from './src/scene.ts'
 import type { GraffitiSplat, VideoZone } from './src/types.ts'
-import { videoStateTime } from './src/video-state.ts'
 
 type Client = {
   id: number
@@ -61,18 +62,22 @@ type Client = {
   room: number
   socket: Bun.ServerWebSocket<SocketData>
   pose: SpawnPacket
-  video?: StoredVideoStateEntry
+  video?: StoredVideoProgressEntry
 }
 
-type StoredVideoState = {
-  entries: StoredVideoStateEntry[]
+type StoredVideoQueues = {
+  entries: StoredVideoQueueEntry[]
 }
 
 type StoredVideoPlaylists = {
   entries: StoredVideoPlaylistEntry[]
 }
 
-type StoredVideoStateEntry = VideoStateEntry & {
+type StoredVideoQueueEntry = VideoSyncEntry & {
+  updatedAt: number
+}
+
+type StoredVideoProgressEntry = VideoProgressEntry & {
   updatedAt: number
 }
 
@@ -100,11 +105,14 @@ const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 const videoDbPath = process.env.CLUB_VIDEO_DB ?? join(import.meta.dir, 'data', 'video.lmdb')
-const videoDb = open<StoredVideoState | StoredVideoPlaylists>({ path: videoDbPath, compression: true })
-let videoState = await loadVideoState()
+const videoDb = open<StoredVideoQueues | StoredVideoPlaylists>({ path: videoDbPath, compression: true })
+let videoQueues = await loadVideoQueues()
 let videoPlaylistOrders = await loadVideoPlaylists()
-const videoAuthorities: Partial<Record<VideoZone, number>> = {}
-const forcedVideoJoins: Partial<Record<VideoZone, StoredVideoStateEntry>> = {}
+const videoPlaylistRequestInterval = 3000
+const videoPlaylistRequests: Partial<Record<VideoZone, number>> = {}
+if (initializeVideoQueuesFromPlaylists(Date.now())) {
+  await saveVideoQueues()
+}
 let beachBalls = createBeachBalls()
 const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
@@ -196,9 +204,7 @@ const server = Bun.serve<SocketData>({
       clients.set(socket, client)
       addToRoom(client, 0)
       sendRoomState(client)
-      sendVideoState(client)
-      sendVideoAuthority(client)
-      sendVideoPlaylist(client)
+      sendVideoSync(client)
       sendBeachBalls(client)
       if (socket.data.initialState) {
         sendGraffiti(client)
@@ -227,7 +233,7 @@ const server = Bun.serve<SocketData>({
           client.pose = { id: client.id, ...motion }
           client.lastMotionAt = Date.now()
           client.poseSynced = true
-          ensureVideoAuthority(clientVideoZone(client))
+          requestMissingVideoPlaylist(clientVideoZone(client))
           broadcast(client.room, encodeServerMotion(client.pose), client)
           return
         }
@@ -258,14 +264,25 @@ const server = Bun.serve<SocketData>({
           return
         }
 
-        if (type === VIDEO_STATE) {
-          const nextVideoState = validateVideoState(decodeVideoState(view).entries)
+        if (type === VIDEO_PROGRESS) {
+          const progress = validateVideoProgress(decodeVideoProgress(view).entry)
 
           if (!client.poseSynced) {
             return
           }
 
-          await applyVideoState(client, nextVideoState)
+          applyVideoProgress(client, progress)
+          return
+        }
+
+        if (type === VIDEO_ENDED) {
+          const ended = validateVideoEnded(decodeVideoEnded(view).entry)
+
+          if (!client.poseSynced) {
+            return
+          }
+
+          await applyVideoEnded(client, ended)
           return
         }
 
@@ -592,11 +609,10 @@ function changeRoom(client: Client, room: number) {
 
   const previousZone = clientVideoZone(client)
 
-  releaseVideoAuthority(client)
   removeFromRoom(client)
   addToRoom(client, room)
-  ensureVideoAuthority(previousZone)
-  ensureVideoAuthority(clientVideoZone(client))
+  requestMissingVideoPlaylist(previousZone)
+  requestMissingVideoPlaylist(clientVideoZone(client))
   sendRoomState(client)
   broadcast(client.room, encodeSpawn(client.pose), client)
 }
@@ -805,54 +821,6 @@ function sendRoomState(client: Client) {
   }))
 }
 
-function sendVideoState(client: Client) {
-  client.socket.send(encodeVideoState({ entries: currentVideoStateForJoin() }))
-}
-
-function sendVideoAuthority(client: Client) {
-  client.socket.send(encodeVideoAuthority({ entries: currentVideoAuthority() }))
-}
-
-function sendVideoPlaylist(client: Client) {
-  client.socket.send(encodeVideoPlaylist({ entries: currentVideoPlaylist() }))
-}
-
-function broadcastVideoState(skip?: Client) {
-  const data = encodeVideoState({ entries: currentVideoState() })
-
-  for (const client of clients.values()) {
-    if (client === skip) {
-      continue
-    }
-
-    client.socket.send(data)
-  }
-}
-
-function broadcastVideoStateNow() {
-  const data = encodeVideoStateNow({ entries: currentVideoState() })
-
-  for (const client of clients.values()) {
-    client.socket.send(data)
-  }
-}
-
-function broadcastVideoPlaylist() {
-  const data = encodeVideoPlaylist({ entries: currentVideoPlaylist() })
-
-  for (const client of clients.values()) {
-    client.socket.send(data)
-  }
-}
-
-function broadcastVideoAuthority() {
-  const data = encodeVideoAuthority({ entries: currentVideoAuthority() })
-
-  for (const client of clients.values()) {
-    client.socket.send(data)
-  }
-}
-
 function sendBeachBalls(client: Client) {
   client.socket.send(encodeBeachBalls({ balls: beachBalls }))
 }
@@ -861,31 +829,53 @@ function sendGraffiti(client: Client) {
   client.socket.send(encodeGraffiti({ splats: graffitiSplats }))
 }
 
-function currentVideoState(now = Date.now()): VideoStateEntry[] {
-  return videoState.map(entry => ({
-    id: entry.id,
-    time: entry.time + (now - entry.updatedAt) / 1000,
-    zone: entry.zone,
-  }))
+function sendVideoSync(client: Client) {
+  const entries = currentVideoSyncForJoin()
+
+  if (entries.length > 0) {
+    client.socket.send(encodeVideoSync({ entries }))
+  }
 }
 
-function currentVideoStateForJoin(now = Date.now()): VideoStateEntry[] {
-  return videoState.map(entry => forcedVideoJoinState(entry.zone, now) ?? videoStateFromRandomClient(entry.zone, entry.id, now) ?? {
-    id: entry.id,
-    time: entry.time + (now - entry.updatedAt) / 1000,
-    zone: entry.zone,
+function broadcastVideoSync(zones?: Set<VideoZone>) {
+  const entries = currentVideoSync(Date.now(), zones)
+
+  if (entries.length === 0) {
+    return
+  }
+
+  const data = encodeVideoSync({ entries })
+
+  for (const client of clients.values()) {
+    client.socket.send(data)
+  }
+}
+
+function currentVideoSync(now = Date.now(), zones?: Set<VideoZone>): VideoSyncEntry[] {
+  return videoQueues
+    .filter(entry => !zones || zones.has(entry.zone))
+    .map(entry => ({
+      zone: entry.zone,
+      currentId: entry.currentId,
+      nextId: entry.nextId,
+      time: entry.time + (now - entry.updatedAt) / 1000,
+    }))
+}
+
+function currentVideoSyncForJoin(now = Date.now()): VideoSyncEntry[] {
+  return videoQueues.map(entry => {
+    const live = videoProgressFromRandomClient(entry.zone, entry.currentId, now)
+
+    return {
+      zone: entry.zone,
+      currentId: entry.currentId,
+      nextId: entry.nextId,
+      time: live?.time ?? entry.time + (now - entry.updatedAt) / 1000,
+    }
   })
 }
 
-function forcedVideoJoinState(zone: VideoZone, now: number) {
-  const entry = forcedVideoJoins[zone]
-
-  return entry
-    ? { zone, id: entry.id, time: entry.time + (now - entry.updatedAt) / 1000 }
-    : undefined
-}
-
-function videoStateFromRandomClient(zone: VideoZone, id: string, now: number) {
+function videoProgressFromRandomClient(zone: VideoZone, id: string, now: number) {
   const entries = [...clients.values()]
     .filter(client => client.video?.zone === zone && client.video.id === id)
     .map(client => client.video!)
@@ -896,22 +886,14 @@ function videoStateFromRandomClient(zone: VideoZone, id: string, now: number) {
     : undefined
 }
 
-function initialVideoState(now = Date.now()): StoredVideoStateEntry[] {
-  return [
-    { zone: 'inside', id: videoTracks.inside, time: videoStartTimes.inside, updatedAt: now },
-    { zone: 'outside', id: videoTracks.outside, time: videoStartTimes.outside, updatedAt: now },
-    { zone: 'tent', id: videoTracks.tent, time: videoStartTimes.tent, updatedAt: now },
-  ]
+async function loadVideoQueues() {
+  const saved = await videoDb.get('queues') as StoredVideoQueues | undefined
+
+  return saved?.entries ?? []
 }
 
-async function loadVideoState() {
-  const saved = await videoDb.get('state') as StoredVideoState | undefined
-
-  return saved?.entries ?? initialVideoState()
-}
-
-async function saveVideoState() {
-  await videoDb.put('state', { entries: videoState })
+async function saveVideoQueues() {
+  await videoDb.put('queues', { entries: videoQueues })
 }
 
 async function loadVideoPlaylists() {
@@ -924,159 +906,151 @@ async function saveVideoPlaylists() {
   await videoDb.put('playlists', { entries: videoPlaylistOrders })
 }
 
-function videoAuthority(client: Client, zone = clientVideoZone(client)) {
-  if (!videoPlaylists[zone]) {
-    return true
-  }
-
-  ensureVideoAuthority(zone)
-
-  return videoAuthorities[zone] === client.id
-}
-
-function ensureVideoAuthority(zone: VideoZone) {
+function requestMissingVideoPlaylist(zone: VideoZone) {
   if (!videoPlaylists[zone]) {
     return
   }
 
-  const current = videoAuthorities[zone]
-
-  if (current && videoAuthorityActive(current, zone)) {
+  if (videoPlaylistOrders.some(entry => entry.zone === zone)) {
     return
   }
 
-  const candidates = [...clients.values()].filter(client => client.poseSynced && clientVideoZone(client) === zone)
-  const next = candidates[Math.floor(Math.random() * candidates.length)]
-
-  if (!next) {
-    if (current) {
-      delete videoAuthorities[zone]
-      broadcastVideoAuthority()
-    }
-    return
-  }
-
-  videoAuthorities[zone] = next.id
-  broadcastVideoAuthority()
-}
-
-function currentVideoAuthority() {
-  return (Object.keys(videoPlaylists) as VideoZone[]).map(zone => ({
-    zone,
-    id: videoAuthorities[zone] ?? 0,
-  }))
-}
-
-function videoAuthorityActive(id: number, zone: VideoZone) {
-  const client = [...clients.values()].find(client => client.id === id)
-
-  return Boolean(client && clientVideoZone(client) === zone)
-}
-
-async function applyVideoState(client: Client, entries: VideoStateEntry[]) {
-  let entry = entries[0]!
-  const zone = entry.zone
   const now = Date.now()
-  const current = videoState.find(current => current.zone === zone)!
-  const trackChanged = current.id !== entry.id
 
-  if (trackChanged && !videoAuthority(client, zone)) {
-    sendVideoState(client)
+  if (now - (videoPlaylistRequests[zone] ?? 0) < videoPlaylistRequestInterval) {
     return
   }
 
-  if (trackChanged && videoPlaylists[zone]) {
-    if (entry.time >= 0.5) {
-      sendVideoState(client)
-      return
-    }
+  const candidate = [...clients.values()]
+    .filter(client => client.poseSynced && clientVideoZone(client) === zone)
+    .sort((a, b) => a.id - b.id)[0]
 
-    entry = nextVideoPlaylistState(zone)
-  }
-
-  client.video = { ...entry, updatedAt: now }
-  videoState = videoState.map(current => current.zone === zone
-    ? { ...entry, updatedAt: now }
-    : current)
-  if (trackChanged) {
-    await saveVideoState()
-    delete forcedVideoJoins[zone]
-    broadcastVideoState()
+  if (candidate) {
+    videoPlaylistRequests[zone] = now
+    candidate.socket.send(encodeVideoPlaylistRequest({ zones: [zone] }))
   }
 }
 
-function nextVideoPlaylistState(zone: VideoZone): VideoStateEntry {
-  const current = videoState.find(entry => entry.zone === zone)!
-  const order = videoPlaylistOrders.find(entry => entry.zone === zone)!.ids
-  const index = order.indexOf(current.id)
-  const next = order[(index + 1) % order.length]!
+function applyVideoProgress(client: Client, entry: VideoProgressEntry) {
+  const queue = videoQueue(entry.zone)
 
-  return { zone, id: next, time: 0 }
+  if (entry.zone !== clientVideoZone(client)) {
+    throw new Error(`Invalid video progress zone ${entry.zone}`)
+  }
+
+  if (!queue) {
+    requestMissingVideoPlaylist(entry.zone)
+    return
+  }
+
+  if (entry.id !== queue.currentId) {
+    sendVideoSync(client)
+    return
+  }
+
+  client.video = { ...entry, updatedAt: Date.now() }
+}
+
+async function applyVideoEnded(client: Client, entry: VideoEndedEntry) {
+  const queue = videoQueue(entry.zone)
+
+  if (entry.zone !== clientVideoZone(client)) {
+    throw new Error(`Invalid video ended zone ${entry.zone}`)
+  }
+
+  if (!queue) {
+    requestMissingVideoPlaylist(entry.zone)
+    return
+  }
+
+  if (entry.id !== queue.currentId) {
+    return
+  }
+
+  const order = videoPlaylist(entry.zone)
+  const now = Date.now()
+  const currentId = queue.nextId
+  const nextId = randomVideoId(order.ids, new Set([currentId]))
+
+  setVideoQueue({ zone: entry.zone, currentId, nextId, time: 0, updatedAt: now })
+  clearClientVideoProgress(entry.zone)
+  await saveVideoQueues()
+  broadcastVideoSync(new Set([entry.zone]))
 }
 
 async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]) {
   const now = Date.now()
-  let changed = false
+  const changedZones = new Set<VideoZone>()
 
   for (const entry of entries) {
     const current = videoPlaylistOrders.find(current => current.zone === entry.zone)
-    const sourceKey = entry.ids.join('\n')
+    const ids = uniqueVideoIds(entry.ids)
+    const sourceKey = ids.join('\n')
 
-    if (current && current.sourceIds.join('\n') === sourceKey) {
+    if (current && current.ids.join('\n') === sourceKey && videoQueue(entry.zone)) {
       continue
     }
 
-    setVideoPlaylistOrder(entry.zone, entry.ids, now)
-    changed = true
+    setVideoPlaylistOrder(entry.zone, ids)
+    setRandomVideoQueue(entry.zone, now)
+    changedZones.add(entry.zone)
   }
 
-  if (changed) {
+  if (changedZones.size > 0) {
     await saveVideoPlaylists()
-    await saveVideoState()
-    broadcastVideoPlaylist()
-    broadcastVideoState()
+    await saveVideoQueues()
+    broadcastVideoSync(changedZones)
   }
 }
 
-function currentVideoPlaylist(): VideoPlaylistEntry[] {
-  return videoPlaylistOrders.map(entry => ({
-    zone: entry.zone,
-    ids: entry.ids,
-  }))
+function initializeVideoQueuesFromPlaylists(now: number) {
+  let changed = false
+
+  for (const entry of videoPlaylistOrders) {
+    if (!videoQueue(entry.zone)) {
+      setRandomVideoQueue(entry.zone, now)
+      changed = true
+    }
+  }
+
+  return changed
 }
 
-function setVideoPlaylistOrder(zone: VideoZone, sourceIds: string[], now: number) {
-  const current = videoState.find(entry => entry.zone === zone)!
-  const ids = shuffleVideoIds(sourceIds, current.id)
-
+function setVideoPlaylistOrder(zone: VideoZone, ids: string[]) {
   videoPlaylistOrders = [
     ...videoPlaylistOrders.filter(entry => entry.zone !== zone),
-    { zone, ids, sourceIds },
+    { zone, ids, sourceIds: ids },
   ]
-  videoState = videoState.map(entry => entry.zone === zone
-    ? { zone, id: ids[0]!, time: 0, updatedAt: now }
-    : entry)
 }
 
-function shuffleVideoIds(ids: string[], currentId: string) {
-  const uniqueIds = [...new Set(ids)]
-  const startIndexes = uniqueIds
-    .map((id, index) => ({ id, index }))
-    .filter(entry => entry.id !== currentId)
-  const startIndex = startIndexes[Math.floor(Math.random() * startIndexes.length)]?.index
-    ?? Math.floor(Math.random() * uniqueIds.length)
-  const start = uniqueIds[startIndex]!
-  const shuffled = uniqueIds.filter((_, index) => index !== startIndex)
+function setRandomVideoQueue(zone: VideoZone, now: number) {
+  const order = videoPlaylist(zone).ids
+  const currentId = randomVideoId(order)
+  const nextId = randomVideoId(order, new Set([currentId]))
 
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    const id = shuffled[i]!
+  setVideoQueue({ zone, currentId, nextId, time: 0, updatedAt: now })
+  clearClientVideoProgress(zone)
+}
 
-    shuffled[i] = shuffled[j]!
-    shuffled[j] = id
+function setVideoQueue(entry: StoredVideoQueueEntry) {
+  videoQueues = [
+    ...videoQueues.filter(queue => queue.zone !== entry.zone),
+    entry,
+  ]
+}
+
+function videoQueue(zone: VideoZone) {
+  return videoQueues.find(entry => entry.zone === zone)
+}
+
+function videoPlaylist(zone: VideoZone) {
+  const order = videoPlaylistOrders.find(entry => entry.zone === zone)
+
+  if (!order) {
+    throw new Error(`Missing video playlist ${zone}`)
   }
 
-  return [start, ...shuffled]
+  return order
 }
 
 function clientVideoZone(client: Client) {
@@ -1085,32 +1059,6 @@ function clientVideoZone(client: Client) {
 
 function roomVideoZone(room: number): VideoZone {
   return room === 1 ? 'inside' : room === 2 ? 'tent' : 'outside'
-}
-
-function validateVideoState(entries: VideoStateEntry[]) {
-  const seen = new Set<string>()
-
-  for (const entry of entries) {
-    if (seen.has(entry.zone)) {
-      throw new Error(`Duplicate video zone ${entry.zone}`)
-    }
-
-    if (!/^[\w-]{6,32}$/.test(entry.id)) {
-      throw new Error(`Invalid video id ${entry.id}`)
-    }
-
-    if (!Number.isFinite(entry.time) || entry.time < 0 || entry.time > 86400) {
-      throw new Error(`Invalid video time ${entry.time}`)
-    }
-
-    seen.add(entry.zone)
-  }
-
-  if (seen.size !== 1) {
-    throw new Error(`Invalid video state count ${seen.size}`)
-  }
-
-  return entries.map(entry => videoStateEntry(entry))
 }
 
 function validateVideoPlaylist(entries: VideoPlaylistEntry[]) {
@@ -1125,11 +1073,17 @@ function validateVideoPlaylist(entries: VideoPlaylistEntry[]) {
       throw new Error(`Duplicate video playlist zone ${entry.zone}`)
     }
 
-    if (entry.ids.length === 0 || entry.ids.length > 255) {
+    if (entry.ids.length > 255) {
       throw new Error(`Invalid video playlist length ${entry.ids.length}`)
     }
 
-    for (const id of entry.ids) {
+    const ids = uniqueVideoIds(entry.ids)
+
+    if (ids.length < 2) {
+      throw new Error(`Invalid video playlist length ${ids.length}`)
+    }
+
+    for (const id of ids) {
       if (!/^[\w-]{6,32}$/.test(id)) {
         throw new Error(`Invalid video playlist id ${id}`)
       }
@@ -1141,10 +1095,24 @@ function validateVideoPlaylist(entries: VideoPlaylistEntry[]) {
   return entries
 }
 
-function videoStateEntry(entry: VideoStateEntry): VideoStateEntry {
-  const time = videoStateTime(entry.zone, entry.id, entry.time)
+function validateVideoProgress(entry: VideoProgressEntry) {
+  if (!/^[\w-]{6,32}$/.test(entry.id)) {
+    throw new Error(`Invalid video progress id ${entry.id}`)
+  }
 
-  return { zone: entry.zone, id: entry.id, time }
+  if (!Number.isFinite(entry.time) || entry.time < 0 || entry.time > 86400) {
+    throw new Error(`Invalid video progress time ${entry.time}`)
+  }
+
+  return entry
+}
+
+function validateVideoEnded(entry: VideoEndedEntry) {
+  if (!/^[\w-]{6,32}$/.test(entry.id)) {
+    throw new Error(`Invalid video ended id ${entry.id}`)
+  }
+
+  return entry
 }
 
 function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
@@ -1300,29 +1268,20 @@ async function randomizeVideoTrack(zone: VideoZone) {
     return
   }
 
-  const order = videoPlaylistOrders.find(entry => entry.zone === zone)?.ids
-
-  if (!order) {
+  if (!videoPlaylistOrders.some(entry => entry.zone === zone)) {
     console.log(`Admin random track skipped: missing playlist order ${zone}`)
     return
   }
 
-  const current = videoState.find(entry => entry.zone === zone)!
-  const live = liveVideoIds(zone)
-  const currentId = mostReportedVideoId(live) ?? current.id
-  const id = randomVideoId(order, currentId, new Set(live.keys()))
+  setRandomVideoQueue(zone, now)
+  const queue = videoQueue(zone)!
 
-  console.log(`[video] random ${zone}: current=${currentId} next=${id} order=${order.length}`)
-  videoState = videoState.map(entry => entry.zone === zone
-    ? { zone, id, time: 0, updatedAt: now }
-    : entry)
-  forcedVideoJoins[zone] = { zone, id, time: 0, updatedAt: now }
-  clearClientVideoState(zone)
-  await saveVideoState()
-  broadcastVideoStateNow()
+  console.log(`[video] random ${zone}: current=${queue.currentId} next=${queue.nextId}`)
+  await saveVideoQueues()
+  broadcastVideoSync(new Set([zone]))
 }
 
-function clearClientVideoState(zone: VideoZone) {
+function clearClientVideoProgress(zone: VideoZone) {
   for (const client of clients.values()) {
     if (client.video?.zone === zone) {
       client.video = undefined
@@ -1330,39 +1289,19 @@ function clearClientVideoState(zone: VideoZone) {
   }
 }
 
-function liveVideoIds(zone: VideoZone) {
-  const ids = new Map<string, number>()
-
-  for (const client of clients.values()) {
-    if (client.video?.zone === zone) {
-      ids.set(client.video.id, (ids.get(client.video.id) ?? 0) + 1)
-    }
-  }
-
-  return ids
+function uniqueVideoIds(ids: string[]) {
+  return [...new Set(ids)]
 }
 
-function mostReportedVideoId(ids: Map<string, number>) {
-  let id: string | undefined
-  let count = 0
-
-  for (const [nextId, nextCount] of ids) {
-    if (nextCount > count) {
-      id = nextId
-      count = nextCount
-    }
-  }
-
-  return id
-}
-
-function randomVideoId(ids: string[], currentId: string, live: Set<string>) {
+function randomVideoId(ids: string[], exclude = new Set<string>()) {
   const uniqueIds = [...new Set(ids)]
-  const notLive = uniqueIds.filter(id => id !== currentId && !live.has(id))
-  const notCurrent = uniqueIds.filter(id => id !== currentId)
-  const choices = notLive.length > 0 ? notLive : notCurrent
+  const choices = uniqueIds.filter(id => !exclude.has(id))
 
-  return choices[Math.floor(Math.random() * choices.length)] ?? uniqueIds[Math.floor(Math.random() * uniqueIds.length)]!
+  if (choices.length === 0) {
+    throw new Error('Missing video choices')
+  }
+
+  return choices[Math.floor(Math.random() * choices.length)]!
 }
 
 async function banClient(id: number) {
@@ -1429,25 +1368,11 @@ function removeClient(client: Client) {
     return
   }
 
-  const releasedZones = releaseVideoAuthority(client)
+  const zone = clientVideoZone(client)
+
   removeFromRoom(client)
-  for (const zone of releasedZones) {
-    ensureVideoAuthority(zone)
-  }
+  requestMissingVideoPlaylist(zone)
   broadcastOnline()
-}
-
-function releaseVideoAuthority(client: Client) {
-  const released: VideoZone[] = []
-
-  for (const zone of Object.keys(videoAuthorities) as VideoZone[]) {
-    if (videoAuthorities[zone] === client.id) {
-      delete videoAuthorities[zone]
-      released.push(zone)
-    }
-  }
-
-  return released
 }
 
 function broadcastOnline() {

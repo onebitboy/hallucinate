@@ -2,11 +2,9 @@ import { jewelPalette } from './character-data.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { readClubState, writeClubState } from './club-state.ts'
-import { createDjVideoUi } from './dj-video-ui.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { normalizeIndex, setVec3 } from './math.ts'
-import { videoTracks } from './scene-data.ts'
-import type { Vec3, VideoZone } from './types.ts'
+import type { Vec3 } from './types.ts'
 
 export function restoreClubState(options: {
   camera: {
@@ -14,7 +12,6 @@ export function restoreClubState(options: {
     turn: number
   }
   characterPosition: Vec3
-  djVideoUi: ReturnType<typeof createDjVideoUi>
   hairController: ReturnType<typeof createCharacterHairController>
   setAlternativeInput: (value: boolean) => void
   idleClipIndex: {
@@ -50,9 +47,6 @@ export function restoreClubState(options: {
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
     options.styleController.bottomStyleIndex = normalizeIndex(state.bottomStyleIndex ?? state.pantsColorIndex
       ?? options.styleController.bottomStyleIndex, jewelPalette.length * 2)
-    restoreVideoState('inside', state, options.djVideoUi)
-    restoreVideoState('outside', state, options.djVideoUi)
-    restoreVideoState('tent', state, options.djVideoUi)
     options.setAlternativeInput(state.alternativeInput ?? true)
     options.styleController.setTopStyle()
     options.styleController.setBottomStyle()
@@ -66,7 +60,6 @@ export function saveClubState(options: {
   }
   characterAssetsLoaded: boolean
   characterPosition: Vec3
-  djVideoUi: ReturnType<typeof createDjVideoUi>
   hairController: ReturnType<typeof createCharacterHairController>
   alternativeInput: boolean
   idleClipIndex: number
@@ -79,8 +72,6 @@ export function saveClubState(options: {
   if (!options.characterAssetsLoaded) {
     return
   }
-
-  options.djVideoUi.syncCurrentTime()
 
   writeClubState(options.key, {
     character: options.characterPosition,
@@ -100,21 +91,5 @@ export function saveClubState(options: {
     alternativeInput: options.alternativeInput,
     nickname: options.nickname,
     room: options.room,
-    videoTrackIds: videoTracks,
-    videoTimes: options.djVideoUi.times,
-    videoTrackIndexes: options.djVideoUi.trackIndexes,
   })
-}
-
-function restoreVideoState(zone: VideoZone, state: NonNullable<ReturnType<typeof readClubState>>,
-  djVideoUi: ReturnType<typeof createDjVideoUi>)
-{
-  if (state.videoTrackIds?.[zone] === videoTracks[zone]) {
-    djVideoUi.times[zone] = state.videoTimes?.[zone] ?? 0
-    djVideoUi.trackIndexes[zone] = state.videoTrackIndexes?.[zone] ?? 0
-    return
-  }
-
-  djVideoUi.times[zone] = 0
-  djVideoUi.trackIndexes[zone] = 0
 }

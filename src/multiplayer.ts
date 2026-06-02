@@ -13,9 +13,8 @@ import {
   decodeServerMessage,
   decodeServerMotion,
   decodeSpawn,
-  decodeVideoAuthority,
-  decodeVideoPlaylist,
-  decodeVideoState,
+  decodeVideoPlaylistRequest,
+  decodeVideoSync,
   encodeAdminMessage,
   encodeClientMessage,
   encodeClientMotion,
@@ -24,8 +23,9 @@ import {
   encodeGraffiti,
   encodeKeys,
   encodeRoomChange,
+  encodeVideoEnded,
   encodeVideoPlaylist,
-  encodeVideoState,
+  encodeVideoProgress,
   MESSAGE,
   modeToProtocol,
   protocolToAngle,
@@ -39,17 +39,17 @@ import {
   S_SPAWN,
   sceneToProtocol,
   type SpawnPacket,
-  type VideoStateEntry,
-  type VideoAuthorityEntry,
+  type VideoEndedEntry,
   type VideoPlaylistEntry,
+  type VideoPlaylistRequestPacket,
+  type VideoProgressEntry,
+  type VideoSyncEntry,
   truncateMessage,
   BEACH_BALLS,
   GRAFFITI,
   MODERATION,
-  VIDEO_STATE,
-  VIDEO_STATE_NOW,
-  VIDEO_AUTHORITY,
-  VIDEO_PLAYLIST,
+  VIDEO_PLAYLIST_REQUEST,
+  VIDEO_SYNC,
 } from './protocol.ts'
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
 import type { BeachBall, CharacterMode, CircleBounds, GraffitiSplat, Player, Vec3 } from './types.ts'
@@ -77,24 +77,21 @@ export function createMultiplayer(options: {
   onDeleteMessages: (id: number) => void
   onLeave: (id: number) => void
   onOnlineCount: (count: number) => void
-  onVideoAuthority: (entries: VideoAuthorityEntry[]) => void
-  onVideoPlaylist: (entries: VideoPlaylistEntry[]) => void
-  onVideoState: (entries: VideoStateEntry[], preserveSameTrack: boolean, immediate: boolean) => void
+  onVideoPlaylistRequest: (zones: VideoPlaylistRequestPacket['zones']) => void
+  onVideoSync: (entries: VideoSyncEntry[]) => void
   onBeachBalls: (balls: BeachBall[]) => void
   onGraffiti: (splats: GraffitiSplat[]) => void
-  videoState: () => VideoStateEntry[]
+  videoProgress: () => VideoProgressEntry | undefined
 }) {
   const players = new Map<number, Player>()
   const heartbeatInterval = 5_000
-  const videoSyncInterval = 2_000
+  const videoProgressInterval = 2_000
   const reconnectDelay = 1_500
   let heartbeat = 0
-  let videoSync = 0
+  let videoProgress = 0
   let reconnect = 0
   let closed = false
   let connectedOnce = false
-  let preserveVideoState = false
-  let receivedVideoState = false
   const pending: ArrayBuffer[] = []
   let selfId = 0
   let room = options.initialRoom
@@ -109,11 +106,10 @@ export function createMultiplayer(options: {
 
     next.binaryType = 'arraybuffer'
     next.addEventListener('open', () => {
-      preserveVideoState = connectedOnce
       connectedOnce = true
       clearTimeout(reconnect)
       heartbeat = setInterval(() => send(encodeHeartbeat()), heartbeatInterval)
-      videoSync = setInterval(() => sendVideoState(), videoSyncInterval)
+      videoProgress = setInterval(() => sendVideoProgress(), videoProgressInterval)
       room = options.initialRoom
       sendMotion()
       send(encodeRoomChange(room))
@@ -121,7 +117,7 @@ export function createMultiplayer(options: {
     })
     next.addEventListener('close', event => {
       clearInterval(heartbeat)
-      clearInterval(videoSync)
+      clearInterval(videoProgress)
 
       if (event.code === 1012 && event.reason === 'version') {
         location.reload()
@@ -221,27 +217,13 @@ export function createMultiplayer(options: {
       return
     }
 
-    if (type === VIDEO_STATE) {
-      options.onVideoState(decodeVideoState(view).entries, preserveVideoState || receivedVideoState, false)
-      receivedVideoState = true
-      preserveVideoState = false
+    if (type === VIDEO_SYNC) {
+      options.onVideoSync(decodeVideoSync(view).entries)
       return
     }
 
-    if (type === VIDEO_STATE_NOW) {
-      options.onVideoState(decodeVideoState(view).entries, false, true)
-      receivedVideoState = true
-      preserveVideoState = false
-      return
-    }
-
-    if (type === VIDEO_AUTHORITY) {
-      options.onVideoAuthority(decodeVideoAuthority(view).entries)
-      return
-    }
-
-    if (type === VIDEO_PLAYLIST) {
-      options.onVideoPlaylist(decodeVideoPlaylist(view).entries)
+    if (type === VIDEO_PLAYLIST_REQUEST) {
+      options.onVideoPlaylistRequest(decodeVideoPlaylistRequest(view).zones)
       return
     }
 
@@ -316,12 +298,20 @@ export function createMultiplayer(options: {
     lastHeight = height
   }
 
-  function sendVideoState() {
-    send(encodeVideoState({ entries: options.videoState() }))
+  function sendVideoProgress() {
+    const entry = options.videoProgress()
+
+    if (entry) {
+      send(encodeVideoProgress({ entry }))
+    }
   }
 
   function sendVideoPlaylist(entries: VideoPlaylistEntry[]) {
     send(encodeVideoPlaylist({ entries }))
+  }
+
+  function sendVideoEnded(entry: VideoEndedEntry) {
+    send(encodeVideoEnded({ entry }))
   }
 
   return {
@@ -349,7 +339,8 @@ export function createMultiplayer(options: {
       queue(encodeAdminMessage({ pass, command, id }))
     },
     sendMotion,
-    sendVideoState,
+    sendVideoEnded,
+    sendVideoProgress,
     sendVideoPlaylist,
     sendBeachBalls(balls: BeachBall[]) {
       send(encodeBeachBalls({ balls }))
@@ -371,7 +362,7 @@ export function createMultiplayer(options: {
     close() {
       closed = true
       clearInterval(heartbeat)
-      clearInterval(videoSync)
+      clearInterval(videoProgress)
       clearTimeout(reconnect)
       socket.close()
     },

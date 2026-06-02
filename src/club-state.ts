@@ -1,4 +1,4 @@
-import type { Vec3, VideoZone } from './types.ts'
+import type { Vec3 } from './types.ts'
 
 export type ClubState = {
   character: Vec3
@@ -18,9 +18,6 @@ export type ClubState = {
   alternativeInput?: boolean
   nickname?: string
   room?: number
-  videoTrackIds?: Partial<Record<VideoZone, string>>
-  videoTimes?: Partial<Record<VideoZone, number>>
-  videoTrackIndexes?: Partial<Record<VideoZone, number>>
 }
 
 export function readClubState(key: string) {

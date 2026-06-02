@@ -10,19 +10,20 @@ export const S_SPAWN = 7
 export const MESSAGE = 8
 export const C_HEARTBEAT = 9
 export const S_ONLINE = 10
-export const VIDEO_STATE = 11
+export const VIDEO_SYNC = 11
 export const BEACH_BALLS = 12
 export const GRAFFITI = 13
 export const ADMIN = 14
 export const MODERATION = 15
-export const VIDEO_AUTHORITY = 16
+export const VIDEO_PROGRESS = 16
 export const VIDEO_PLAYLIST = 17
-export const VIDEO_STATE_NOW = 18
+export const VIDEO_ENDED = 18
+export const VIDEO_PLAYLIST_REQUEST = 19
 
 export const roomCount = 3
 export const messageMaxLength = 120
 export const positionScale = 100
-export const protocolVersion = 30
+export const protocolVersion = 31
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -55,23 +56,38 @@ export type MessagePacket = {
   text: string
 }
 
-export type VideoStateEntry = {
+export type VideoSyncEntry = {
+  zone: VideoZone
+  currentId: string
+  nextId: string
+  time: number
+}
+
+export type VideoSyncPacket = {
+  entries: VideoSyncEntry[]
+}
+
+export type VideoProgressEntry = {
   zone: VideoZone
   id: string
   time: number
 }
 
-export type VideoStatePacket = {
-  entries: VideoStateEntry[]
+export type VideoProgressPacket = {
+  entry: VideoProgressEntry
 }
 
-export type VideoAuthorityEntry = {
+export type VideoEndedEntry = {
   zone: VideoZone
-  id: number
+  id: string
 }
 
-export type VideoAuthorityPacket = {
-  entries: VideoAuthorityEntry[]
+export type VideoEndedPacket = {
+  entry: VideoEndedEntry
+}
+
+export type VideoPlaylistRequestPacket = {
+  zones: VideoZone[]
 }
 
 export type VideoPlaylistEntry = {
@@ -202,55 +218,57 @@ export function decodeOnline(view: DataView) {
   return view.getUint16(1)
 }
 
-export function encodeVideoState(packet: VideoStatePacket) {
-  return encodeVideoStateType(VIDEO_STATE, packet)
-}
-
-export function encodeVideoStateNow(packet: VideoStatePacket) {
-  return encodeVideoStateType(VIDEO_STATE_NOW, packet)
-}
-
-function encodeVideoStateType(type: number, packet: VideoStatePacket) {
+export function encodeVideoSync(packet: VideoSyncPacket) {
   const encoded = packet.entries.map(entry => ({
     ...entry,
-    bytes: textEncoder.encode(entry.id),
+    currentBytes: textEncoder.encode(entry.currentId),
+    nextBytes: textEncoder.encode(entry.nextId),
   }))
-  const size = 2 + encoded.reduce((total, entry) => total + 7 + entry.bytes.length, 0)
+  const size = 2 + encoded.reduce((total, entry) =>
+    total + 9 + entry.currentBytes.length + entry.nextBytes.length, 0)
   const data = new ArrayBuffer(size)
   const view = new DataView(data)
   let offset = 2
 
-  view.setUint8(0, type)
+  view.setUint8(0, VIDEO_SYNC)
   view.setUint8(1, encoded.length)
 
   for (const entry of encoded) {
     view.setUint8(offset, videoZoneToProtocol(entry.zone))
     view.setUint32(offset + 1, Math.round(entry.time * 1000))
-    view.setUint16(offset + 5, entry.bytes.length)
-    new Uint8Array(data, offset + 7).set(entry.bytes)
-    offset += 7 + entry.bytes.length
+    view.setUint16(offset + 5, entry.currentBytes.length)
+    new Uint8Array(data, offset + 7).set(entry.currentBytes)
+    offset += 7 + entry.currentBytes.length
+    view.setUint16(offset, entry.nextBytes.length)
+    new Uint8Array(data, offset + 2).set(entry.nextBytes)
+    offset += 2 + entry.nextBytes.length
   }
 
   return data
 }
 
-export function decodeVideoState(view: DataView): VideoStatePacket {
+export function decodeVideoSync(view: DataView): VideoSyncPacket {
   expectAtLeastSize(view, 2)
 
   const count = view.getUint8(1)
-  const entries: VideoStateEntry[] = []
+  const entries: VideoSyncEntry[] = []
   let offset = 2
 
   for (let i = 0; i < count; i++) {
     expectAtLeastSize(view, offset + 7)
     const zone = protocolToVideoZone(view.getUint8(offset))
     const time = view.getUint32(offset + 1) / 1000
-    const length = view.getUint16(offset + 5)
-    expectAtLeastSize(view, offset + 7 + length)
-    const id = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 7, length))
+    const currentLength = view.getUint16(offset + 5)
+    expectAtLeastSize(view, offset + 7 + currentLength + 2)
+    const currentId = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 7, currentLength))
 
-    entries.push({ zone, id, time })
-    offset += 7 + length
+    offset += 7 + currentLength
+    const nextLength = view.getUint16(offset)
+    expectAtLeastSize(view, offset + 2 + nextLength)
+    const nextId = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 2, nextLength))
+
+    entries.push({ zone, currentId, nextId, time })
+    offset += 2 + nextLength
   }
 
   expectSize(view, offset)
@@ -258,39 +276,82 @@ export function decodeVideoState(view: DataView): VideoStatePacket {
   return { entries }
 }
 
-export function encodeVideoAuthority(packet: VideoAuthorityPacket) {
-  const data = new ArrayBuffer(2 + packet.entries.length * 3)
+export function encodeVideoProgress(packet: VideoProgressPacket) {
+  const bytes = textEncoder.encode(packet.entry.id)
+  const data = new ArrayBuffer(8 + bytes.length)
   const view = new DataView(data)
-  let offset = 2
 
-  view.setUint8(0, VIDEO_AUTHORITY)
-  view.setUint8(1, packet.entries.length)
-
-  for (const entry of packet.entries) {
-    view.setUint8(offset, videoZoneToProtocol(entry.zone))
-    view.setUint16(offset + 1, entry.id)
-    offset += 3
-  }
+  view.setUint8(0, VIDEO_PROGRESS)
+  view.setUint8(1, videoZoneToProtocol(packet.entry.zone))
+  view.setUint32(2, Math.round(packet.entry.time * 1000))
+  view.setUint16(6, bytes.length)
+  new Uint8Array(data, 8).set(bytes)
 
   return data
 }
 
-export function decodeVideoAuthority(view: DataView): VideoAuthorityPacket {
+export function decodeVideoProgress(view: DataView): VideoProgressPacket {
+  expectAtLeastSize(view, 8)
+  const length = view.getUint16(6)
+  expectSize(view, 8 + length)
+
+  return {
+    entry: {
+      zone: protocolToVideoZone(view.getUint8(1)),
+      time: view.getUint32(2) / 1000,
+      id: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 8, length)),
+    },
+  }
+}
+
+export function encodeVideoEnded(packet: VideoEndedPacket) {
+  const bytes = textEncoder.encode(packet.entry.id)
+  const data = new ArrayBuffer(4 + bytes.length)
+  const view = new DataView(data)
+
+  view.setUint8(0, VIDEO_ENDED)
+  view.setUint8(1, videoZoneToProtocol(packet.entry.zone))
+  view.setUint16(2, bytes.length)
+  new Uint8Array(data, 4).set(bytes)
+
+  return data
+}
+
+export function decodeVideoEnded(view: DataView): VideoEndedPacket {
+  expectAtLeastSize(view, 4)
+  const length = view.getUint16(2)
+  expectSize(view, 4 + length)
+
+  return {
+    entry: {
+      zone: protocolToVideoZone(view.getUint8(1)),
+      id: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 4, length)),
+    },
+  }
+}
+
+export function encodeVideoPlaylistRequest(packet: VideoPlaylistRequestPacket) {
+  const data = new ArrayBuffer(2 + packet.zones.length)
+  const view = new DataView(data)
+
+  view.setUint8(0, VIDEO_PLAYLIST_REQUEST)
+  view.setUint8(1, packet.zones.length)
+  packet.zones.forEach((zone, index) => view.setUint8(2 + index, videoZoneToProtocol(zone)))
+
+  return data
+}
+
+export function decodeVideoPlaylistRequest(view: DataView): VideoPlaylistRequestPacket {
   expectAtLeastSize(view, 2)
   const count = view.getUint8(1)
-  expectSize(view, 2 + count * 3)
-  const entries: VideoAuthorityEntry[] = []
-  let offset = 2
+  expectSize(view, 2 + count)
+  const zones: VideoZone[] = []
 
   for (let i = 0; i < count; i++) {
-    entries.push({
-      zone: protocolToVideoZone(view.getUint8(offset)),
-      id: view.getUint16(offset + 1),
-    })
-    offset += 3
+    zones.push(protocolToVideoZone(view.getUint8(2 + i)))
   }
 
-  return { entries }
+  return { zones }
 }
 
 export function encodeVideoPlaylist(packet: VideoPlaylistPacket) {

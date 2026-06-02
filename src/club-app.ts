@@ -30,6 +30,7 @@ import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint } from './projection.ts'
+import type { VideoEndedEntry } from './protocol.ts'
 import { outsideBounds, outsideBuddha, outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
@@ -189,14 +190,12 @@ const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
 let nickname = savedState?.nickname ?? ''
 const adminIdRoot = document.createElement('div')
-const videoAuthorityZones = new Set<VideoZone>()
-let sendVideoStateNow = () => {}
+let sendVideoEndedNow = (_entry: VideoEndedEntry) => {}
 let sendVideoPlaylistNow = (_zone: VideoZone, _ids: string[]) => {}
 const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
   recoverFocus: () => canvas.focus(),
-  isAuthority: zone => videoAuthorityZones.has(zone),
+  onEnded: entry => sendVideoEndedNow(entry),
   onPlaylistDiscovered: (zone, ids) => sendVideoPlaylistNow(zone, ids),
-  onStateChanged: () => sendVideoStateNow(),
 })
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
@@ -321,12 +320,6 @@ adminBanIdSubmit.addEventListener('click', () => {
 adminRandomTrackSubmit.addEventListener('click', () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
-  const playlists = djVideoUi.playlists()
-
-  if (playlists.length > 0) {
-    multiplayer.sendVideoPlaylist(playlists)
-  }
-
   multiplayer.sendAdmin(adminPass, 'randomTrack', videoZoneRoom(djVideoUi.zone))
 })
 
@@ -772,7 +765,6 @@ gl.clearColor(0.01, 0.01, 0.014, 1.0)
 restoreClubState({
   camera: cameraController,
   characterPosition,
-  djVideoUi,
   hairController,
   idleClipCount: idleClipNames.length,
   idleClipIndex: idleClipState,
@@ -895,16 +887,8 @@ multiplayer = createMultiplayer({
   onOnlineCount: count => {
     onlineCount.textContent = `${count} online`
   },
-  onVideoAuthority: entries => {
-    videoAuthorityZones.clear()
-    for (const entry of entries) {
-      if (entry.id === multiplayer.selfId) {
-        videoAuthorityZones.add(entry.zone)
-      }
-    }
-  },
-  onVideoPlaylist: entries => djVideoUi.applyPlaylists(entries),
-  onVideoState: (entries, preserveSameTrack, immediate) => djVideoUi.applyStates(entries, preserveSameTrack, immediate),
+  onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
+  onVideoSync: entries => djVideoUi.applySync(entries),
   onBeachBalls: balls => {
     const stamp = performance.now()
 
@@ -957,9 +941,9 @@ multiplayer = createMultiplayer({
       scheduleGraffitiTexturePaint(appended, false)
     }
   },
-  videoState: () => [djVideoUi.state()],
+  videoProgress: () => djVideoUi.progress(),
 })
-sendVideoStateNow = () => multiplayer.sendVideoState()
+sendVideoEndedNow = entry => multiplayer.sendVideoEnded(entry)
 sendVideoPlaylistNow = (zone, ids) => multiplayer.sendVideoPlaylist([{ zone, ids }])
 clubGlobal.clubMultiplayerClose = () => multiplayer.close()
 
@@ -1015,7 +999,6 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(r
     camera: cameraController,
     characterAssetsLoaded,
     characterPosition,
-    djVideoUi,
     alternativeInput,
     hairController,
     idleClipIndex,
