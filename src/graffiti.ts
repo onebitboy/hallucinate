@@ -1,7 +1,7 @@
-import { pack } from './geometry.ts'
 import { characterFloor } from './character-data.ts'
-import { outsideToiletDoor, outsideToilets, roomBounds, tent, tentDoor, tentDoorAngle } from './scene-data.ts'
+import { pack } from './geometry.ts'
 import type { WallProjector } from './projection.ts'
+import { outsideToiletDoor, outsideToilets, roomBounds, tent, tentDoor, tentDoorAngle } from './scene-data.ts'
 import type { GraffitiSplat, Vec3, Vertex } from './types.ts'
 
 export const maxGraffitiSplats = 100000
@@ -67,8 +67,11 @@ const wallYMin = characterFloor + 0.03
 const wallYMax = 5
 const wallMargin = 0.03
 const wallEpsilon = 0.09
-const splatBaseScale = 0.38
-const splatRadiusScale = 1.9
+const splatBaseScale = 0.24
+const splatRadiusScale = 2.3
+const screenSplatNear = 1
+const screenSplatRange = 25
+const screenSplatPower = 2.2
 const graffitiAtlasColumns = 4
 const toiletLeft = outsideToilets.x - outsideToilets.width / 2
 const toiletRight = outsideToilets.x + outsideToilets.width / 2
@@ -183,6 +186,13 @@ export function createGraffitiCanvas() {
   return canvas
 }
 
+export function graffitiRadiusForScreenDistance(distance: number) {
+  const t = Math.max(0, Math.min(1, (distance - screenSplatNear) / screenSplatRange))
+  const scale = splatBaseScale + Math.pow(t, screenSplatPower) * splatRadiusScale
+
+  return Math.max(0, Math.min(255, Math.round((scale - splatBaseScale) / splatRadiusScale * 255)))
+}
+
 export function paintGraffitiSplats(context: CanvasRenderingContext2D, splats: GraffitiSplat[]) {
   for (const splat of splats) {
     paintGraffitiSplat(context, splat)
@@ -213,9 +223,11 @@ function screenRay(clientX: number, clientY: number, projector: WallProjector) {
 function wallHit(wallIndex: number, ray: ScreenRay) {
   const wall = wallAt(wallIndex)
 
-  return wall.kind === 'plane' ? planeWallHit(wall, ray)
-    : wall.kind === 'cylinder' ? cylinderWallHit(wall, ray)
-      : coneWallHit(wall, ray)
+  return wall.kind === 'plane'
+    ? planeWallHit(wall, ray)
+    : wall.kind === 'cylinder'
+    ? cylinderWallHit(wall, ray)
+    : coneWallHit(wall, ray)
 }
 
 function planeWallHit(wall: PlaneGraffitiWall, ray: ScreenRay) {
@@ -420,15 +432,15 @@ function addPlaneGraffitiWallSurface(target: Vertex[], wallIndex: number, wall: 
   if (wall.axis === 'x') {
     const x = wall.value + wall.normal[0] * wallEpsilon * side
 
-    addGraffitiQuad(target, [x, wall.yMin, wall.min], [x, wall.yMin, wall.max], [x, wall.yMax, wall.max],
-      [x, wall.yMax, wall.min], u0, v0, u1, v1)
+    addGraffitiQuad(target, [x, wall.yMin, wall.min], [x, wall.yMin, wall.max], [x, wall.yMax, wall.max], [x, wall.yMax,
+      wall.min], u0, v0, u1, v1)
     return
   }
 
   const z = wall.value + wall.normal[2] * wallEpsilon * side
 
-  addGraffitiQuad(target, [wall.min, wall.yMin, z], [wall.max, wall.yMin, z], [wall.max, wall.yMax, z],
-    [wall.min, wall.yMax, z], u0, v0, u1, v1)
+  addGraffitiQuad(target, [wall.min, wall.yMin, z], [wall.max, wall.yMin, z], [wall.max, wall.yMax, z], [wall.min,
+    wall.yMax, z], u0, v0, u1, v1)
 }
 
 function addCylinderGraffitiWallSurface(
@@ -536,7 +548,9 @@ function wallTextureBounds(wall: number) {
   return [u0, v0, u1, v1] as const
 }
 
-function addSplatQuad(target: Vertex[], center: Vec3, tangent: Vec3, up: Vec3, sizeX: number, sizeY: number, color: Vec3) {
+function addSplatQuad(target: Vertex[], center: Vec3, tangent: Vec3, up: Vec3, sizeX: number, sizeY: number,
+  color: Vec3)
+{
   const a = offset(center, tangent, up, -sizeX, -sizeY)
   const b = offset(center, tangent, up, sizeX, -sizeY)
   const c = offset(center, tangent, up, sizeX, sizeY)

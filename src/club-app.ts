@@ -17,6 +17,7 @@ import {
   addGraffitiWallGeometry,
   createGraffitiCanvas,
   graffitiColors,
+  graffitiRadiusForScreenDistance,
   maxGraffitiSplats,
   paintGraffitiSplats,
   sprayWallPoint,
@@ -1228,7 +1229,7 @@ function sprayAt(clientX: number, clientY: number) {
     y: hit.y,
     seed: graffitiSeed++ & 0xffff,
     colorIndex: (styleController.accessoryIndex - glowstickColors.length - 1) % graffitiColors.length,
-    radius: graffitiRadius(hit.distance),
+    radius: graffitiRadiusForScreenDistance(hit.distance),
   }
 
   graffitiSplats.push(splat)
@@ -1240,14 +1241,6 @@ function sprayAt(clientX: number, clientY: number) {
     paintGraffitiTexture([splat])
   }
   multiplayer.sendGraffiti([splat])
-}
-
-function graffitiRadius(distance: number) {
-  const start = 1.5
-  const range = 10
-  const t = Math.max(0, Math.min(1, (distance - start) / range))
-
-  return Math.round(Math.pow(t, 5) * 255)
 }
 
 function addGraffitiId(splat: import('./types.ts').GraffitiSplat) {
