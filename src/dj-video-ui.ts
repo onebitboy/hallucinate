@@ -1,5 +1,5 @@
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
-import { projectedQuadTransform, projectWallPointInto } from './projection.ts'
+import { projectedQuadTransform, projectWallPointWithMinDepthInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
 import { djVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists } from './scene-data.ts'
 import { roomAt } from './scene.ts'
@@ -15,6 +15,7 @@ type VideoTrackState = {
 
 const endedState = 0
 const endedTimeTolerance = 5
+const videoNearDepth = 0.05
 const playlistDiscoveryDelay = 1000
 const playlistDiscoveryAttempts = 5
 const syncSeekTolerance = 2
@@ -251,10 +252,10 @@ export function createDjVideoUi(
         setPoint(cornerD, left, top, wall.z)
       }
 
-      projectWallPointInto(cornerA, projector, pointA)
-      projectWallPointInto(cornerB, projector, pointB)
-      projectWallPointInto(cornerC, projector, pointC)
-      projectWallPointInto(cornerD, projector, pointD)
+      projectWallPointWithMinDepthInto(cornerA, projector, pointA, videoNearDepth)
+      projectWallPointWithMinDepthInto(cornerB, projector, pointB, videoNearDepth)
+      projectWallPointWithMinDepthInto(cornerC, projector, pointC, videoNearDepth)
+      projectWallPointWithMinDepthInto(cornerD, projector, pointD, videoNearDepth)
 
       setElementStyle('opacity', '0.74')
       setInsideStyle('opacity', zone === 'inside' ? '1' : '0')

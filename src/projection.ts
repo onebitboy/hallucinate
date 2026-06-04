@@ -211,13 +211,22 @@ export function projectWallPoint(point: Vec3, projector: WallProjector) {
 }
 
 export function projectWallPointInto(point: Vec3, projector: WallProjector, target: ProjectedPoint) {
+  return projectWallPointWithMinDepthInto(point, projector, target, 0)
+}
+
+export function projectWallPointWithMinDepthInto(
+  point: Vec3,
+  projector: WallProjector,
+  target: ProjectedPoint,
+  minDepth: number,
+) {
   const relativeX = point[0] - projector.eyeX
   const relativeY = point[1] - projector.eyeY
   const relativeZ = point[2] - projector.eyeZ
   const viewX = projector.cameraXX * relativeX + projector.cameraXY * relativeY + projector.cameraXZ * relativeZ
   const viewY = projector.cameraYX * relativeX + projector.cameraYY * relativeY + projector.cameraYZ * relativeZ
   const viewZ = projector.cameraZX * relativeX + projector.cameraZY * relativeY + projector.cameraZZ * relativeZ
-  const depth = -viewZ
+  const depth = Math.max(-viewZ, minDepth)
   const ndcX = (viewX * projector.f / projector.aspect) / depth
   const ndcY = (viewY * projector.f) / depth
 
