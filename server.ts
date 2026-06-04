@@ -109,6 +109,7 @@ const heartbeatInterval = 10_000
 const clientTimeout = 30_000
 const onlineActivityTimeout = 5 * 60_000
 const chatHistoryMax = 15
+const graffitiPacketSplats = 4000
 const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
 const maxClientStep = 1.2
@@ -911,7 +912,7 @@ function sendBeachBalls(client: Client) {
 }
 
 function sendGraffiti(client: Client) {
-  client.socket.send(encodeGraffiti({ splats: graffitiSplats }))
+  sendGraffitiSplats(client.socket, graffitiSplats)
 }
 
 function sendVideoSync(client: Client) {
@@ -1565,10 +1566,14 @@ function banClients(id: number, banned: Client[]) {
 }
 
 function broadcastGraffiti(splats: GraffitiSplat[]) {
-  const data = encodeGraffiti({ splats })
-
   for (const client of clients.values()) {
-    client.socket.send(data)
+    sendGraffitiSplats(client.socket, splats)
+  }
+}
+
+function sendGraffitiSplats(socket: Bun.ServerWebSocket<SocketData>, splats: GraffitiSplat[]) {
+  for (let i = 0; i < splats.length; i += graffitiPacketSplats) {
+    socket.send(encodeGraffiti({ splats: splats.slice(i, i + graffitiPacketSplats) }))
   }
 }
 

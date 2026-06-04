@@ -4,7 +4,7 @@ import type { WallProjector } from './projection.ts'
 import { outsideToiletDoor, outsideToilets, roomBounds, tent, tentDoor, tentDoorAngle } from './scene-data.ts'
 import type { GraffitiSplat, Vec3, Vertex } from './types.ts'
 
-export const maxGraffitiSplats = 100000
+export const maxGraffitiSplats = 60000
 export const graffitiTextureSize = 1024
 export const graffitiColors: Vec3[] = [
   [0.015, 0.012, 0.01],
