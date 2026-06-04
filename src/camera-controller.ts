@@ -6,6 +6,7 @@ import type { Vec3 } from './types.ts'
 
 const insideCameraFront = roomBounds.front - 0.2
 const manualCameraHoldTime = 5000
+const cameraBouncePauseTime = 2500
 const dragMoveThreshold = 3
 
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {
@@ -19,6 +20,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let dragMoved = false
   let holdingManualCamera = false
   let manualCameraHoldUntil = 0
+  let cameraBouncePausedUntil = 0
   let returning = false
   let wasMoving = false
 
@@ -43,6 +45,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     pitch = clamp(pitch + dy * 0.018, -2.4, 4.2)
     holdingManualCamera = true
     manualCameraHoldUntil = performance.now() + manualCameraHoldTime
+    cameraBouncePausedUntil = performance.now() + cameraBouncePauseTime
     dragX = x
     dragY = y
   }
@@ -174,8 +177,10 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       const cameraOutside = isOutside(position)
       const crossingOutside = outside && !cameraOutside
       const time = performance.now() * 0.001
-      const distance = bounceActive && !outside ? cameraDanceDistance(time) : 2.2
-      const bounce = bounceActive ? cameraDanceBounce(time) : 0
+      const bouncePaused = dragging || performance.now() < cameraBouncePausedUntil
+      const bounceAllowed = bounceActive && !bouncePaused
+      const distance = bounceAllowed && !outside ? cameraDanceDistance(time) : 2.2
+      const bounce = bounceAllowed ? cameraDanceBounce(time) : 0
       const ideal: Vec3 = [
         characterPosition[0] - Math.sin(turn) * distance,
         characterPosition[1] + 1.35 + pitch + bounce,
