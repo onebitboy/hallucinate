@@ -1,4 +1,4 @@
-import { open } from 'lmdb'
+import { Database } from 'bun:sqlite'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
@@ -109,8 +109,9 @@ const maxClientStep = 1.2
 const maxHairIndex = 32
 const memoryAssetMaxSize = 2 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
-const videoDbPath = process.env.CLUB_VIDEO_DB ?? join(import.meta.dir, 'data', 'video.lmdb')
-const videoDb = open<StoredVideoQueues | StoredVideoPlaylists>({ path: videoDbPath, compression: true })
+const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
+const db = new Database(dbPath, { create: true, strict: true })
+setupDb()
 let videoQueues = await loadVideoQueues()
 let videoPlaylistOrders = await loadVideoPlaylists()
 const videoPlaylistRequestInterval = 3000
@@ -121,10 +122,6 @@ if (initializeVideoQueuesFromPlaylists(Date.now())) {
 let beachBalls = createBeachBalls()
 const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
-const graffitiDbPath = process.env.CLUB_GRAFFITI_DB ?? join(import.meta.dir, 'data', 'graffiti.lmdb')
-const graffitiDb = open<GraffitiSplat>({ path: graffitiDbPath, compression: true })
-const banDbPath = process.env.CLUB_BAN_DB ?? join(import.meta.dir, 'data', 'bans.lmdb')
-const banDb = open<string>({ path: banDbPath, compression: true })
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
 let graffitiSplats = await loadGraffitiSplats()
@@ -937,24 +934,57 @@ function videoProgressFromRandomClient(zone: VideoZone, id: string, now: number)
     : undefined
 }
 
+function setupDb() {
+  db.run('PRAGMA journal_mode = WAL;')
+  db.run(`
+    CREATE TABLE IF NOT EXISTS kv (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS graffiti (
+      id INTEGER PRIMARY KEY,
+      wall INTEGER NOT NULL,
+      x REAL NOT NULL,
+      y REAL NOT NULL,
+      seed INTEGER NOT NULL,
+      color_index INTEGER NOT NULL,
+      radius INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS bans (
+      value TEXT PRIMARY KEY
+    );
+  `)
+}
+
+function loadJson<T>(key: string): T | undefined {
+  const row = db.query<{ value: string }, { key: string }>('SELECT value FROM kv WHERE key = $key').get({ key })
+
+  return row ? JSON.parse(row.value) as T : undefined
+}
+
+function saveJson(key: string, value: unknown) {
+  db.query('INSERT INTO kv (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run({ key, value: JSON.stringify(value) })
+}
+
 async function loadVideoQueues() {
-  const saved = await videoDb.get('queues') as StoredVideoQueues | undefined
+  const saved = loadJson<StoredVideoQueues>('queues')
 
   return saved?.entries ?? []
 }
 
 async function saveVideoQueues() {
-  await videoDb.put('queues', { entries: videoQueues })
+  saveJson('queues', { entries: videoQueues })
 }
 
 async function loadVideoPlaylists() {
-  const saved = await videoDb.get('playlists') as StoredVideoPlaylists | undefined
+  const saved = loadJson<StoredVideoPlaylists>('playlists')
 
   return saved?.entries ?? []
 }
 
 async function saveVideoPlaylists() {
-  await videoDb.put('playlists', { entries: videoPlaylistOrders })
+  saveJson('playlists', { entries: videoPlaylistOrders })
 }
 
 function requestMissingVideoPlaylist(zone: VideoZone) {
@@ -1258,49 +1288,62 @@ function validateGraffiti(splats: GraffitiSplat[]) {
 
 async function saveGraffiti(splats: GraffitiSplat[]) {
   const saved: GraffitiSplat[] = []
+  const insert = db.query(`
+    INSERT INTO graffiti (id, wall, x, y, seed, color_index, radius)
+    VALUES ($id, $wall, $x, $y, $seed, $colorIndex, $radius)
+  `)
+  const remove = db.query('DELETE FROM graffiti WHERE id = $id')
 
   for (const splat of splats) {
     const next = { ...splat, id: nextGraffitiId++ }
 
     graffitiSplats.push(next)
     saved.push(next)
-    await graffitiDb.put(next.id, next)
+    insert.run(next)
   }
 
   while (graffitiSplats.length > maxGraffitiSplats) {
     const removed = graffitiSplats.shift()!
 
-    await graffitiDb.remove(removed.id)
+    remove.run({ id: removed.id })
   }
 
   return saved
 }
 
 async function loadGraffitiSplats() {
-  const splats: GraffitiSplat[] = []
+  const splats = db.query<{
+    id: number
+    wall: number
+    x: number
+    y: number
+    seed: number
+    colorIndex: number
+    radius: number
+  }, []>(`
+    SELECT id, wall, x, y, seed, color_index AS colorIndex, radius
+    FROM graffiti
+    ORDER BY id
+  `).all()
 
-  for await (const { value } of graffitiDb.getRange()) {
-    splats.push({ ...value, radius: value.radius ?? 96 })
-  }
-
-  splats.sort((a, b) => a.id - b.id)
   const removed = splats.splice(0, Math.max(0, splats.length - maxGraffitiSplats))
+  const remove = db.query('DELETE FROM graffiti WHERE id = $id')
 
   for (const splat of removed) {
-    await graffitiDb.remove(splat.id)
+    remove.run({ id: splat.id })
   }
 
   return splats
 }
 
 async function loadBannedIps() {
-  const ips = new Set<string>()
+  const rows = db.query<{ value: string }, []>('SELECT value FROM bans').all()
 
-  for await (const { value } of banDb.getRange()) {
-    ips.add(value)
-  }
+  return new Set(rows.map(row => row.value))
+}
 
-  return ips
+function saveBan(value: string) {
+  db.query('INSERT OR IGNORE INTO bans (value) VALUES ($value)').run({ value })
 }
 
 async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) {
@@ -1390,7 +1433,7 @@ async function banClient(id: number) {
   const banned = [...clients.values()].filter(next => next.ip === client.ip)
 
   bannedIps.add(client.ip)
-  await banDb.put(client.ip, client.ip)
+  saveBan(client.ip)
   console.log(`Admin ban: id=${id} ip=${client.ip}`)
   banClients(id, banned)
 }
@@ -1409,7 +1452,7 @@ async function banClientSubnet(id: number) {
   const banned = [...clients.values()].filter(next => ipMatchesBan(next.ip, subnet))
 
   bannedIps.add(subnet)
-  await banDb.put(subnet, subnet)
+  saveBan(subnet)
   console.log(`Admin subnet ban: id=${id} subnet=${subnet}*`)
   banClients(id, banned)
 }
