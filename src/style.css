@@ -18,6 +18,11 @@ body {
   background: #000;
 }
 
+::selection {
+  background: white;
+  color: black;
+}
+
 canvas {
   image-rendering: pixelated;
   touch-action: none;
@@ -113,6 +118,21 @@ canvas {
   text-shadow:
     0 0 8px rgb(255 20 20 / 0.48),
     0 0 16px rgb(0 196 255 / 0.18);
+}
+
+#intro-nickname-input {
+  width: min(240px, 100%);
+  justify-self: center;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+  background: rgb(8 8 10 / 0.78);
+  color: inherit;
+  font: 600 13px/1.2 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  padding: 8px 10px;
+  text-align: center;
+  text-shadow: 0 0 8px currentColor;
+  outline: none;
+  box-shadow: 0 0 18px rgb(255 0 0 / 0.18);
 }
 
 #intro-start:hover {
@@ -312,6 +332,10 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   padding-top: 8px;
   text-align: left;
   white-space: nowrap;
+}
+
+#online-self {
+  text-shadow: 0 0 8px currentColor;
 }
 
 #chat-log {
@@ -734,6 +758,11 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
 
 #chat-form[data-open="true"] {
   pointer-events: auto;
+  z-index: 140;
+}
+
+#chat-bubble {
+  z-index: 140;
 }
 
 #nickname-input,

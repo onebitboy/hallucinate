@@ -91,7 +91,7 @@ function usesTouchControls() {
 
 export function bindTapDestination(options: {
   canvas: HTMLCanvasElement
-  jump: () => void
+  jump: (target: Vec3) => void
   projector: WallProjector
   setDestination: (value: Vec3) => void
   ignorePointer?: (event: PointerEvent) => boolean
@@ -115,8 +115,14 @@ export function bindTapDestination(options: {
       longPressed: false,
       timer: setTimeout(() => {
         if (pointer?.id === event.pointerId && !pointer.moved) {
+          const target = screenGroundPoint(event.clientX, event.clientY, options.canvas, options.projector)
+
+          if (!target) {
+            return
+          }
+
           pointer.longPressed = true
-          options.jump()
+          options.jump(target)
         }
       }, longPressDelay),
     }

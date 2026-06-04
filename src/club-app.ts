@@ -33,7 +33,8 @@ import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint } from './projection.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
-import { outsideBounds, outsideBuddha, outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
+import { outsideBounds, outsideBuddha, outsidePalmTree, outsideToilets, roomBounds, tent,
+  tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -101,10 +102,13 @@ const {
   chatLog,
   onlineCount,
   onlineIndicator,
+  onlineSelf,
+  onlineText,
   reactionButtons,
   supportLink,
   intro,
   introBar,
+  introNicknameInput,
   introProgress,
   introStart,
 } = getDomElements()
@@ -188,6 +192,7 @@ const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
 let idleClipIndex = 0
 let alternativeInput = true
+let onlineCountValue = 0
 const localCharacter = createLocalCharacter(keys)
 const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
@@ -195,6 +200,7 @@ const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
 let nickname = savedState?.nickname ?? ''
 nicknameInput.value = nickname
+introNicknameInput.value = nickname
 const adminIdRoot = document.createElement('div')
 let sendVideoEndedNow = (_entry: VideoEndedEntry) => {}
 let sendVideoPlaylistNow = (_zone: VideoZone, _ids: string[]) => {}
@@ -562,9 +568,9 @@ function clearAdminIdLabels() {
 }
 
 function chatMessageColor(id: number, text: string) {
-  const name = chatMessageNickname(text)
+  const name = chatMessageNickname(text) ?? String(id)
 
-  return chatPalette[(name ? chatNicknameHash(name) : id) % chatPalette.length]!
+  return identityColor(name)
 }
 
 function chatMessageNickname(text: string) {
@@ -585,21 +591,50 @@ function nicknameLabel(name: string) {
   return `<${name}>`
 }
 
-function syncChatFormColor() {
-  const next = nicknameInput.value.trim()
-  const label = next ? nicknameLabel(next) : ''
+function identityName(id: number, name?: string) {
+  return name || String(id)
+}
 
-  chatForm.style.color = chatMessageColor(multiplayer.selfId, label)
+function identityColor(name: string) {
+  return chatPalette[chatNicknameHash(name) % chatPalette.length]!
+}
+
+function selfLabel() {
+  return nicknameLabel(identityName(multiplayer.selfId || 0, nickname))
+}
+
+function syncOnlineSelf() {
+  const label = selfLabel()
+  const name = identityName(multiplayer.selfId || 0, nickname)
+
+  onlineSelf.textContent = label
+  onlineSelf.style.color = identityColor(name)
+  onlineText.textContent = ` ${onlineCountValue} online`
+}
+
+function syncChatFormColor() {
+  const next = activeNicknameInput().value.trim()
+  const color = identityColor(identityName(multiplayer.selfId || 0, next))
+
+  chatForm.style.color = color
+  introNicknameInput.style.color = color
+  if (multiplayer?.selfId > 0) {
+    syncOnlineSelf()
+  }
+}
+
+function activeNicknameInput() {
+  return document.activeElement === introNicknameInput ? introNicknameInput : nicknameInput
 }
 
 function syncNicknameLabels() {
   syncChatFormColor()
 
   for (const [id, player] of multiplayer.players) {
-    const name = playerNicknames.get(id)
-    const label = nicknameLabel(name ?? String(id))
+    const name = identityName(id, playerNicknames.get(id))
+    const label = nicknameLabel(name)
 
-    chatUi.setLabel(id, label, player.position, chatMessageColor(id, name ? label : ''))
+    chatUi.setLabel(id, label, player.position, identityColor(name))
   }
 }
 
@@ -607,10 +642,10 @@ function syncRemoteNicknameLabel(id: number) {
   const player = multiplayer.players.get(id)
 
   if (player) {
-    const name = playerNicknames.get(id)
-    const label = nicknameLabel(name ?? String(id))
+    const name = identityName(id, playerNicknames.get(id))
+    const label = nicknameLabel(name)
 
-    chatUi.setLabel(id, label, player.position, chatMessageColor(id, name ? label : ''))
+    chatUi.setLabel(id, label, player.position, identityColor(name))
   }
 }
 
@@ -716,15 +751,23 @@ let rocksLoaded = false
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
+let introWaveSent = false
 
 function startIntro() {
+  syncNickname(introNicknameInput.value)
+  if (!introWaveSent) {
+    introWaveSent = true
+    sendChatMessage('👋')
+  }
   videoPlaying = djVideoUi.play()
   introStart.dataset.playing = String(videoPlaying)
 }
 
 introStart.addEventListener('click', startIntro)
+introNicknameInput.addEventListener('change', () => syncNickname(introNicknameInput.value))
+introNicknameInput.addEventListener('input', syncChatFormColor)
 addEventListener('keydown', event => {
-  if (!introHidden && event.key === 'Enter') {
+  if (!introHidden && event.key === 'Enter' && document.activeElement !== chatInput) {
     event.preventDefault()
     startIntro()
   }
@@ -1049,7 +1092,8 @@ multiplayer = createMultiplayer({
   },
   onLeave: id => chatUi.remove(id),
   onOnlineCount: count => {
-    onlineCount.textContent = `${count} online`
+    onlineCountValue = count
+    syncOnlineSelf()
   },
   onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
   onVideoSync: entries => djVideoUi.applySync(entries),
@@ -1146,15 +1190,16 @@ const styleActions: Record<
 }
 
 function messageWithNickname(text: string) {
-  return text ? `<${nickname || multiplayer.selfId}> ${text}` : text
+  return text ? `${nicknameLabel(identityName(multiplayer.selfId, nickname))} ${text}` : text
 }
 
-function syncNickname() {
-  const next = nicknameInput.value.trim()
+function syncNickname(value = activeNicknameInput().value) {
+  const next = value.trim()
 
   if (next !== nickname) {
     nickname = next
     nicknameInput.value = nickname
+    introNicknameInput.value = nickname
     saveCurrentClubState(true)
     multiplayer.sendNickname()
   }
@@ -1177,7 +1222,7 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(r
 }
 
 bindKeyboardInput({
-  activeInputs: [nicknameInput, chatInput],
+  activeInputs: [introNicknameInput, nicknameInput, chatInput],
   keys,
   startJumping: () => localCharacter.startJumping(),
   stopJumping: () => localCharacter.stopJumping(),
@@ -1207,17 +1252,26 @@ addEventListener('keydown', event => {
 
 createMobileControls({
   ...styleActions,
-  openChatInput: () => chatUi.open(),
+  openChatInput: () => chatUi.toggle(),
 })
 bindTapDestination({
   canvas,
   ignorePointer: event => styleController.accessoryIndex > glowstickColors.length,
-  jump: () => localCharacter.jump(),
+  jump: target => {
+    localCharacter.jumpToward(target)
+    multiplayer.sendMotion()
+  },
   projector: wallProjector,
   setDestination: value => localCharacter.setDestination(value, seatAt(value, occupiedSeats, 0.46, true)),
 })
 
+canvas.addEventListener('contextmenu', event => event.preventDefault())
+
 canvas.addEventListener('pointerdown', event => {
+  if (event.pointerType === 'mouse' && event.button !== 0) {
+    return
+  }
+
   if (styleController.accessoryIndex <= glowstickColors.length) {
     return
   }
@@ -1231,6 +1285,10 @@ canvas.addEventListener('pointerdown', event => {
 
 canvas.addEventListener('pointermove', event => {
   if (event.pointerId !== sprayPointer) {
+    return
+  }
+
+  if (event.pointerType === 'mouse' && (event.buttons & 1) === 0) {
     return
   }
 
@@ -1331,12 +1389,20 @@ function sendChatMessage(message: string) {
   }
 }
 
-nicknameInput.addEventListener('change', syncNickname)
+nicknameInput.addEventListener('change', () => syncNickname(nicknameInput.value))
 nicknameInput.addEventListener('input', syncChatFormColor)
 
 chatForm.addEventListener('submit', event => {
   event.preventDefault()
   sendChatMessage(chatUi.submit())
+})
+
+addEventListener('keydown', event => {
+  if (event.key === 'Escape' && chatUi.isOpen()) {
+    event.preventDefault()
+    chatUi.close()
+    canvas.focus()
+  }
 })
 
 const resize = () => {

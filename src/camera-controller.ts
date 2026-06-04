@@ -6,6 +6,7 @@ import type { Vec3 } from './types.ts'
 
 const insideCameraFront = roomBounds.front - 0.2
 const manualCameraHoldTime = 5000
+const dragMoveThreshold = 3
 
 export function createCameraController(canvas: HTMLCanvasElement, characterPosition: Vec3) {
   const position: Vec3 = [-2.2, 0.15, -9.0]
@@ -15,6 +16,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   let dragY = 0
   let pitch = 0
   let dragging = false
+  let dragMoved = false
   let holdingManualCamera = false
   let manualCameraHoldUntil = 0
   let returning = false
@@ -22,14 +24,23 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
 
   function startDrag(x: number, y: number) {
     dragging = true
+    dragMoved = false
     returning = false
     dragX = x
     dragY = y
   }
 
   function moveDrag(x: number, y: number) {
-    turn -= (x - dragX) * 0.005
-    pitch = clamp(pitch + (y - dragY) * 0.018, -2.4, 4.2)
+    const dx = x - dragX
+    const dy = y - dragY
+
+    if (!dragMoved && dx * dx + dy * dy < dragMoveThreshold * dragMoveThreshold) {
+      return
+    }
+
+    dragMoved = true
+    turn -= dx * 0.005
+    pitch = clamp(pitch + dy * 0.018, -2.4, 4.2)
     holdingManualCamera = true
     manualCameraHoldUntil = performance.now() + manualCameraHoldTime
     dragX = x
@@ -104,6 +115,11 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean, lookDown = false) {
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
+
+      if (dragging && !dragMoved) {
+        wasMoving = moving
+        return
+      }
 
       if (holdingManualCamera && !dragging && performance.now() > manualCameraHoldUntil) {
         holdingManualCamera = false

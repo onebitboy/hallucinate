@@ -55,19 +55,34 @@ export function createChatUi(
   const labels = new Map<number, ChatLabel>()
 
   return {
+    isOpen() {
+      return form.dataset.open === 'true'
+    },
     open() {
       input.value = ''
       form.dataset.open = 'true'
       input.focus()
     },
-    submit() {
-      const text = input.value.trim()
-
+    close() {
+      input.value = ''
       form.dataset.open = 'false'
       input.blur()
       if (document.activeElement instanceof HTMLElement && form.contains(document.activeElement)) {
         document.activeElement.blur()
       }
+    },
+    toggle() {
+      if (form.dataset.open === 'true') {
+        this.close()
+      }
+      else {
+        this.open()
+      }
+    },
+    submit() {
+      const text = input.value.trim()
+
+      this.close()
 
       return text
     },

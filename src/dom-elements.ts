@@ -7,6 +7,8 @@ export function getDomElements() {
   const chatSubmit = document.createElement('button')
   const chatBubble = document.createElement('div')
   const onlineIndicator = document.createElement('div')
+  const onlineSelf = document.createElement('span')
+  const onlineText = document.createElement('span')
   const onlineCount = document.createElement('div')
   const chatLog = document.createElement('div')
   const reactionButtons = document.createElement('div')
@@ -16,6 +18,7 @@ export function getDomElements() {
   const introLogo = document.createElement('div')
   const introLogoTitle = document.createElement('div')
   const introLogoSubtext = document.createElement('div')
+  const introNicknameInput = document.createElement('input')
   const introStart = document.createElement('button')
   const introTrack = document.createElement('div')
   const introBar = document.createElement('div')
@@ -48,8 +51,11 @@ export function getDomElements() {
   chatBubble.className = 'absolute left-0 top-0 z-20'
 
   onlineIndicator.id = 'online-indicator'
+  onlineSelf.id = 'online-self'
+  onlineText.id = 'online-text'
   onlineCount.id = 'online-count'
-  onlineCount.textContent = '0 online'
+  onlineSelf.textContent = '<0>'
+  onlineText.textContent = ' 0 online'
   chatLog.id = 'chat-log'
   reactionButtons.id = 'reaction-buttons'
 
@@ -64,21 +70,26 @@ export function getDomElements() {
   introLogo.id = 'intro-logo'
   introLogoTitle.id = 'intro-logo-title'
   introLogoSubtext.id = 'intro-logo-subtext'
+  introNicknameInput.id = 'intro-nickname-input'
   introStart.id = 'intro-start'
   introTrack.id = 'intro-track'
   introBar.id = 'intro-bar'
   introProgress.id = 'intro-progress'
   introLogoTitle.textContent = 'hallucinate'
   introLogoSubtext.textContent = 'Massively Multiplayer Online Rave'
+  introNicknameInput.maxLength = 32
+  introNicknameInput.placeholder = 'nickname'
+  introNicknameInput.setAttribute('autocomplete', 'nickname')
   introStart.type = 'button'
   introStart.textContent = 'enter'
   introProgress.textContent = '0%'
 
   chatForm.append(nicknameInput, chatInput, chatSubmit)
+  onlineCount.append(onlineSelf, onlineText)
   onlineIndicator.append(chatLog, onlineCount)
   introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
-  introPanel.append(introLogo, introTrack, introProgress, introStart)
+  introPanel.append(introLogo, introTrack, introProgress, introNicknameInput, introStart)
   intro.append(introPanel)
   document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, supportLink, intro)
 
@@ -92,10 +103,13 @@ export function getDomElements() {
     chatLog,
     onlineCount,
     onlineIndicator,
+    onlineSelf,
+    onlineText,
     reactionButtons,
     supportLink,
     intro,
     introBar,
+    introNicknameInput,
     introProgress,
     introStart,
   }

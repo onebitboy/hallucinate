@@ -25,6 +25,7 @@ export function createLocalCharacter(keys: Set<string>) {
   const right: Vec3 = [0, 0, 0]
   const direction: Vec3 = [0, 0, 0]
   const destination: Vec3 = [0, 0, 0]
+  const jumpTarget: Vec3 = [0, 0, 0]
   let path: Vec3[] = []
   let destinationSeat = ''
   let turn = 0
@@ -35,6 +36,7 @@ export function createLocalCharacter(keys: Set<string>) {
   let couchRelease = 0
   let seat = ''
   let hasDestination = false
+  let hasJumpTarget = false
   let jumpTime = 0
   let jumpElapsed = 0
   let jumpHeld = false
@@ -45,6 +47,7 @@ export function createLocalCharacter(keys: Set<string>) {
 
   function startJump() {
     hasDestination = false
+    hasJumpTarget = false
     destinationSeat = ''
     path = []
     jumpTime = jumpDuration
@@ -86,6 +89,7 @@ export function createLocalCharacter(keys: Set<string>) {
       destination[2] = value[2]
       destinationSeat = targetSeat?.id ?? ''
       hasDestination = true
+      hasJumpTarget = false
       path = []
     },
     readInput() {
@@ -108,6 +112,17 @@ export function createLocalCharacter(keys: Set<string>) {
 
       startJump()
     },
+    jumpToward(target: Vec3) {
+      if (seated || jumpTime > 0) {
+        return
+      }
+
+      startJump()
+      jumpTarget[0] = target[0]
+      jumpTarget[1] = target[1]
+      jumpTarget[2] = target[2]
+      hasJumpTarget = true
+    },
     startWave() {
       if (seated || jumpTime > 0) {
         return
@@ -119,6 +134,7 @@ export function createLocalCharacter(keys: Set<string>) {
       }
 
       hasDestination = false
+      hasJumpTarget = false
       destinationSeat = ''
       path = []
       waveActive = true
@@ -142,6 +158,7 @@ export function createLocalCharacter(keys: Set<string>) {
       this.readInput()
       if (lengthSq(input) > 0) {
         hasDestination = false
+        hasJumpTarget = false
         destinationSeat = ''
         path = []
       }
@@ -180,6 +197,20 @@ export function createLocalCharacter(keys: Set<string>) {
         input[1] = 0
         input[2] = sin * worldX + cos * worldZ
       }
+      if (hasJumpTarget) {
+        if (waypointReached(position, jumpTarget)) {
+          hasJumpTarget = false
+          input[0] = 0
+          input[1] = 0
+          input[2] = 0
+        }
+        else {
+          turn = smoothAngle(turn, Math.atan2(jumpTarget[0] - position[0], jumpTarget[2] - position[2]), 10, delta)
+          input[0] = 0
+          input[1] = 0
+          input[2] = 1
+        }
+      }
       const moving = lengthSq(input) > 0
 
       couchRelease = Math.max(0, couchRelease - delta)
@@ -209,7 +240,7 @@ export function createLocalCharacter(keys: Set<string>) {
       }
 
       if (seated) {
-        if (hasDestination || input[2] > 0) {
+        if (hasDestination || hasJumpTarget || input[2] > 0) {
           seated = false
           couchRelease = 0.35
           occupiedSeats.delete(seat)
@@ -255,20 +286,34 @@ export function createLocalCharacter(keys: Set<string>) {
 
       const previousPosition: Vec3 = [position[0], position[1], position[2]]
 
+      if (jumpTime > 0) {
+        const floorY = walkHeight(position[0], position[1], position[2])
+
+        position[1] = floorY + jumpOffset(jumpElapsed)
+        velocityY = 0
+      }
+
       if (moving) {
         normalizeInto(input)
-        const sin = Math.sin(cameraTurn)
-        const cos = Math.cos(cameraTurn)
+        if (hasJumpTarget) {
+          direction[0] = Math.sin(turn)
+          direction[1] = 0
+          direction[2] = Math.cos(turn)
+        }
+        else {
+          const sin = Math.sin(cameraTurn)
+          const cos = Math.cos(cameraTurn)
 
-        forward[0] = sin
-        forward[1] = 0
-        forward[2] = cos
-        right[0] = -cos
-        right[1] = 0
-        right[2] = sin
-        direction[0] = forward[0] * input[2] + right[0] * input[0]
-        direction[1] = 0
-        direction[2] = forward[2] * input[2] + right[2] * input[0]
+          forward[0] = sin
+          forward[1] = 0
+          forward[2] = cos
+          right[0] = -cos
+          right[1] = 0
+          right[2] = sin
+          direction[0] = forward[0] * input[2] + right[0] * input[0]
+          direction[1] = 0
+          direction[2] = forward[2] * input[2] + right[2] * input[0]
+        }
         normalizeInto(direction)
 
         position[0] += direction[0] * delta * 5
@@ -280,6 +325,7 @@ export function createLocalCharacter(keys: Set<string>) {
           takeSeat(nextSeat)
           seated = true
           hasDestination = false
+          hasJumpTarget = false
           destinationSeat = ''
           path = []
           seat = nextSeat.id
@@ -302,11 +348,7 @@ export function createLocalCharacter(keys: Set<string>) {
       const floorY = walkHeight(position[0], position[1], position[2])
 
       if (jumpTime > 0) {
-        const progress = jumpElapsed < jumpRiseDuration
-          ? jumpElapsed / jumpRiseDuration * 0.5
-          : 0.5 + (jumpElapsed - jumpRiseDuration) / (jumpDuration - jumpRiseDuration) * 0.5
-
-        position[1] = floorY + Math.sin(progress * Math.PI) * jumpHeight
+        position[1] = floorY + jumpOffset(jumpElapsed)
         velocityY = 0
       }
       else if (floorY > position[1]) {
@@ -326,6 +368,14 @@ export function createLocalCharacter(keys: Set<string>) {
       collideRoom(position, outsideTree, isOutside(position), previousPosition)
     },
   }
+}
+
+function jumpOffset(elapsed: number) {
+  const progress = elapsed < jumpRiseDuration
+    ? elapsed / jumpRiseDuration * 0.5
+    : 0.5 + (elapsed - jumpRiseDuration) / (jumpDuration - jumpRiseDuration) * 0.5
+
+  return Math.sin(progress * Math.PI) * jumpHeight
 }
 
 function waypointReached(position: Vec3, waypoint: Vec3) {

@@ -48,6 +48,9 @@ const buddhaSeatId = 'buddha'
 const djBoothTop = characterFloor + 0.71
 const speakerTop = characterFloor + 1.82
 const barTop = characterFloor + 0.86
+const couchTop = characterFloor + 0.78
+const stoolTop = characterFloor + 0.72
+const outsideHutStoolTop = characterFloor + outsideHutDeckHeight + 0.72
 const outsideStageTop = characterFloor + 4.2
 const platformStep = 0.42
 
@@ -123,11 +126,15 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
     }
 
     for (const couch of outsideCouchCollisions) {
-      collidePaddedBounds(position, couch)
+      if (!onPaddedPlatform(position, couch, couchTop)) {
+        collidePaddedBounds(position, couch)
+      }
     }
 
     for (const stool of outsideHutBarStoolCollisions) {
-      collidePaddedBounds(position, stool)
+      if (!onPaddedPlatform(position, stool, outsideHutStoolTop)) {
+        collidePaddedBounds(position, stool)
+      }
     }
 
     for (const post of outsideHutPostCollisions) {
@@ -156,7 +163,9 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
   }
 
   for (const stool of bartenderStoolCollisions) {
-    collidePaddedBounds(position, stool)
+    if (!onPaddedPlatform(position, stool, stoolTop)) {
+      collidePaddedBounds(position, stool)
+    }
   }
 
   for (const speaker of djSpeakerCollisions) {
