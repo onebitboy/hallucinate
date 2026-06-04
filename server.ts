@@ -143,7 +143,7 @@ const server = Bun.serve<SocketData>({
     const ip = clientIp(request)
     const url = new URL(request.url)
 
-    if (bannedIps.has(ip)) {
+    if (bannedIp(ip)) {
       return new Response('Forbidden', { status: 403 })
     }
 
@@ -368,6 +368,22 @@ function ipConnections(ip: string) {
   }
 
   return count
+}
+
+function bannedIp(ip: string) {
+  for (const ban of bannedIps) {
+    if (ipMatchesBan(ip, ban)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function ipMatchesBan(ip: string, ban: string) {
+  return ip === ban
+    || (ban.endsWith('.') && ip.startsWith(ban))
+    || (ban.endsWith(':') && ip.includes(':') && ipv6Subnet(ip) === ban)
 }
 
 async function serveStatic(request: Request) {
@@ -1271,6 +1287,9 @@ async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) 
   if (packet.command === 'ban') {
     await banClient(packet.id)
   }
+  else if (packet.command === 'banSubnet') {
+    await banClientSubnet(packet.id)
+  }
   else if (packet.command === 'randomTrack') {
     await randomizeVideoTrack(roomVideoZone(packet.id))
   }
@@ -1341,7 +1360,81 @@ async function banClient(id: number) {
   bannedIps.add(client.ip)
   await banDb.put(client.ip, client.ip)
   console.log(`Admin ban: id=${id} ip=${client.ip}`)
+  banClients(id, banned)
+}
 
+async function banClientSubnet(id: number) {
+  broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id }))
+
+  const client = [...clients.values()].find(next => next.id === id)
+
+  if (!client) {
+    console.log(`Admin subnet ban rejected: invalid target id=${id}`)
+    throw new Error(`Invalid ban target ${id}`)
+  }
+
+  const subnet = ipSubnet(client.ip)
+  const banned = [...clients.values()].filter(next => ipMatchesBan(next.ip, subnet))
+
+  bannedIps.add(subnet)
+  await banDb.put(subnet, subnet)
+  console.log(`Admin subnet ban: id=${id} subnet=${subnet}*`)
+  banClients(id, banned)
+}
+
+function ipSubnet(ip: string) {
+  if (ip.includes(':')) {
+    return ipv6Subnet(ip)
+  }
+
+  const parts = ip.split('.')
+
+  if (parts.length !== 4) {
+    throw new Error(`Invalid subnet ban ip ${ip}`)
+  }
+
+  return `${parts.slice(0, 3).join('.')}.`
+}
+
+function ipv6Subnet(ip: string) {
+  return `${expandedIpv6(ip).slice(0, 4).join(':')}:`
+}
+
+function expandedIpv6(ip: string) {
+  const sections = ip.toLowerCase().split('::')
+
+  if (sections.length > 2) {
+    throw new Error(`Invalid ipv6 ${ip}`)
+  }
+
+  const head = ipv6Parts(sections[0]!)
+  const tail = ipv6Parts(sections[1] ?? '')
+  const missing = 8 - head.length - tail.length
+
+  if (missing < 0 || (sections.length === 1 && missing !== 0)) {
+    throw new Error(`Invalid ipv6 ${ip}`)
+  }
+
+  return [
+    ...head,
+    ...Array.from({ length: missing }, () => '0000'),
+    ...tail,
+  ]
+}
+
+function ipv6Parts(section: string) {
+  return section === ''
+    ? []
+    : section.split(':').map(part => {
+      if (!/^[\da-f]{1,4}$/.test(part)) {
+        throw new Error(`Invalid ipv6 part ${part}`)
+      }
+
+      return part.padStart(4, '0')
+    })
+}
+
+function banClients(id: number, banned: Client[]) {
   for (const next of banned) {
     if (next.id !== id) {
       broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id: next.id }))

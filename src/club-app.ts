@@ -369,6 +369,7 @@ const banForm = document.createElement('form')
 const banMessage = document.createElement('p')
 const banCancel = document.createElement('button')
 const banSubmit = document.createElement('button')
+const banSubnetSubmit = document.createElement('button')
 
 adminDialog.id = 'admin-dialog'
 adminForm.method = 'dialog'
@@ -391,9 +392,11 @@ banDialog.id = 'ban-dialog'
 banForm.method = 'dialog'
 banCancel.type = 'button'
 banSubmit.type = 'submit'
+banSubnetSubmit.type = 'button'
 banCancel.textContent = 'cancel'
 banSubmit.textContent = 'ban'
-banForm.append(banMessage, banCancel, banSubmit)
+banSubnetSubmit.textContent = 'ban subnet'
+banForm.append(banMessage, banCancel, banSubmit, banSubnetSubmit)
 banDialog.append(banForm)
 document.body.append(adminDialog, banDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
@@ -435,7 +438,16 @@ banCancel.addEventListener('click', () => {
   banDialog.close()
 })
 
-banForm.addEventListener('submit', () => {
+banForm.addEventListener('submit', event => {
+  event.preventDefault()
+  sendPendingBan('ban')
+})
+
+banSubnetSubmit.addEventListener('click', () => {
+  sendPendingBan('banSubnet')
+})
+
+function sendPendingBan(command: 'ban' | 'banSubnet') {
   if (!pendingBan) {
     throw new Error('Missing pending ban')
   }
@@ -445,8 +457,9 @@ banForm.addEventListener('submit', () => {
   pendingBan = undefined
   deleteChatLogMessages(id)
   chatUi.removeMessages(id)
-  multiplayer.sendAdmin(adminPass, 'ban', id)
-})
+  multiplayer.sendAdmin(adminPass, command, id)
+  banDialog.close()
+}
 
 function openBanDialog(id: number, message: string) {
   pendingBan = { id, message }
