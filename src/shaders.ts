@@ -224,6 +224,32 @@ float noise(vec2 point) {
   return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y);
 }
 
+vec2 grassBladeLayer(vec2 point, float scale, float angle, float width) {
+  point += vec2(noise(point * 0.37 + 12.0), noise(point * 0.41 - 9.0)) * 0.9;
+  float s = sin(angle);
+  float c = cos(angle);
+  vec2 bladePoint = vec2(point.x * c - point.y * s, point.x * s + point.y * c) * scale;
+  vec2 cell = floor(bladePoint);
+  vec2 local = fract(bladePoint);
+  float jitter = hash(cell + vec2(3.0, 19.0));
+  float sway = (hash(cell + vec2(27.0, 5.0)) - 0.5) * 0.24;
+  local.x = fract(local.x + sway * local.y + (jitter - 0.5) * 0.18);
+  local.y = fract(local.y + (hash(cell + vec2(41.0, 73.0)) - 0.5) * 0.22);
+  float bend = (hash(cell) - 0.5) * 0.48;
+  float center = 0.5 + bend * local.y;
+  float bladeWidth = width * mix(0.55, 1.45, hash(cell + vec2(11.0, 29.0)));
+  float bladeLength = mix(0.48, 1.0, hash(cell + vec2(83.0, 7.0)));
+  float edge = fwidth(local.x) * 2.1;
+  float line = 1.0 - smoothstep(bladeWidth, bladeWidth + edge, abs(local.x - center));
+  float sideShadow = 1.0 - smoothstep(bladeWidth * 1.6, bladeWidth * 1.6 + edge,
+    abs(local.x - center - bladeWidth * mix(2.0, 4.0, jitter)));
+  float rootShadow = 1.0 - smoothstep(0.1, 0.34, local.y);
+  float lengthMask = smoothstep(0.04, 0.22, local.y) * (1.0 - smoothstep(bladeLength * 0.78, bladeLength, local.y));
+  float gate = step(0.18, hash(cell + vec2(17.0, 41.0)));
+
+  return vec2(line * lengthMask, (sideShadow * lengthMask + rootShadow * line * 0.55) * gate) * gate;
+}
+
 vec3 grassColor() {
   vec2 field = worldPosition.xz * 0.11;
   vec2 shadowUv = vec2(
@@ -237,6 +263,16 @@ vec3 grassColor() {
   float far = smoothstep(10.0, 55.0, cameraDistance);
   float horizon = smoothstep(34.0, 60.0, cameraDistance);
   float shadow = texture(treeShadowMap, shadowUv).a;
+  float bladeFade = 1.0 - smoothstep(8.0, 24.0, cameraDistance);
+  vec2 warpedGround = worldPosition.xz + vec2(noise(worldPosition.xz * 0.08), noise(worldPosition.zx * 0.09)) * 4.0;
+  vec2 bladeShape = grassBladeLayer(warpedGround, 3.4, 0.18, 0.06)
+    + grassBladeLayer(warpedGround + vec2(8.7, 3.1), 4.9, -0.47, 0.048)
+    + grassBladeLayer(warpedGround + vec2(2.3, 11.4), 6.8, 0.74, 0.038)
+    + grassBladeLayer(warpedGround + vec2(14.1, -5.5), 8.3, -1.02, 0.03);
+  float blades = bladeShape.x;
+  float bladeShadow = bladeShape.y;
+  blades = clamp(blades, 0.0, 1.0) * bladeFade;
+  bladeShadow = clamp(bladeShadow, 0.0, 1.0) * bladeFade;
   vec3 closeGrass = shade * (0.82 + detail);
   vec3 distantGrass = mix(vec3(${outsideMotif === 'night' ? '0.008, 0.055, 0.025' : '0.035, 0.20, 0.055'}), vec3(${
   outsideMotif === 'night' ? '0.025, 0.13, 0.055' : '0.08, 0.34, 0.095'
@@ -245,6 +281,9 @@ vec3 grassColor() {
   outsideMotif === 'night' ? '0.018, 0.095, 0.04' : '0.065, 0.25, 0.06'
 }), hill);
   vec3 grass = mix(mix(closeGrass, distantGrass, far), hillGrass, horizon * 0.55);
+  grass *= 1.0 - bladeShadow * 0.46;
+  grass = mix(grass, grass * vec3(0.5, 0.76, 0.42), blades * 0.34);
+  grass += vec3(0.03, 0.16, 0.035) * blades;
 
   return grass * ${outsideMotif === 'night' ? '0.45' : '1.0'} * mix(1.0, ${
   outsideMotif === 'night' ? '1.0' : '0.25'
