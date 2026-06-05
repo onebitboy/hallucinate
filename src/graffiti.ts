@@ -129,10 +129,12 @@ const walls: GraffitiWall[] = [
 ]
 export const graffitiWallCount = walls.length
 
-const graffitiAtlasRows = Math.ceil(graffitiWallCount / graffitiAtlasColumns)
+const graffitiWallAtlasRows = Math.ceil(graffitiWallCount / graffitiAtlasColumns)
+const paintingAtlasRows = 1
+const graffitiAtlasRows = graffitiWallAtlasRows + paintingAtlasRows
 const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
 const graffitiCellHeight = graffitiTextureSize / graffitiAtlasRows
-const paintingAtlasIndex = graffitiAtlasColumns * graffitiAtlasRows - 1
+const paintingAtlasIndex = graffitiAtlasColumns * graffitiWallAtlasRows
 const paintingAtlasPadding = 12
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
