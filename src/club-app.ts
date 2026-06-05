@@ -890,6 +890,7 @@ const feedbackToiletRampSeconds = 60
 const feedbackSitResetSeconds = 3
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
+let graphicsPaused = document.hidden
 let feedbackToiletStartStamp = 0
 let feedbackToiletStartAmount = 0
 let feedbackInToilets = false
@@ -2210,7 +2211,35 @@ function updateFeedbackToiletVisit(stamp: number) {
   feedbackInToilets = inToilets
 }
 
+function scheduleFrame() {
+  if (graphicsPaused) {
+    return
+  }
+
+  frameId = requestAnimationFrame(draw)
+  clubGlobal.clubFrameId = frameId
+}
+
+function pauseGraphics() {
+  graphicsPaused = true
+  cancelAnimationFrame(frameId)
+}
+
+function resumeGraphics() {
+  if (!graphicsPaused) {
+    return
+  }
+
+  graphicsPaused = false
+  lastStamp = 0
+  scheduleFrame()
+}
+
 const draw = (stamp: number) => {
+  if (graphicsPaused) {
+    return
+  }
+
   const delta = lastStamp === 0 ? 0 : Math.min((stamp - lastStamp) / 1000, 0.05)
   const frame = Math.floor(stamp / 16.6667)
 
@@ -2226,8 +2255,7 @@ const draw = (stamp: number) => {
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
   if (isAtLoftExitDoor()) {
     enterMain(true)
-    frameId = requestAnimationFrame(draw)
-    clubGlobal.clubFrameId = frameId
+    scheduleFrame()
     return
   }
   const inLoftMusicSpot = isInLoftMusicSpot()
@@ -2418,8 +2446,7 @@ const draw = (stamp: number) => {
     width: canvas.width,
   })
 
-  frameId = requestAnimationFrame(draw)
-  clubGlobal.clubFrameId = frameId
+  scheduleFrame()
 }
 
 function updateBeachBallBuffer() {
@@ -2535,6 +2562,21 @@ import.meta.hot?.dispose(() => {
   multiplayer.close()
 })
 
+addEventListener('blur', pauseGraphics)
+addEventListener('focus', () => {
+  if (!document.hidden) {
+    resumeGraphics()
+  }
+})
+addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseGraphics()
+    return
+  }
+
+  resumeGraphics()
+})
+
 const strobeLights = createStrobeLights()
 const strobeController = createStrobeDrawController({
   array: strobeArray,
@@ -2576,8 +2618,7 @@ const characterRenderSystem = createCharacterRenderSystem({
   vertexSize,
 })
 
-frameId = requestAnimationFrame(draw)
-clubGlobal.clubFrameId = frameId
+scheduleFrame()
 
 characterRenderSystem.loadOnce().catch((error: unknown) => {
   void error
