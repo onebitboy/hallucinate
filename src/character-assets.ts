@@ -9,6 +9,8 @@ import {
 import { normalizeIndex } from './math.ts'
 import type { CharacterRig } from './types.ts'
 
+type LoadProgress = () => void
+
 export const idleClipNames = ['stand.fbx', ...Array.from({ length: 19 }, (_, i) => `dance${i + 1}.fbx`)]
 const danceClipFiles = [
   { name: 'dance1.fbx', size: 769744 },
@@ -35,13 +37,17 @@ const cheapDanceClipCount = 5
 const danceClipFilesBySize = [...danceClipFiles].sort((a, b) => a.size - b.size)
 const cheapDanceClipFiles = danceClipFilesBySize.slice(0, cheapDanceClipCount)
 const remainingDanceClipFiles = danceClipFilesBySize.slice(cheapDanceClipCount)
+export const danceIdleClipLoadOrder = [...cheapDanceClipFiles, ...remainingDanceClipFiles]
+  .map(file => idleClipNames.indexOf(file.name))
 
-export async function loadCharacterAssets() {
-  const [stand, run, jump, wave] = await loadAssimpScenes([
-    { path: '/stand.fbx', name: 'stand.fbx' },
-    { path: '/run.fbx', name: 'run.fbx' },
-    { path: '/jump.fbx', name: 'jump.fbx' },
-    { path: '/wave.fbx', name: 'wave.fbx' },
+export const characterCoreChunkCount = 6
+
+export async function loadCharacterAssets(onProgress?: LoadProgress) {
+  const [stand, run, jump, wave] = await Promise.all([
+    loadCharacterAsset('/stand.fbx', 'stand.fbx', onProgress),
+    loadCharacterAsset('/run.fbx', 'run.fbx', onProgress),
+    loadCharacterAsset('/jump.fbx', 'jump.fbx', onProgress),
+    loadCharacterAsset('/wave.fbx', 'wave.fbx', onProgress),
   ])
   const standClip = createCharacterClip(stand!, 'stand.fbx')
   const waveClip = createCharacterClip(wave!, 'wave.fbx')
@@ -67,25 +73,20 @@ export async function loadCharacterAssets() {
   }
 }
 
-export async function loadCharacterDetails(
+export async function loadCharacterHair(
   gl: WebGL2RenderingContext,
-  rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig'],
   hairIndex: number,
+  onProgress?: LoadProgress,
 ) {
-  const [manSitting, womanSitting, manHair, womanHair] = await loadAssimpScenes([
-    { path: '/man-sitting.fbx', name: 'man-sitting.fbx' },
-    { path: '/woman-sitting.fbx', name: 'woman-sitting.fbx' },
-    { path: '/man-hair.fbx', name: 'man-hair.fbx' },
-    { path: '/woman-hair.fbx', name: 'woman-hair.fbx' },
+  const [manHair, womanHair] = await Promise.all([
+    loadCharacterAsset('/man-hair.fbx', 'man-hair.fbx', onProgress),
+    loadCharacterAsset('/woman-hair.fbx', 'woman-hair.fbx', onProgress),
   ])
   const hairMeshes = [...createHairMeshes(manHair!, 'man'), ...createHairMeshes(womanHair!, 'woman')]
 
   for (let i = 0; i < hairMeshes.length; i++) {
     hairMeshes[i]!.index = i
   }
-
-  rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting.fbx')
-  rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting.fbx')
 
   return {
     hairMeshes,
@@ -94,26 +95,40 @@ export async function loadCharacterDetails(
   }
 }
 
-export async function loadCheapCharacterDances(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig']) {
-  await loadCharacterDanceFiles(rig, cheapDanceClipFiles)
+export async function loadCharacterDetails(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig']) {
+  const [manSitting, womanSitting] = await loadAssimpScenes([
+    { path: '/man-sitting.fbx', name: 'man-sitting.fbx' },
+    { path: '/woman-sitting.fbx', name: 'woman-sitting.fbx' },
+  ])
+
+  rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting.fbx')
+  rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting.fbx')
 }
 
-export async function loadCharacterDances(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig']) {
-  await loadCharacterDanceFiles(rig, remainingDanceClipFiles)
+async function loadCharacterAsset(path: string, name: string, onProgress?: LoadProgress) {
+  const scene = await loadAssimpScene(path, name)
+
+  onProgress?.()
+
+  return scene
 }
 
-async function loadCharacterDanceFiles(
-  rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig'],
-  files: typeof danceClipFiles,
-) {
-  for (const file of files) {
-    await loadCharacterDance(rig, file.name)
+export async function loadCharacterDance(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig'], idleClipIndex: number) {
+  if (idleClipIndex <= 0) {
+    return
   }
-}
 
-async function loadCharacterDance(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig'], name: string) {
+  const name = idleClipNames[idleClipIndex]
+
+  if (!name) {
+    throw new Error(`Unknown dance clip ${idleClipIndex}`)
+  }
+
+  if (rig.clips.dances[idleClipIndex - 1]) {
+    return
+  }
+
   const dance = await loadAssimpScene(`/${name}`, name)
-  const index = idleClipNames.indexOf(name) - 1
 
-  rig.clips.dances[index] = createCharacterClip(dance, name)
+  rig.clips.dances[idleClipIndex - 1] = createCharacterClip(dance, name)
 }

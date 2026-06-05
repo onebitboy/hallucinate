@@ -1,7 +1,7 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { addBeachBallGeometry, createBeachBalls, hitBeachBalls, updateBeachBalls } from './beach-balls.ts'
 import { createCameraController } from './camera-controller.ts'
-import { idleClipNames } from './character-assets.ts'
+import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
 import { characterFloor } from './character-data.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
@@ -801,6 +801,7 @@ function syncRemoteNicknameLabel(id: number) {
 
 function cycleIdle(direction: number) {
   idleClipIndex = (idleClipIndex + direction + idleClipNames.length) % idleClipNames.length
+  loadCurrentDance()
   // console.log(`idle animation: ${idleClipNames[idleClipIndex]}`)
 }
 const idleClipState = {
@@ -891,6 +892,10 @@ const feedbackSitResetSeconds = 3
 let outsideTree: CircleBounds = { x: 0, z: 20.5, radius: 0.75 }
 let lastStamp = 0
 let graphicsPaused = document.hidden
+let coreLoadStarted = false
+let postEntryLoadsStarted = false
+let mainWorldLoad: Promise<void> | undefined
+let loftPlantsLoad: Promise<void> | undefined
 let feedbackToiletStartStamp = 0
 let feedbackToiletStartAmount = 0
 let feedbackInToilets = false
@@ -1808,7 +1813,6 @@ function activateLoft(room: LoftRoomPayload, push: boolean) {
   if (appSpace.kind === 'main') {
     rememberMainPose()
   }
-  loadLoftStatuesOnce()
   appSpace = {
     displaySlug: room.displaySlug,
     kind: 'loft',
@@ -1826,6 +1830,9 @@ function activateLoft(room: LoftRoomPayload, push: boolean) {
   resetLocalSpaceState()
   connectMultiplayer(room.slug)
   syncSpaceUi()
+  if (postEntryLoadsStarted) {
+    loadLoftDecorOnce()
+  }
 }
 
 function enterMain(push: boolean) {
@@ -2211,6 +2218,15 @@ function updateFeedbackToiletVisit(stamp: number) {
   feedbackInToilets = inToilets
 }
 
+function requestIdle(callback: () => void) {
+  if ('requestIdleCallback' in globalThis) {
+    requestIdleCallback(callback, { timeout: 5000 })
+    return
+  }
+
+  setTimeout(callback, 1200)
+}
+
 function scheduleFrame() {
   if (graphicsPaused) {
     return
@@ -2509,25 +2525,66 @@ function paintGraffitiTexture(splats: import('./types.ts').GraffitiSplat[]) {
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
 }
 
+function startCoreLoads() {
+  if (coreLoadStarted) {
+    return
+  }
+
+  coreLoadStarted = true
+  characterRenderSystem.loadCoreOnce().catch((error: unknown) => {
+    console.error(error)
+  })
+}
+
+function startPostEntryLoads() {
+  if (postEntryLoadsStarted) {
+    return
+  }
+
+  postEntryLoadsStarted = true
+  characterRenderSystem.loadDetailsOnce().catch((error: unknown) => {
+    console.error(error)
+  })
+  loadCurrentDance()
+  loadMainWorldOnce()
+  if (appSpace.kind === 'loft') {
+    loadLoftDecorOnce()
+  }
+  requestIdle(() => {
+    characterRenderSystem.loadRemainingDancesIdle().catch((error: unknown) => {
+      console.error(error)
+    })
+  })
+}
+
+function loadCurrentDance() {
+  if (idleClipIndex === 0) {
+    return
+  }
+
+  characterRenderSystem.loadDanceOnce(idleClipIndex).catch((error: unknown) => {
+    console.error(error)
+  })
+}
+
 function updateIntro() {
-  const progress = Math.round((
-    Number(characterRenderSystem.assetsLoaded)
-    + Number(characterRenderSystem.detailsLoaded)
-    + Number(buddhaLoaded)
-    + Number(palmTreeLoaded)
-    + Number(rocksLoaded)
-    + Number(treeLoaded)
-  ) / 6 * 100)
+  const coreProgress = characterRenderSystem.coreProgress
+  const startReady = characterRenderSystem.assetsLoaded
+    || coreProgress >= (characterCoreChunkCount - 1) / characterCoreChunkCount
+  const progress = Math.round(characterRenderSystem.assetsLoaded ? 100 : coreLoadStarted
+    ? Math.max(5, coreProgress * 100)
+    : 0)
 
   introProgress.textContent = `${progress}%`
   introBar.style.transform = `scaleX(${progress / 100})`
-  introStart.dataset.ready = String(progress >= 75 && !videoPlaying)
+  introStart.dataset.ready = String(startReady)
 
-  const ready = progress === 100 && videoPlaying
+  const ready = characterRenderSystem.assetsLoaded && videoPlaying
 
   if (ready && !introHidden) {
     introHidden = true
     intro.dataset.hidden = 'true'
+    requestAnimationFrame(startPostEntryLoads)
 
     if (helpSeen) {
       helpUi.hide()
@@ -2618,73 +2675,74 @@ const characterRenderSystem = createCharacterRenderSystem({
   vertexSize,
 })
 
+startCoreLoads()
 scheduleFrame()
 
-characterRenderSystem.loadOnce().catch((error: unknown) => {
-  void error
-})
+function loadMainWorldOnce() {
+  mainWorldLoad ??= loadOutsideTree(gl, treeShadowMap, vertices, outsideTree, addSunLitTriangle)
+    .then(nextTree => {
+      outsideTree = nextTree
+      treeLoaded = true
+      refreshRoomBuffer()
+    })
+    .catch((error: unknown) => {
+      console.error(error)
+    })
+    .then(() => Promise.all([
+      loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
+        color: palmTreeMeshColor,
+        height: 5.94,
+        name: 'palmtree.fbx',
+        nodeTransforms: true,
+        path: '/palmtree.fbx',
+        shadow: false,
+        sourceUp: 'y',
+      })
+        .then(() => {
+          palmTreeLoaded = true
+          refreshRoomBuffer()
+        })
+        .catch((error: unknown) => {
+          console.error(error)
+        }),
+      loadStaticFbxObject(vertices, {
+        color: [0.46, 0.42, 0.36],
+        height: 2.9,
+        lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95 },
+        path: '/buddha.fbx',
+        position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
+        sourceUp: 'z',
+        turn: Math.PI,
+      }, addSunLitTriangle)
+        .then(() => {
+          buddhaLoaded = true
+          refreshRoomBuffer()
+        })
+        .catch((error: unknown) => {
+          console.error(error)
+        }),
+      loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
+        color: [0.29, 0.27, 0.24],
+        height: rock.height,
+        lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
+        meshIndex: rock.meshIndex,
+        path: '/rocks.fbx',
+        position: rock.position,
+        sourceUp: 'z',
+        turn: rock.turn,
+      })), addSunLitTriangle)
+        .then(() => {
+          rocksLoaded = true
+          refreshRoomBuffer()
+        })
+        .catch((error: unknown) => {
+          console.error(error)
+        }),
+    ]))
+    .then(() => undefined)
 
-loadOutsideTree(gl, treeShadowMap, vertices, outsideTree, addSunLitTriangle)
-  .then(nextTree => {
-    outsideTree = nextTree
-    treeLoaded = true
-    refreshRoomBuffer()
-  })
-  .catch((error: unknown) => {
-    console.error(error)
-  })
-
-loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
-  color: palmTreeMeshColor,
-  height: 5.94,
-  name: 'palmtree.fbx',
-  nodeTransforms: true,
-  path: '/palmtree.fbx',
-  shadow: false,
-  sourceUp: 'y',
-})
-  .then(() => {
-    palmTreeLoaded = true
-    refreshRoomBuffer()
-  })
-  .catch((error: unknown) => {
-    console.error(error)
-  })
-
-loadStaticFbxObject(vertices, {
-  color: [0.46, 0.42, 0.36],
-  height: 2.9,
-  lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95 },
-  path: '/buddha.fbx',
-  position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
-  sourceUp: 'z',
-  turn: Math.PI,
-}, addSunLitTriangle)
-  .then(() => {
-    buddhaLoaded = true
-    refreshRoomBuffer()
-  })
-  .catch((error: unknown) => {
-    void error
-  })
-
-loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
-  color: [0.29, 0.27, 0.24],
-  height: rock.height,
-  lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
-  meshIndex: rock.meshIndex,
-  path: '/rocks.fbx',
-  position: rock.position,
-  sourceUp: 'z',
-  turn: rock.turn,
-})), addSunLitTriangle)
-  .then(() => {
-    rocksLoaded = true
-    refreshRoomBuffer()
-  })
-  .catch((error: unknown) => {
-    console.error(error)
-  })
+  return mainWorldLoad
+}
 
 function loftPlantMeshColor(meshIndex: number): Vec3 {
   const colors: Vec3[] = [
@@ -2766,21 +2824,32 @@ function loadLoftStatuesOnce() {
     .catch((error: unknown) => {
       console.error(error)
     })
+
+  return loftStatuesLoad
 }
 
-loadStaticFbxObjects(loftVertices, '/plant.fbx', loftPlants.map((plant, index) => ({
-  color: loftPlantMeshColor,
-  height: 1.75,
-  lightBounds: plant,
-  nodeTransforms: true,
-  path: '/plant.fbx',
-  position: [plant.x, characterFloor, plant.z],
-  sourceUp: 'y',
-  turn: index === 0 ? 0.35 : -0.35,
-})), addLoftPlantTriangle)
-  .then(() => {
-    refreshRoomBuffer()
-  })
-  .catch((error: unknown) => {
-    console.error(error)
-  })
+function loadLoftPlantsOnce() {
+  loftPlantsLoad ??= loadStaticFbxObjects(loftVertices, '/plant.fbx', loftPlants.map((plant, index) => ({
+    color: loftPlantMeshColor,
+    height: 1.75,
+    lightBounds: plant,
+    nodeTransforms: true,
+    path: '/plant.fbx',
+    position: [plant.x, characterFloor, plant.z],
+    sourceUp: 'y',
+    turn: index === 0 ? 0.35 : -0.35,
+  })), addLoftPlantTriangle)
+    .then(() => {
+      refreshRoomBuffer()
+    })
+    .catch((error: unknown) => {
+      console.error(error)
+    })
+
+  return loftPlantsLoad
+}
+
+function loadLoftDecorOnce() {
+  loadLoftPlantsOnce()
+  loadLoftStatuesOnce()
+}

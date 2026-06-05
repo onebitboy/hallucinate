@@ -1,5 +1,11 @@
-import { loadCharacterAssets, loadCharacterDances, loadCharacterDetails,
-  loadCheapCharacterDances } from './character-assets.ts'
+import {
+  characterCoreChunkCount,
+  danceIdleClipLoadOrder,
+  loadCharacterAssets,
+  loadCharacterDance,
+  loadCharacterDetails,
+  loadCharacterHair,
+} from './character-assets.ts'
 import { buildCharacterDrawData } from './character-draw.ts'
 import type { CharacterDrawCache } from './character-draw.ts'
 import type { VertexWriter } from './character-geometry.ts'
@@ -34,10 +40,14 @@ export function createCharacterRenderSystem(options: {
   let rig: CharacterRig | undefined
   let hairRenderMeshes: HairRenderMesh[] = []
   let rigLoad: Promise<CharacterRig> | undefined
+  let hairLoad: Promise<void> | undefined
+  let coreLoad: Promise<CharacterRig> | undefined
   let detailLoad: Promise<void> | undefined
-  let danceLoad: Promise<void> | undefined
+  let remainingDanceLoad: Promise<void> | undefined
+  const danceLoads = new Map<number, Promise<void>>()
   let boxInstanceCount = 0
   let assetsLoaded = false
+  let coreLoadedChunks = 0
   let detailsLoaded = false
   let renderPlayers = false
   const boxInstanceCache: NumberBufferCache = { data: new Float32Array(0) }
@@ -57,23 +67,82 @@ export function createCharacterRenderSystem(options: {
   const hairInstanceCache: HairInstanceUploadCache = { buffers: [], counts: [], uploads: [] }
   const vertexWriter: VertexWriter = drawCache.vertices
 
-  async function loadAssets() {
-    const assets = await loadCharacterAssets()
+  function markCoreChunkLoaded() {
+    coreLoadedChunks++
+  }
 
-    assetsLoaded = true
+  async function loadAssets() {
+    const assets = await loadCharacterAssets(markCoreChunkLoaded)
 
     return assets.rig
   }
 
-  function loadOnce(onLoaded?: () => void) {
+  function loadRigOnce() {
     rigLoad ??= loadAssets().then(next => {
       rig = next
-      onLoaded?.()
 
       return next
     })
 
     return rigLoad
+  }
+
+  function loadHairOnce() {
+    hairLoad ??= loadCharacterHair(options.gl, options.hairController.index, markCoreChunkLoaded)
+      .then(details => {
+        hairRenderMeshes = details.hairRenderMeshes
+        options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
+        options.hairController.log()
+      })
+
+    return hairLoad
+  }
+
+  function loadCoreOnce(onLoaded?: () => void) {
+    coreLoad ??= Promise.all([loadRigOnce(), loadHairOnce()])
+      .then(([activeRig]) => {
+        assetsLoaded = true
+        onLoaded?.()
+
+        return activeRig
+      })
+
+    return coreLoad
+  }
+
+  function loadDetailsOnce() {
+    detailLoad ??= loadCoreOnce()
+      .then(activeRig => loadCharacterDetails(activeRig))
+      .then(() => {
+        detailsLoaded = true
+      })
+
+    return detailLoad
+  }
+
+  function loadDanceOnce(idleIndex: number) {
+    if (idleIndex <= 0) {
+      return Promise.resolve()
+    }
+
+    let load = danceLoads.get(idleIndex)
+
+    if (!load) {
+      load = loadCoreOnce().then(activeRig => loadCharacterDance(activeRig, idleIndex))
+      danceLoads.set(idleIndex, load)
+    }
+
+    return load
+  }
+
+  function loadRemainingDancesIdle() {
+    remainingDanceLoad ??= loadCoreOnce().then(async () => {
+      for (const idleIndex of danceIdleClipLoadOrder) {
+        await loadDanceOnce(idleIndex)
+      }
+    })
+
+    return remainingDanceLoad
   }
 
   function update(time: number) {
@@ -121,24 +190,6 @@ export function createCharacterRenderSystem(options: {
 
     if (!renderPlayers) {
       renderPlayers = true
-          detailLoad ??= loadCharacterDetails(options.gl, activeRig, options.hairController.index)
-        .then(details => {
-          hairRenderMeshes = details.hairRenderMeshes
-          options.hairController.setMeshes(details.hairMeshes, details.hairIndex)
-          detailsLoaded = true
-          options.hairController.log()
-        })
-        .catch((error: unknown) => {
-          void error
-        })
-    }
-    else {
-      danceLoad ??= (detailLoad ?? Promise.resolve())
-        .then(() => loadCheapCharacterDances(activeRig))
-        .then(() => loadCharacterDances(activeRig))
-        .catch((error: unknown) => {
-          void error
-        })
     }
 
     return data.vertices.length / options.vertexSize
@@ -147,6 +198,9 @@ export function createCharacterRenderSystem(options: {
   return {
     get assetsLoaded() {
       return assetsLoaded
+    },
+    get coreProgress() {
+      return assetsLoaded ? 1 : coreLoadedChunks / characterCoreChunkCount
     },
     get detailsLoaded() {
       return detailsLoaded
@@ -157,7 +211,11 @@ export function createCharacterRenderSystem(options: {
     get hairRenderMeshes() {
       return hairRenderMeshes
     },
-    loadOnce,
+    loadCoreOnce,
+    loadDanceOnce,
+    loadDetailsOnce,
+    loadOnce: loadCoreOnce,
+    loadRemainingDancesIdle,
     update,
   }
 }
