@@ -94,28 +94,20 @@ export function bindTapDestination(options: {
   jump: (target: Vec3) => void
   projector: WallProjector
   setDestination: (value: Vec3) => void
-  ignorePointer?: (event: PointerEvent) => boolean
+  ignorePointer?: (event: PointerEvent | TouchEvent) => boolean
 }) {
   let pointer: PointerState | undefined
 
-  options.canvas.addEventListener('pointerdown', event => {
-    if (options.ignorePointer?.(event)) {
-      return
-    }
-
-    if (event.pointerType === 'mouse') {
-      return
-    }
-
+  function start(id: number, x: number, y: number) {
     pointer = {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
+      id,
+      x,
+      y,
       moved: false,
       longPressed: false,
       timer: setTimeout(() => {
-        if (pointer?.id === event.pointerId && !pointer.moved) {
-          const target = screenGroundPoint(event.clientX, event.clientY, options.canvas, options.projector)
+        if (pointer?.id === id && !pointer.moved) {
+          const target = screenGroundPoint(x, y, options.canvas, options.projector)
 
           if (!target) {
             return
@@ -126,24 +118,24 @@ export function bindTapDestination(options: {
         }
       }, longPressDelay),
     }
-  })
+  }
 
-  options.canvas.addEventListener('pointermove', event => {
-    if (event.pointerId !== pointer?.id) {
+  function move(id: number, x: number, y: number) {
+    if (id !== pointer?.id) {
       return
     }
 
-    const dx = event.clientX - pointer.x
-    const dy = event.clientY - pointer.y
+    const dx = x - pointer.x
+    const dy = y - pointer.y
 
     pointer.moved ||= dx * dx + dy * dy > tapMoveThreshold * tapMoveThreshold
     if (pointer.moved) {
       clearTimeout(pointer.timer)
     }
-  })
+  }
 
-  options.canvas.addEventListener('pointerup', event => {
-    if (event.pointerId !== pointer?.id) {
+  function end(id: number, x: number, y: number) {
+    if (id !== pointer?.id) {
       return
     }
 
@@ -155,17 +147,78 @@ export function bindTapDestination(options: {
       return
     }
 
-    const target = screenGroundPoint(event.clientX, event.clientY, options.canvas, options.projector)
+    const target = screenGroundPoint(x, y, options.canvas, options.projector)
 
     if (target) {
       options.setDestination(target)
     }
+  }
+
+  function cancel(id: number) {
+    if (id === pointer?.id) {
+      clearTimeout(pointer.timer)
+      pointer = undefined
+    }
+  }
+
+  options.canvas.addEventListener('pointerdown', event => {
+    if (options.ignorePointer?.(event)) {
+      return
+    }
+
+    if (event.pointerType === 'mouse') {
+      return
+    }
+
+    start(event.pointerId, event.clientX, event.clientY)
+  })
+
+  options.canvas.addEventListener('pointermove', event => {
+    move(event.pointerId, event.clientX, event.clientY)
+  })
+
+  options.canvas.addEventListener('pointerup', event => {
+    end(event.pointerId, event.clientX, event.clientY)
   })
 
   options.canvas.addEventListener('pointercancel', event => {
-    if (event.pointerId === pointer?.id) {
-      clearTimeout(pointer.timer)
-      pointer = undefined
+    cancel(event.pointerId)
+  })
+
+  options.canvas.addEventListener('touchstart', event => {
+    if (pointer || options.ignorePointer?.(event)) {
+      return
+    }
+
+    const touch = event.changedTouches[0]!
+
+    event.preventDefault()
+    start(touch.identifier, touch.clientX, touch.clientY)
+  }, { passive: false })
+
+  options.canvas.addEventListener('touchmove', event => {
+    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
+
+    if (touch) {
+      event.preventDefault()
+      move(touch.identifier, touch.clientX, touch.clientY)
+    }
+  }, { passive: false })
+
+  options.canvas.addEventListener('touchend', event => {
+    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
+
+    if (touch) {
+      event.preventDefault()
+      end(touch.identifier, touch.clientX, touch.clientY)
+    }
+  }, { passive: false })
+
+  options.canvas.addEventListener('touchcancel', event => {
+    const touch = [...event.changedTouches].find(next => next.identifier === pointer?.id)
+
+    if (touch) {
+      cancel(touch.identifier)
     }
   })
 }
