@@ -72,6 +72,7 @@ import type {
   GraffitiSplat,
   Player,
   Vec3,
+  VideoPreview,
   Vertex,
   VideoZone,
 } from './types.ts'
@@ -90,6 +91,7 @@ import {
   createTreeShadowMap,
   resizeTarget,
 } from './webgl.ts'
+import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -1425,6 +1427,8 @@ setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiP
 gl.enable(gl.DEPTH_TEST)
 gl.clearColor(0.01, 0.01, 0.014, 1.0)
 
+const videoPreviewRenderer = createVideoPreviewRenderer(gl)
+
 restoreClubState({
   camera: cameraController,
   characterPosition,
@@ -1634,7 +1638,11 @@ function connectMultiplayer(spaceSlug?: string) {
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
-    onVideoSync: entries => djVideoUi.applySync(entries),
+    onVideoSync: entries => {
+      djVideoUi.applySync(entries)
+      videoPreviewRenderer.prepareAll(entries.map(entry => ({ id: entry.currentId, zone: entry.zone })))
+        .catch((error: unknown) => console.error(error))
+    },
     onBeachBalls: balls => {
       const stamp = performance.now()
 
@@ -2504,9 +2512,17 @@ async function takePhoto() {
 }
 
 async function capturePhoto() {
+  const videoPreview = djVideoUi.preview(currentVideoZone())
   const resume = !graphicsPaused
   const previousPixelRatio = forcedPixelRatio
   const previousBloomScale = forcedBloomScale
+
+  try {
+    await videoPreviewRenderer.prepare(videoPreview)
+  }
+  catch (e) {
+    console.error(e)
+  }
 
   if (resume) {
     pauseGraphics()
@@ -2516,7 +2532,7 @@ async function capturePhoto() {
     forcedPixelRatio = window.devicePixelRatio
     forcedBloomScale = 1
     resize()
-    renderPhotoFrame(lastStamp || performance.now())
+    renderPhotoFrame(lastStamp || performance.now(), videoPreview)
     return await canvasJpegBlob(canvas, 0.98)
   }
   finally {
@@ -2587,7 +2603,7 @@ async function uploadPhoto(photo: Blob) {
   return await jsonApiResponse<{ createdAt: number; timestamp: number; url: string }>(response, 'Photo upload')
 }
 
-function renderPhotoFrame(stamp: number) {
+function renderPhotoFrame(stamp: number, videoPreview?: VideoPreview) {
   const inLoft = appSpace.kind === 'loft'
   const zone = currentVideoZone()
   const camera = cameraController.get()
@@ -2605,6 +2621,7 @@ function renderPhotoFrame(stamp: number) {
     outside,
     sky,
     stamp,
+    videoPreview,
     zone,
   })
 }
@@ -2755,6 +2772,7 @@ function renderCurrentSceneFrame(options: {
   outside: boolean
   sky: boolean
   stamp: number
+  videoPreview?: VideoPreview
   zone: VideoZone
 }) {
   renderClubFrame({
@@ -2839,6 +2857,15 @@ function renderCurrentSceneFrame(options: {
         viewProjection: roomSmokeViewProjection!,
       },
     },
+    sceneOverlay: options.videoPreview
+      ? {
+        draw: cameraMatrix => {
+          if (!videoPreviewRenderer.draw(options.videoPreview!, cameraMatrix)) {
+            console.error(new Error(`Missing video preview texture ${options.videoPreview!.id}`))
+          }
+        },
+      }
+      : undefined,
     strobeController,
     target,
     time: options.stamp * 0.001,

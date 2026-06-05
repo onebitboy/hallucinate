@@ -1,4 +1,5 @@
 import { createCameraMatrix, updateCameraMatrix } from './camera-matrix.ts'
+import type { CameraMatrix } from './camera-matrix.ts'
 import {
   drawCharacterBoxes,
   drawNpcHair,
@@ -123,6 +124,9 @@ export function renderClubFrame(options: {
     program: WebGLProgram
     uniforms: SmokeUniforms
   }
+  sceneOverlay?: {
+    draw: (cameraMatrix: CameraMatrix) => void
+  }
   strobeController: ReturnType<typeof createStrobeDrawController>
   target: Target
   time: number
@@ -165,6 +169,7 @@ export function renderClubFrame(options: {
   gl.depthFunc(gl.LEQUAL)
   gl.depthMask(false)
   drawGraffiti(options)
+  options.sceneOverlay?.draw(mainCameraMatrix)
   gl.depthMask(true)
   gl.depthFunc(gl.LESS)
   gl.enable(gl.BLEND)

@@ -85,6 +85,38 @@ void main() {
 }
 `
 
+export const videoPreviewVertex = `#version 300 es
+precision highp float;
+
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 uv;
+
+uniform mat4 viewProjection;
+
+out vec2 imageUv;
+
+void main() {
+  gl_Position = viewProjection * vec4(position, 1.0);
+  imageUv = uv;
+}
+`
+
+export const videoPreviewFragment = `#version 300 es
+precision highp float;
+
+uniform sampler2D image;
+
+in vec2 imageUv;
+
+out vec4 pixel;
+
+void main() {
+  vec3 color = texture(image, imageUv).rgb;
+
+  pixel = vec4(color, 1.0);
+}
+`
+
 export const characterBoxFragment = `#version 300 es
 precision highp float;
 

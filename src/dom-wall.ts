@@ -69,7 +69,7 @@ export function createDomWallProjection(element: HTMLElement, options: {
   }
 }
 
-function domWallCorners(wall: DomWall, a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
+export function domWallCorners(wall: DomWall, a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
   const bottom = wall.y - wall.height / 2
   const top = wall.y + wall.height / 2
 

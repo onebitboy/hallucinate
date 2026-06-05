@@ -76,6 +76,11 @@ export type TreeMesh = {
 
 export type VideoZone = 'inside' | 'loft' | 'outside' | 'tent'
 
+export type VideoPreview = {
+  id: string
+  zone: VideoZone
+}
+
 export type YouTubePlayer = {
   cueVideoById(options: { videoId: string; startSeconds: number }): void
   cuePlaylist(options: { index: number; list: string; listType: 'playlist'; startSeconds: number }): void

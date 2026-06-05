@@ -1,9 +1,9 @@
 import { createDomWallProjection } from './dom-wall.ts'
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
 import type { WallProjector } from './projection.ts'
-import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists } from './scene-data.ts'
+import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
-import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
+import type { Vec3, VideoPreview, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 import type { DomWall } from './dom-wall.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
@@ -130,6 +130,12 @@ export function createDjVideoUi(
       for (const area of zones) {
         requestPlaylist(area)
       }
+    },
+    preview(area = zone): VideoPreview | undefined {
+      const state = states[area]
+      const id = state?.currentId || players[area]?.getVideoData()?.video_id || videoTracks[area]
+
+      return id ? { id, zone: area } : undefined
     },
     load() {
       const youtube = window as YouTubeWindow
