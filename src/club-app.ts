@@ -1686,6 +1686,8 @@ const claimText = document.createElement('p')
 const claimPassword = document.createElement('input')
 const claimNext = document.createElement('button')
 let pendingClaimSlug = ''
+let loftRouteToken = 0
+let claimSubmitting = false
 
 loftExit.id = 'loft-exit'
 loftExit.type = 'button'
@@ -1793,10 +1795,31 @@ rentRoomForm.addEventListener('submit', event => {
 
 claimForm.addEventListener('submit', async event => {
   event.preventDefault()
-  const room = await claimLoftRoom(pendingClaimSlug, claimPassword.value)
+  if (claimSubmitting) {
+    return
+  }
 
-  claimDialog.close()
-  activateLoft(room, true)
+  claimSubmitting = true
+  claimNext.disabled = true
+  const slug = pendingClaimSlug
+  const token = ++loftRouteToken
+
+  try {
+    const room = await claimLoftRoom(slug, claimPassword.value)
+
+    if (token !== loftRouteToken) {
+      return
+    }
+
+    claimDialog.close()
+    activateLoft(room, true)
+  }
+  finally {
+    if (token === loftRouteToken && claimDialog.open) {
+      claimSubmitting = false
+      claimNext.disabled = false
+    }
+  }
 })
 
 addEventListener('popstate', () => {
@@ -1813,29 +1836,39 @@ async function openCurrentRoute(push: boolean) {
     return
   }
 
+  loftRouteToken++
   enterMain(push)
 }
 
 async function openLoftRoute(slug: string, push: boolean) {
+  const token = ++loftRouteToken
   const room = await fetchLoftRoom(slug)
+
+  if (token !== loftRouteToken) {
+    return
+  }
 
   if (!room.claimed) {
     if (push && location.pathname !== `/${slug}`) {
       history.pushState(null, '', `/${slug}`)
     }
 
-    await showClaimWizard(slug)
+    showClaimWizard(slug)
     return
   }
 
   activateLoft(room, push)
 }
 
-async function showClaimWizard(slug: string) {
+function showClaimWizard(slug: string) {
+  claimSubmitting = false
+  claimNext.disabled = false
   pendingClaimSlug = slug
   claimPassword.value = 'admin'
   syncClaimStep()
-  claimDialog.showModal()
+  if (!claimDialog.open) {
+    claimDialog.showModal()
+  }
   claimPassword.focus()
 }
 
@@ -2028,6 +2061,7 @@ function isAtLoftExitDoor() {
 }
 
 function activateLoft(room: LoftRoomPayload, push: boolean) {
+  closeClaimDialog()
   if (appSpace.kind === 'main') {
     rememberMainPose()
   }
@@ -2054,6 +2088,7 @@ function activateLoft(room: LoftRoomPayload, push: boolean) {
 }
 
 function enterMain(push: boolean) {
+  closeClaimDialog()
   if (appSpace.kind === 'main' && !push) {
     return
   }
@@ -2067,6 +2102,15 @@ function enterMain(push: boolean) {
   resetLocalSpaceState()
   connectMultiplayer()
   syncSpaceUi()
+}
+
+function closeClaimDialog() {
+  pendingClaimSlug = ''
+  claimSubmitting = false
+  claimNext.disabled = false
+  if (claimDialog.open) {
+    claimDialog.close()
+  }
 }
 
 function resetLocalSpaceState() {
