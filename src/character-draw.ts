@@ -165,7 +165,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   pruneGlowstickTrails(cache?.glowstickTrails, options.time)
 
   addRenderedCharacter(vertices, boxInstances, hairInstances, options.character, options, true, basePose, undefined,
-    poses[poseIndex] ??= [])
+    poseCache(poses, poseIndex))
   poseIndex++
 
   const view = characterView(options.cameraPosition, options.cameraTarget)
@@ -196,7 +196,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
       usedNpcBlendKeys.add(directClip ? sampleKey : blendKey)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
-        npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
+        npcBlendCache, poseCache(poses, poseIndex), sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
       poseIndex++
     }
   }
@@ -221,6 +221,17 @@ export function buildCharacterDrawData(options: BuildOptions) {
 
 function idleClipIndex(character: CharacterInput) {
   return roomAt(character.position) === 'tent' ? 0 : character.idleClipIndex
+}
+
+function poseCache(poses: Vec3[][], index: number) {
+  let pose = poses[index]
+
+  if (!pose) {
+    pose = Array.from({ length: characterPoseJoints.length }, () => [0, 0, 0] as Vec3)
+    poses[index] = pose
+  }
+
+  return pose
 }
 
 function usesDirectClip(character: CharacterInput) {

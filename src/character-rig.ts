@@ -4,9 +4,13 @@ import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMo
 
 type PoseSamplePlan = {
   channels: WeakMap<CharacterClip, (AssimpChannel | undefined)[]>
+  helpers: boolean[]
   indices: number[]
   local: Mat4[]
+  origins: Vec3[]
+  parents: number[]
   poseSlots: number[]
+  transforms: Mat4[]
   world: Mat4[]
 }
 type KeyArray = [number, Vec3 | Quat][]
@@ -300,14 +304,14 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
   const tick = (time * clip.ticksPerSecond) % clip.duration
   const plan = getPoseSamplePlan(rig, characterPoseJoints, characterPoseJointSet)
   const channels = getPoseSampleChannels(rig, clip, plan)
-  const pose = target ?? new Array<Vec3>(characterPoseJoints.length)
+  const pose = target ?? createPose(characterPoseJoints.length)
 
   for (const i of plan.indices) {
-    const node = rig.nodes[i]!
-    const parent = node.parent < 0 ? identityMatrix : plan.world[node.parent]!
+    const parentIndex = plan.parents[i]!
+    const parent = parentIndex < 0 ? identityMatrix : plan.world[parentIndex]!
     const channel = channels[i]
-    const local = channel ? sampleChannelTransform(node, channel, tick, plan.local[i]!) : node.transform
-    const matrix = node.helper ? parent : multiplyInto(parent, local, plan.world[i]!)
+    const local = channel ? sampleChannelTransform(plan.origins[i]!, channel, tick, plan.local[i]!) : plan.transforms[i]!
+    const matrix = plan.helpers[i] ? parent : multiplyInto(parent, local, plan.world[i]!)
     const poseSlot = plan.poseSlots[i]!
 
     plan.world[i] = matrix
@@ -323,19 +327,14 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
 function setTransformOrigin(matrix: Mat4, target: Vec3[], index: number) {
   const point = target[index]
 
-  if (point) {
-    point[0] = matrix[3]
-    point[1] = matrix[7]
-    point[2] = matrix[11]
-  }
-  else {
-    target[index] = [matrix[3], matrix[7], matrix[11]]
-  }
+  point[0] = matrix[3]
+  point[1] = matrix[7]
+  point[2] = matrix[11]
 }
 
-function sampleChannelTransform(node: RigNode, channel: AssimpChannel, tick: number, target: Mat4) {
+function sampleChannelTransform(origin: Vec3, channel: AssimpChannel, tick: number, target: Mat4) {
   return composeInto(
-    channel.positionkeys?.length ? sampleVec3Into(channel.positionkeys, tick, node.origin, samplePosition) : node.origin,
+    channel.positionkeys?.length ? sampleVec3Into(channel.positionkeys, tick, origin, samplePosition) : origin,
     channel.rotationkeys?.length ? sampleQuatInto(channel.rotationkeys, tick, identityQuat, sampleRotation) : identityQuat,
     channel.scalingkeys?.length ? sampleVec3Into(channel.scalingkeys, tick, unitScale, sampleScale) : unitScale,
     target,
@@ -584,7 +583,7 @@ export function placeCharacterPose(
   characterPoseJoints: string[],
   characterGroundJointIndices: number[],
   characterScale: number,
-  target = new Array<Vec3>(characterPoseJoints.length),
+  target = createPose(characterPoseJoints.length),
   ground = poseGround(pose, characterGroundJointIndices),
 ) {
   const sin = Math.sin(turn)
@@ -601,14 +600,9 @@ export function placeCharacterPose(
     const py = position[1] + y
     const pz = position[2] - x * sin + z * cos
 
-    if (next) {
-      next[0] = px
-      next[1] = py
-      next[2] = pz
-    }
-    else {
-      target[i] = [px, py, pz]
-    }
+    next[0] = px
+    next[1] = py
+    next[2] = pz
   }
 
   return target
@@ -622,6 +616,10 @@ function poseGround(pose: Vec3[], characterGroundJointIndices: number[]) {
   }
 
   return ground
+}
+
+function createPose(length: number) {
+  return Array.from({ length }, () => [0, 0, 0] as Vec3)
 }
 
 function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], characterPoseJointSet: Set<string>) {
@@ -649,10 +647,19 @@ function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], cha
     }
 
     const indices = [...needed].sort((a, b) => a - b)
+    const helpers = new Array<boolean>(rig.nodes.length)
+    const origins = new Array<Vec3>(rig.nodes.length)
+    const parents = new Array<number>(rig.nodes.length)
     const poseSlots = new Array<number>(rig.nodes.length).fill(-1)
+    const transforms = new Array<Mat4>(rig.nodes.length)
 
     for (const index of indices) {
       const node = rig.nodes[index]!
+
+      helpers[index] = node.helper
+      origins[index] = node.origin
+      parents[index] = node.parent
+      transforms[index] = node.transform
 
       if (!node.helper && characterPoseJointSet.has(node.name)) {
         poseSlots[index] = characterPoseJoints.indexOf(node.name)
@@ -661,9 +668,13 @@ function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], cha
 
     plan = {
       channels: new WeakMap(),
+      helpers,
       indices,
       local: Array.from({ length: rig.nodes.length }, identity),
+      origins,
+      parents,
       poseSlots,
+      transforms,
       world: Array.from({ length: rig.nodes.length }, identity),
     }
     bySet.set(characterPoseJointSet, plan)
