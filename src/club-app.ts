@@ -839,6 +839,47 @@ function palmTreeMeshColor(index: number): [number, number, number] {
   return index === 0 ? [0.42, 0.24, 0.1] : [0.02, 0.72 + (index % 3) * 0.08, 0.16]
 }
 
+function outsidePlantMeshColor(meshIndex: number): Vec3 {
+  const lift = (meshIndex % 4) * 0.025
+
+  return [0.07 + lift * 0.3, 0.44 + lift, 0.12 + lift * 0.5]
+}
+
+function outsidePlantPlacements() {
+  const meshIndices = [0, 1, 4, 5, 6, 7]
+  const placements: Array<{
+    height: number
+    meshIndex: number
+    position: Vec3
+    turn: number
+  }> = [{
+    height: 0.56,
+    meshIndex: 0,
+    position: [4.2, characterFloor, 22.8],
+    turn: 0,
+  }]
+  const count = 176
+  const inset = 2.2
+
+  for (let i = 0; i < count; i++) {
+    const x = mix(outsideBounds.left + inset, outsideBounds.right - inset, seededPlantRandom(i, 1))
+    const z = mix(outsideBounds.back + inset, outsideBounds.front - inset, seededPlantRandom(i, 2))
+
+    if (inOutsidePlantClearance(x, z)) {
+      continue
+    }
+
+    placements.push({
+      height: mix(0.34, 0.78, seededPlantRandom(i, 3)),
+      meshIndex: meshIndices[Math.floor(seededPlantRandom(i, 4) * meshIndices.length)]!,
+      position: [x, characterFloor, z],
+      turn: seededPlantRandom(i, 5) * Math.PI * 2,
+    })
+  }
+
+  return placements
+}
+
 function rockPlacements() {
   const placements: Array<{
     height: number
@@ -889,6 +930,20 @@ function inRockClearance(x: number, z: number) {
   return inToiletBounds(x, z, 1.8)
 }
 
+function inOutsidePlantClearance(x: number, z: number) {
+  const tentDistanceX = x - tent.x
+  const tentDistanceZ = z - tent.z
+  const buddhaDistanceX = x - outsideBuddha.x
+  const buddhaDistanceZ = z - outsideBuddha.z
+  const palmDistanceX = x - outsidePalmTree.x
+  const palmDistanceZ = z - outsidePalmTree.z
+
+  return inToiletBounds(x, z, 2.6)
+    || (tentDistanceX * tentDistanceX + tentDistanceZ * tentDistanceZ) < (tent.radius + 1.6) * (tent.radius + 1.6)
+    || (buddhaDistanceX * buddhaDistanceX + buddhaDistanceZ * buddhaDistanceZ) < 5.6
+    || (palmDistanceX * palmDistanceX + palmDistanceZ * palmDistanceZ) < 3.2
+}
+
 function inToiletBounds(x: number, z: number, padding = 0) {
   return x > outsideToilets.x - outsideToilets.width / 2 - padding
     && x < outsideToilets.x + outsideToilets.width / 2 + padding
@@ -898,6 +953,12 @@ function inToiletBounds(x: number, z: number, padding = 0) {
 
 function seededRockRandom(seed: number, salt: number) {
   const value = Math.sin(seed * 127.1 + salt * 311.7) * 43758.5453123
+
+  return value - Math.floor(value)
+}
+
+function seededPlantRandom(seed: number, salt: number) {
+  const value = Math.sin(seed * 191.9 + salt * 271.3) * 91721.3371
 
   return value - Math.floor(value)
 }
@@ -2736,60 +2797,112 @@ function loadMainWorldOnce() {
     .catch((error: unknown) => {
       console.error(error)
     })
-    .then(() => Promise.all([
-      loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
-        color: palmTreeMeshColor,
-        height: 5.94,
-        name: 'palmtree.fbx',
-        nodeTransforms: true,
-        path: '/palmtree.fbx',
-        shadow: false,
-        sourceUp: 'y',
-      })
-        .then(() => {
-          palmTreeLoaded = true
-          refreshRoomBuffer()
+    .then(() =>
+      Promise.all([
+        loadOutsideTree(gl, treeShadowMap, vertices, outsidePalmTree, addSunLitTriangle, {
+          color: palmTreeMeshColor,
+          height: 5.94,
+          name: 'palmtree.fbx',
+          nodeTransforms: true,
+          path: '/palmtree.fbx',
+          shadow: false,
+          sourceUp: 'y',
         })
+          .then(() => {
+            palmTreeLoaded = true
+            refreshRoomBuffer()
+          })
         .catch((error: unknown) => {
           console.error(error)
-        }),
-      loadStaticFbxObject(vertices, {
-        color: [0.46, 0.42, 0.36],
-        height: 2.9,
-        lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95 },
-        path: '/buddha.fbx',
-        position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
-        sourceUp: 'z',
-        turn: Math.PI,
-      }, addSunLitTriangle)
-        .then(() => {
-          buddhaLoaded = true
           refreshRoomBuffer()
-        })
-        .catch((error: unknown) => {
-          console.error(error)
         }),
-      loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
-        color: [0.29, 0.27, 0.24],
-        height: rock.height,
-        lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
-        meshIndex: rock.meshIndex,
-        path: '/rocks.fbx',
-        position: rock.position,
-        sourceUp: 'z',
-        turn: rock.turn,
-      })), addSunLitTriangle)
-        .then(() => {
-          rocksLoaded = true
-          refreshRoomBuffer()
-        })
-        .catch((error: unknown) => {
-          console.error(error)
-        }),
-    ]))
+        loadStaticFbxObject(vertices, {
+          color: [0.46, 0.42, 0.36],
+          height: 2.9,
+          lightBounds: { x: outsideBuddha.x, z: 29.3, radius: 0.95 },
+          path: '/buddha.fbx',
+          position: [outsideBuddha.x, characterFloor, outsideBuddha.z],
+          sourceUp: 'z',
+          turn: Math.PI,
+        }, addSunLitTriangle)
+          .then(() => {
+            buddhaLoaded = true
+            refreshRoomBuffer()
+          })
+          .catch((error: unknown) => {
+            console.error(error)
+          }),
+        loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
+          color: [0.29, 0.27, 0.24],
+          height: rock.height,
+          lightBounds: { x: rock.position[0], z: rock.position[2], radius: 0.7 },
+          meshIndex: rock.meshIndex,
+          path: '/rocks.fbx',
+          position: rock.position,
+          sourceUp: 'z',
+          turn: rock.turn,
+        })), addSunLitTriangle)
+          .then(() => {
+            rocksLoaded = true
+            refreshRoomBuffer()
+          })
+          .catch((error: unknown) => {
+            console.error(error)
+          }),
+        loadStaticFbxObjects(vertices, '/plants.fbx', outsidePlantPlacements().map(plant => ({
+          color: outsidePlantMeshColor,
+          height: plant.height,
+          lightBounds: { x: plant.position[0], z: plant.position[2], radius: 0.92 },
+          meshIndex: plant.meshIndex,
+          nodeTransforms: true,
+          path: '/plants.fbx',
+          position: plant.position,
+          sourceUp: 'y',
+          turn: plant.turn,
+        })), addOutsidePlantTriangle)
+          .then(() => {
+            refreshRoomBuffer()
+          })
+          .catch((error: unknown) => {
+            console.error(error)
+          }),
+      ])
+    )
     .then(() => undefined)
 
   return mainWorldLoad
+}
+
+function addOutsidePlantTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
+  const ux = c[0] - a[0]
+  const uy = c[1] - a[1]
+  const uz = c[2] - a[2]
+  const vx = b[0] - a[0]
+  const vy = b[1] - a[1]
+  const vz = b[2] - a[2]
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  const normalLength = Math.sqrt(nx * nx + ny * ny + nz * nz)
+
+  if (normalLength === 0) {
+    throw new Error('Cannot shade zero-area outside plant triangle')
+  }
+
+  const heightLight = Math.min(Math.max(((a[1] + b[1] + c[1]) / 3 - characterFloor) / 0.92, 0), 1)
+  const topLight = Math.max(0, ny / normalLength)
+  const shade = 0.3 + heightLight * 0.72 + Math.pow(topLight, 0.7) * 0.28
+  const lit: Vec3 = [
+    Math.min(color[0] * shade, 1),
+    Math.min(color[1] * shade, 1),
+    Math.min(color[2] * shade, 1),
+  ]
+
+  target.push(
+    [a[0], a[1], a[2], lit[0], lit[1], lit[2], 0, 0, 0, 0, 0],
+    [b[0], b[1], b[2], lit[0], lit[1], lit[2], 0, 0, 0, 0, 0],
+    [c[0], c[1], c[2], lit[0], lit[1], lit[2], 0, 0, 0, 0, 0],
+  )
 }
 
 function loftPlantMeshColor(meshIndex: number): Vec3 {
