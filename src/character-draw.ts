@@ -2,10 +2,9 @@ import { characterGroundJoints, characterScale, shoe, skin } from './character-d
 import {
   addCharacterBox,
   addCharacterQuad,
-  addFlatTriangle,
+  addReservedFlatTriangle,
   reserveFloats,
   resetVertexWriter,
-  vertexWriterData,
 } from './character-geometry.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
@@ -16,6 +15,7 @@ import { clamp, normalizeIndex } from './math.ts'
 import { roomAt } from './scene.ts'
 import type {
   CharacterMode,
+  CharacterLight,
   CharacterPart,
   CharacterRig,
   HairMesh,
@@ -50,7 +50,7 @@ type BuildOptions = {
   cameraTarget: Vec3
   character: CharacterInput
   hairMeshes: HairMesh[]
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3
+  light: CharacterLight
   players: Player[]
   rig: CharacterRig
   time: number
@@ -102,6 +102,7 @@ const characterPartPlans = characterParts.map(part => ({
 }))
 const hairLightPoint: Vec3 = [0, 0, 0]
 const hairLightNormal: Vec3 = [0, 1, 0]
+const hairShade: Vec3 = [0, 0, 0]
 const partA: Vec3 = [0, 0, 0]
 const partB: Vec3 = [0, 0, 0]
 const chestA: Vec3 = [0, 0, 0]
@@ -213,9 +214,9 @@ export function buildCharacterDrawData(options: BuildOptions) {
   }
 
   return {
-    vertices: vertexWriterData(vertices),
-    boxInstances: vertexWriterData(boxInstances),
-    hairInstances: vertexWriterData(hairInstances),
+    vertices,
+    boxInstances,
+    hairInstances,
   }
 }
 
@@ -302,7 +303,7 @@ function addGlowsticks(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
   trails: Map<number, GlowstickTrailPoint[]> | undefined,
   trailKey: number,
@@ -325,7 +326,7 @@ function addGlowstick(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
   trails: Map<number, GlowstickTrailPoint[]> | undefined,
   trailKey: number,
@@ -366,7 +367,7 @@ function addGlowstick(
 function addGlowstickTrail(
   target: VertexWriter,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   trails: Map<number, GlowstickTrailPoint[]> | undefined,
   trailKey: number,
   time: number,
@@ -465,7 +466,7 @@ function addSprayCan(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   const torso = pose[spine2Index]!
@@ -484,7 +485,7 @@ function addSprayCanAtHand(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   const dx = hand[0] - foreArm[0]
@@ -597,7 +598,7 @@ function addCharacterPart(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   const { part } = plan
@@ -667,7 +668,7 @@ function addCharacterChest(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   const spine = pose[spine2Index]!
@@ -700,7 +701,7 @@ function addCharacterChestSide(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   chestA[0] = centerX + sideX * offset + forwardX * 0.06
@@ -720,7 +721,7 @@ function addCharacterSkirt(
   player: { turn: number },
   turn: TurnBasis,
   style: ResolvedPlayerStyle,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   localReflection: boolean,
 ) {
   const hips = pose[hipsIndex]!
@@ -773,7 +774,7 @@ function addCharacterHair(
   pose: Vec3[],
   mesh: HairMesh,
   color: Vec3,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
 ) {
   const basis = characterHairBasis(pose)
   const head = pose[headIndex]!
@@ -822,9 +823,9 @@ function addCharacterHair(
       hairLightNormal[1] = ny / length
       hairLightNormal[2] = nz / length
 
-      const shade = light(color, hairLightPoint, hairLightNormal)
+      const shade = light(color, hairLightPoint, hairLightNormal, hairShade)
 
-      addFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, shade, 0)
+      addReservedFlatTriangle(target, ax, ay, az, bx, by, bz, cx, cy, cz, shade, 0)
     }
   }
 }

@@ -64,6 +64,7 @@ const stoolTop = characterFloor + 0.72
 const outsideHutStoolTop = characterFloor + outsideHutDeckHeight + 0.72
 const outsideStageTop = characterFloor + 4.2
 const platformStep = 0.42
+const emptySeats = new Set<string>()
 
 export function walkHeight(x: number, y: number, z: number) {
   const platform = platformHeight(x, z)
@@ -335,7 +336,7 @@ function inTentWall(x: number, z: number, padding: number) {
   return distance < tent.radius + padding && distance > tent.radius - 0.62 && !isAtTentDoor([x, characterFloor, z], padding)
 }
 
-export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), padding = 0.46, includeOccupied = false,
+export function seatAt(position: Vec3, occupiedSeats = emptySeats, padding = 0.46, includeOccupied = false,
   loft = false):
   | Seat
   | undefined
@@ -344,7 +345,7 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
     return couchSeatAt(loftCouches, 'loft-couch', position, occupiedSeats, padding, includeOccupied, walkLoftHeight)
   }
 
-  const buddha = buddhaSeat()
+  const buddha = cachedBuddhaSeat
   const tent = tentSeat(position, occupiedSeats, includeOccupied) ?? tentCenterSeat(position, occupiedSeats,
     includeOccupied)
 
@@ -369,11 +370,13 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
 
   for (let i = 0; i < seatStools.length; i++) {
     const stool = seatStools[i]!
-    const bounds = paddedBounds(stool, padding)
-    const seat = stoolSeat(stool, i)
+    const seat = cachedStoolSeats[i]!
 
-    if (position[0] > bounds.left && position[0] < bounds.right && position[2] > bounds.back
-      && position[2] < bounds.front && (includeOccupied || !occupiedSeats.has(seat.id)))
+    if (position[0] > stool.x - stool.width * 0.5 - padding
+      && position[0] < stool.x + stool.width * 0.5 + padding
+      && position[2] > stool.z - stool.depth * 0.5 - padding
+      && position[2] < stool.z + stool.depth * 0.5 + padding
+      && (includeOccupied || !occupiedSeats.has(seat.id)))
     {
       return seat
     }
@@ -474,12 +477,13 @@ function couchSeatAt(
 ) {
   for (let i = 0; i < couches.length; i++) {
     const couch = couches[i]!
-    const bounds = paddedBounds(couch, padding)
 
-    if (position[0] > bounds.left && position[0] < bounds.right && position[2] > bounds.back
-      && position[2] < bounds.front)
+    if (position[0] > couch.x - couch.width * 0.5 - padding
+      && position[0] < couch.x + couch.width * 0.5 + padding
+      && position[2] > couch.z - couch.depth * 0.5 - padding
+      && position[2] < couch.z + couch.depth * 0.5 + padding)
     {
-      const seats = idPrefix === 'couch' ? cachedOutsideCouchSeatsByCouch[i]! : couchSeats(couch, idPrefix, i, heightAt)
+      const seats = idPrefix === 'couch' ? cachedOutsideCouchSeatsByCouch[i]! : cachedLoftCouchSeatsByCouch[i]!
 
       return nearestSeat(seats, position, occupiedSeats, includeOccupied)
     }
@@ -543,6 +547,8 @@ const cachedBuddhaSeat = buddhaSeat()
 const cachedTentSeats = tentSeats()
 const cachedTentCenterSeats = tentCenterSeats()
 const cachedOutsideCouchSeatsByCouch = outsideCouches.map((couch, index) => couchSeats(couch, 'couch', index, walkHeight))
+const cachedLoftCouchSeatsByCouch = loftCouches.map((couch, index) => couchSeats(couch, 'loft-couch', index,
+  walkLoftHeight))
 const cachedOutsideCouchSeats = cachedOutsideCouchSeatsByCouch.flat()
 const cachedStoolSeats = seatStools.map((stool, index) => stoolSeat(stool, index))
 const cachedSeats = [

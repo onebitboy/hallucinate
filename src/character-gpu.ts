@@ -10,24 +10,26 @@ export function uploadFloatBuffer(
   buffer: WebGLBuffer,
   data: Float32Array,
   cache?: NumberBufferCache,
+  length = data.length,
 ) {
-  if (data.byteLength === 0) {
+  if (length === 0) {
     return
   }
+  const byteLength = length * Float32Array.BYTES_PER_ELEMENT
 
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
 
   if (!cache) {
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
+    gl.bufferData(gl.ARRAY_BUFFER, length === data.length ? data : data.subarray(0, length), gl.DYNAMIC_DRAW)
     return
   }
 
-  if ((cache.capacity ?? 0) < data.byteLength) {
-    cache.capacity = data.byteLength
+  if ((cache.capacity ?? 0) < byteLength) {
+    cache.capacity = byteLength
     gl.bufferData(gl.ARRAY_BUFFER, cache.capacity, gl.DYNAMIC_DRAW)
   }
 
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, data)
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, length)
 }
 
 export function drawCharacterBoxes(options: {

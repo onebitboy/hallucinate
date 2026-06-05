@@ -1,4 +1,5 @@
 import { createDomWallProjection } from './dom-wall.ts'
+import { createStyleSetter } from './style-setter.ts'
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
 import type { WallProjector } from './projection.ts'
 import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists, videoTracks } from './scene-data.ts'
@@ -406,19 +407,6 @@ function pauseOtherVideos(
   for (const zone of videoZones()) {
     if (zone !== area && ready[zone]) {
       players[zone]!.pauseVideo()
-    }
-  }
-}
-
-type StyleName = 'opacity' | 'pointerEvents'
-
-function createStyleSetter(style: CSSStyleDeclaration) {
-  const values = new Map<StyleName, string>()
-
-  return (name: StyleName, value: string) => {
-    if (values.get(name) !== value) {
-      values.set(name, value)
-      style[name] = value
     }
   }
 }

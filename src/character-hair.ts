@@ -8,6 +8,10 @@ export type HairInstanceUploadCache = {
   counts: number[]
   uploads: NumberBufferCache[]
 }
+type HairInstanceRange = {
+  data: Float32Array
+  length: number
+}
 
 export function createHairMeshes(scene: AssimpScene, source: string): HairMesh[] {
   const meshes = scene.meshes!.filter(mesh => mesh.name.toLowerCase().includes('hair'))
@@ -110,7 +114,7 @@ export function hairLocalPoint(point: Vec3): Vec3 {
 export function updateHairInstances(
   context: WebGL2RenderingContext,
   hairRenderMeshes: HairRenderMesh[],
-  hairInstances: Float32Array,
+  hairInstances: HairInstanceRange,
   cache?: HairInstanceUploadCache,
 ) {
   const uploadCache = cache ?? {
@@ -121,26 +125,28 @@ export function updateHairInstances(
 
   resizeHairInstanceBuffers(uploadCache, hairRenderMeshes.length)
 
+  const data = hairInstances.data
+
   for (let i = 0; i < hairInstances.length; i += 16) {
-    const meshIndex = hairInstances[i]!
+    const meshIndex = data[i]!
     const offset = uploadCache.counts[meshIndex]!
     const buffer = growHairInstanceBuffer(uploadCache, meshIndex, offset + 15)
 
-    buffer[offset] = hairInstances[i + 1]!
-    buffer[offset + 1] = hairInstances[i + 2]!
-    buffer[offset + 2] = hairInstances[i + 3]!
-    buffer[offset + 3] = hairInstances[i + 4]!
-    buffer[offset + 4] = hairInstances[i + 5]!
-    buffer[offset + 5] = hairInstances[i + 6]!
-    buffer[offset + 6] = hairInstances[i + 7]!
-    buffer[offset + 7] = hairInstances[i + 8]!
-    buffer[offset + 8] = hairInstances[i + 9]!
-    buffer[offset + 9] = hairInstances[i + 10]!
-    buffer[offset + 10] = hairInstances[i + 11]!
-    buffer[offset + 11] = hairInstances[i + 12]!
-    buffer[offset + 12] = hairInstances[i + 13]!
-    buffer[offset + 13] = hairInstances[i + 14]!
-    buffer[offset + 14] = hairInstances[i + 15]!
+    buffer[offset] = data[i + 1]!
+    buffer[offset + 1] = data[i + 2]!
+    buffer[offset + 2] = data[i + 3]!
+    buffer[offset + 3] = data[i + 4]!
+    buffer[offset + 4] = data[i + 5]!
+    buffer[offset + 5] = data[i + 6]!
+    buffer[offset + 6] = data[i + 7]!
+    buffer[offset + 7] = data[i + 8]!
+    buffer[offset + 8] = data[i + 9]!
+    buffer[offset + 9] = data[i + 10]!
+    buffer[offset + 10] = data[i + 11]!
+    buffer[offset + 11] = data[i + 12]!
+    buffer[offset + 12] = data[i + 13]!
+    buffer[offset + 13] = data[i + 14]!
+    buffer[offset + 14] = data[i + 15]!
     uploadCache.counts[meshIndex] = offset + 15
   }
 
@@ -153,15 +159,11 @@ export function updateHairInstances(
       continue
     }
 
-    const buffer = uploadCache.buffers[i]!.length === count
-      ? uploadCache.buffers[i]!
-      : uploadCache.buffers[i]!.subarray(
-        0,
-        count,
-      )
+    const buffer = uploadCache.buffers[i]!
     const upload = uploadCache.uploads[i] ??= { data: buffer }
 
-    uploadFloatBuffer(context, mesh.instanceBuffer, buffer, upload)
+    upload.data = buffer
+    uploadFloatBuffer(context, mesh.instanceBuffer, buffer, upload, count)
   }
 }
 

@@ -16,7 +16,7 @@ import { updateHairInstances } from './character-hair.ts'
 import type { HairInstanceUploadCache } from './character-hair.ts'
 import { createCharacterStyleController } from './character-style.ts'
 import { createLocalCharacter } from './local-character.ts'
-import type { CharacterRig, HairRenderMesh, Player, Vec3 } from './types.ts'
+import type { CharacterLight, CharacterRig, HairRenderMesh, Player, Vec3 } from './types.ts'
 
 export function createCharacterRenderSystem(options: {
   boxInstanceBuffer: WebGLBuffer
@@ -31,7 +31,7 @@ export function createCharacterRenderSystem(options: {
   gl: WebGL2RenderingContext
   hairController: ReturnType<typeof createCharacterHairController>
   idleClipIndex: () => number
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3
+  light: CharacterLight
   localCharacter: ReturnType<typeof createLocalCharacter>
   players: Player[]
   styleController: ReturnType<typeof createCharacterStyleController>
@@ -184,9 +184,10 @@ export function createCharacterRenderSystem(options: {
 
     updateHairInstances(options.gl, hairRenderMeshes, data.hairInstances, hairInstanceCache)
     boxInstanceCount = data.boxInstances.length / options.boxInstanceSize
-    uploadFloatBuffer(options.gl, options.boxInstanceBuffer, data.boxInstances, boxInstanceCache)
+    uploadFloatBuffer(options.gl, options.boxInstanceBuffer, data.boxInstances.data, boxInstanceCache,
+      data.boxInstances.length)
 
-    uploadFloatBuffer(options.gl, options.buffer, data.vertices, vertexUploadCache)
+    uploadFloatBuffer(options.gl, options.buffer, data.vertices.data, vertexUploadCache, data.vertices.length)
 
     if (!renderPlayers) {
       renderPlayers = true

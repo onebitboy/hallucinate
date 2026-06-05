@@ -468,7 +468,7 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
 
 function validRemotePose(packet: SpawnPacket) {
   return !seatedMode(protocolToMode(packet.mode))
-    || Boolean(seatAt([protocolToScene(packet.x), characterFloor, protocolToScene(packet.y)], new Set(), 0.46, true))
+    || Boolean(seatAt([protocolToScene(packet.x), characterFloor, protocolToScene(packet.y)], undefined, 0.46, true))
 }
 
 function seatedMode(mode: CharacterMode | undefined) {
@@ -480,5 +480,5 @@ function oneShotMode(mode: CharacterMode | undefined) {
 }
 
 function remoteSeatHeight(player: Player) {
-  return seatAt(player.position, new Set(), 0.46, true)!.position[1]
+  return seatAt(player.position, undefined, 0.46, true)!.position[1]
 }

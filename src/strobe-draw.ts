@@ -72,7 +72,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
       }
 
       instanceCount = length / options.instanceSize
-      uploadFloatBuffer(options.gl, options.instanceBuffer, instances.subarray(0, length), instanceBufferCache)
+      uploadFloatBuffer(options.gl, options.instanceBuffer, instances, instanceBufferCache, length)
     },
     draw(nextFrame: number, cameraMatrix: CameraMatrix) {
       if (instanceCount === 0) {

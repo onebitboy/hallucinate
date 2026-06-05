@@ -1,4 +1,4 @@
-import type { Vec3 } from './types.ts'
+import type { CharacterLight, Vec3 } from './types.ts'
 
 export type VertexBufferCache = {
   data: Float32Array
@@ -9,6 +9,7 @@ export type VertexWriter = VertexBufferCache
 
 const lightPoint: Vec3 = [0, 0, 0]
 const lightNormal: Vec3 = [0, 1, 0]
+const lightShade: Vec3 = [0, 0, 0]
 const boxA0: Vec3 = [0, 0, 0]
 const boxA1: Vec3 = [0, 0, 0]
 const boxA2: Vec3 = [0, 0, 0]
@@ -72,7 +73,7 @@ export function addCharacterBox(
   glow: number,
   turn: number,
   localReflection: boolean,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   strobe = 0,
   turnSin = Math.sin(turn),
   turnCos = Math.cos(turn),
@@ -184,7 +185,7 @@ export function addCharacterQuad(
   color: Vec3,
   glow: number,
   localReflection: boolean,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
   strobe = 0,
 ) {
   if (localReflection) {
@@ -203,7 +204,7 @@ function addLitQuad(
   d: Vec3,
   color: Vec3,
   glow: number,
-  light: (color: Vec3, point: Vec3, normal: Vec3) => Vec3,
+  light: CharacterLight,
 ) {
   const ux = c[0] - a[0]
   const uy = c[1] - a[1]
@@ -226,7 +227,7 @@ function addLitQuad(
   lightNormal[1] = ny / length
   lightNormal[2] = nz / length
 
-  addFlatQuad(target, a, b, c, d, light(color, lightPoint, lightNormal), glow)
+  addFlatQuad(target, a, b, c, d, light(color, lightPoint, lightNormal, lightShade), glow)
 }
 
 export function addFlatTriangle(
@@ -245,9 +246,82 @@ export function addFlatTriangle(
   strobe = 0,
 ) {
   reserveVertices(target, 3)
-  addFlatVertex(target, ax, ay, az, color, glow, strobe)
-  addFlatVertex(target, bx, by, bz, color, glow, strobe)
-  addFlatVertex(target, cx, cy, cz, color, glow, strobe)
+  writeFlatTriangleInto(target, ax, ay, az, bx, by, bz, cx, cy, cz, color, glow, strobe)
+}
+
+export function addReservedFlatTriangle(
+  target: VertexWriter,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  color: Vec3,
+  glow: number,
+  strobe = 0,
+) {
+  writeFlatTriangleInto(target, ax, ay, az, bx, by, bz, cx, cy, cz, color, glow, strobe)
+}
+
+function writeFlatTriangleInto(
+  target: VertexWriter,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  color: Vec3,
+  glow: number,
+  strobe = 0,
+) {
+  const data = target.data
+  let offset = target.length
+  const r = color[0]
+  const g = color[1]
+  const b = color[2]
+
+  data[offset++] = ax
+  data[offset++] = ay
+  data[offset++] = az
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = b
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = bx
+  data[offset++] = by
+  data[offset++] = bz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = b
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = cx
+  data[offset++] = cy
+  data[offset++] = cz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = b
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  target.length = offset
 }
 
 function addFlatQuad(
@@ -261,32 +335,86 @@ function addFlatQuad(
   strobe = 0,
 ) {
   reserveVertices(target, 6)
-  addFlatVertex(target, a[0], a[1], a[2], color, glow, strobe)
-  addFlatVertex(target, b[0], b[1], b[2], color, glow, strobe)
-  addFlatVertex(target, c[0], c[1], c[2], color, glow, strobe)
-  addFlatVertex(target, a[0], a[1], a[2], color, glow, strobe)
-  addFlatVertex(target, c[0], c[1], c[2], color, glow, strobe)
-  addFlatVertex(target, d[0], d[1], d[2], color, glow, strobe)
-}
 
-function addFlatVertex(
-  target: VertexWriter,
-  x: number,
-  y: number,
-  z: number,
-  color: Vec3,
-  glow: number,
-  strobe: number,
-) {
   const data = target.data
   let offset = target.length
+  const r = color[0]
+  const g = color[1]
+  const blue = color[2]
+  const ax = a[0]
+  const ay = a[1]
+  const az = a[2]
+  const bx = b[0]
+  const by = b[1]
+  const bz = b[2]
+  const cx = c[0]
+  const cy = c[1]
+  const cz = c[2]
+  const dx = d[0]
+  const dy = d[1]
+  const dz = d[2]
 
-  data[offset++] = x
-  data[offset++] = y
-  data[offset++] = z
-  data[offset++] = color[0]
-  data[offset++] = color[1]
-  data[offset++] = color[2]
+  data[offset++] = ax
+  data[offset++] = ay
+  data[offset++] = az
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = bx
+  data[offset++] = by
+  data[offset++] = bz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = cx
+  data[offset++] = cy
+  data[offset++] = cz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = ax
+  data[offset++] = ay
+  data[offset++] = az
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = cx
+  data[offset++] = cy
+  data[offset++] = cz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
+  data[offset++] = glow
+  data[offset++] = strobe
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = 0
+  data[offset++] = dx
+  data[offset++] = dy
+  data[offset++] = dz
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = blue
   data[offset++] = glow
   data[offset++] = strobe
   data[offset++] = 0

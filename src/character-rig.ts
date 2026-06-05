@@ -3,18 +3,36 @@ import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMo
   Quat, RigNode, SampledPose, Vec3 } from './types.ts'
 
 type PoseSamplePlan = {
-  channels: WeakMap<CharacterClip, (AssimpChannel | undefined)[]>
-  helpers: boolean[]
-  indices: number[]
-  local: Mat4[]
-  origins: Vec3[]
-  parents: number[]
-  poseSlots: number[]
-  transforms: Mat4[]
-  world: Mat4[]
+  channels: WeakMap<CharacterClip, (PackedChannel | undefined)[]>
+  entries: PoseSampleEntry[]
 }
-type KeyArray = [number, Vec3 | Quat][]
-type KeyInterval = { inverse: number; start: number }
+type PoseSampleEntry = {
+  helper: boolean
+  local: Mat4
+  name: string
+  origin: Vec3
+  parentSlot: number
+  poseSlot: number
+  transform: Mat4
+  world: Mat4
+}
+type PackedChannel = {
+  position?: PackedVec3Track
+  rotation?: PackedQuatTrack
+  scale?: PackedVec3Track
+}
+type PackedVec3Track = {
+  stepInverse: number
+  start: number
+  times: Float64Array
+  values: Float64Array
+}
+type PackedQuatTrack = {
+  stepInverse: number
+  start: number
+  times: Float64Array
+  values: Float64Array
+}
 type UpperPosePlan = { anchorIndex: number; indices: number[] }
 
 const identityMatrix = identity()
@@ -24,8 +42,7 @@ const samplePosition: Vec3 = [0, 0, 0]
 const sampleRotation: Quat = [1, 0, 0, 0]
 const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
-const keyIntervals = new WeakMap<KeyArray, KeyInterval>()
-const keyIntervalsMissing = new WeakSet<KeyArray>()
+const packedChannels = new WeakMap<AssimpChannel, PackedChannel>()
 const upperPosePlans = new WeakMap<string[], UpperPosePlan>()
 const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
@@ -322,18 +339,20 @@ export function sampleClipPose(rig: CharacterRig, clip: CharacterClip, time: num
 {
   const tick = (time * clip.ticksPerSecond) % clip.duration
   const plan = getPoseSamplePlan(rig, characterPoseJoints, characterPoseJointSet)
-  const channels = getPoseSampleChannels(rig, clip, plan)
+  const channels = getPoseSampleChannels(clip, plan)
   const pose = target ?? createPose(characterPoseJoints.length)
 
-  for (const i of plan.indices) {
-    const parentIndex = plan.parents[i]!
-    const parent = parentIndex < 0 ? identityMatrix : plan.world[parentIndex]!
+  for (let i = 0; i < plan.entries.length; i++) {
+    const entry = plan.entries[i]!
+    const parent = entry.parentSlot < 0 ? identityMatrix : plan.entries[entry.parentSlot]!.world
     const channel = channels[i]
-    const local = channel ? sampleChannelTransform(plan.origins[i]!, channel, tick, plan.local[i]!) : plan.transforms[i]!
-    const matrix = plan.helpers[i] ? parent : multiplyInto(parent, local, plan.world[i]!)
-    const poseSlot = plan.poseSlots[i]!
+    const matrix = entry.helper
+      ? parent
+      : multiplyAffineInto(parent, channel ? sampleChannelTransform(entry.origin, channel, tick, entry.local) : entry.transform,
+        entry.world)
+    const poseSlot = entry.poseSlot
 
-    plan.world[i] = matrix
+    entry.world = matrix
 
     if (poseSlot >= 0) {
       setTransformOrigin(matrix, pose, poseSlot)
@@ -351,21 +370,20 @@ function setTransformOrigin(matrix: Mat4, target: Vec3[], index: number) {
   point[2] = matrix[11]
 }
 
-function sampleChannelTransform(origin: Vec3, channel: AssimpChannel, tick: number, target: Mat4) {
+function sampleChannelTransform(origin: Vec3, channel: PackedChannel, tick: number, target: Mat4) {
   return composeInto(
-    channel.positionkeys?.length ? sampleVec3Into(channel.positionkeys, tick, origin, samplePosition) : origin,
-    channel.rotationkeys?.length ? sampleQuatInto(channel.rotationkeys, tick, identityQuat, sampleRotation) : identityQuat,
-    channel.scalingkeys?.length ? sampleVec3Into(channel.scalingkeys, tick, unitScale, sampleScale) : unitScale,
+    channel.position ? sampleVec3TrackInto(channel.position, tick, samplePosition) : origin,
+    channel.rotation ? sampleQuatTrackInto(channel.rotation, tick, sampleRotation) : identityQuat,
+    channel.scale ? sampleVec3TrackInto(channel.scale, tick, sampleScale) : unitScale,
     target,
   )
 }
 
 function composeInto(position: Vec3, rotation: Quat, nextScale: Vec3, target: Mat4) {
-  const length = Math.hypot(rotation[0], rotation[1], rotation[2], rotation[3])
-  const w = rotation[0] / length
-  const x = rotation[1] / length
-  const y = rotation[2] / length
-  const z = rotation[3] / length
+  const w = rotation[0]
+  const x = rotation[1]
+  const y = rotation[2]
+  const z = rotation[3]
   const xx = x * x
   const yy = y * y
   const zz = z * z
@@ -396,7 +414,7 @@ function composeInto(position: Vec3, rotation: Quat, nextScale: Vec3, target: Ma
   return target
 }
 
-function multiplyInto(a: Mat4, b: Mat4, target: Mat4) {
+function multiplyAffineInto(a: Mat4, b: Mat4, target: Mat4) {
   const a0 = a[0]
   const a1 = a[1]
   const a2 = a[2]
@@ -409,10 +427,6 @@ function multiplyInto(a: Mat4, b: Mat4, target: Mat4) {
   const a9 = a[9]
   const a10 = a[10]
   const a11 = a[11]
-  const a12 = a[12]
-  const a13 = a[13]
-  const a14 = a[14]
-  const a15 = a[15]
   const b0 = b[0]
   const b1 = b[1]
   const b2 = b[2]
@@ -425,138 +439,118 @@ function multiplyInto(a: Mat4, b: Mat4, target: Mat4) {
   const b9 = b[9]
   const b10 = b[10]
   const b11 = b[11]
-  const b12 = b[12]
-  const b13 = b[13]
-  const b14 = b[14]
-  const b15 = b[15]
 
-  target[0] = a0 * b0 + a1 * b4 + a2 * b8 + a3 * b12
-  target[1] = a0 * b1 + a1 * b5 + a2 * b9 + a3 * b13
-  target[2] = a0 * b2 + a1 * b6 + a2 * b10 + a3 * b14
-  target[3] = a0 * b3 + a1 * b7 + a2 * b11 + a3 * b15
-  target[4] = a4 * b0 + a5 * b4 + a6 * b8 + a7 * b12
-  target[5] = a4 * b1 + a5 * b5 + a6 * b9 + a7 * b13
-  target[6] = a4 * b2 + a5 * b6 + a6 * b10 + a7 * b14
-  target[7] = a4 * b3 + a5 * b7 + a6 * b11 + a7 * b15
-  target[8] = a8 * b0 + a9 * b4 + a10 * b8 + a11 * b12
-  target[9] = a8 * b1 + a9 * b5 + a10 * b9 + a11 * b13
-  target[10] = a8 * b2 + a9 * b6 + a10 * b10 + a11 * b14
-  target[11] = a8 * b3 + a9 * b7 + a10 * b11 + a11 * b15
-  target[12] = a12 * b0 + a13 * b4 + a14 * b8 + a15 * b12
-  target[13] = a12 * b1 + a13 * b5 + a14 * b9 + a15 * b13
-  target[14] = a12 * b2 + a13 * b6 + a14 * b10 + a15 * b14
-  target[15] = a12 * b3 + a13 * b7 + a14 * b11 + a15 * b15
+  target[0] = a0 * b0 + a1 * b4 + a2 * b8
+  target[1] = a0 * b1 + a1 * b5 + a2 * b9
+  target[2] = a0 * b2 + a1 * b6 + a2 * b10
+  target[3] = a0 * b3 + a1 * b7 + a2 * b11 + a3
+  target[4] = a4 * b0 + a5 * b4 + a6 * b8
+  target[5] = a4 * b1 + a5 * b5 + a6 * b9
+  target[6] = a4 * b2 + a5 * b6 + a6 * b10
+  target[7] = a4 * b3 + a5 * b7 + a6 * b11 + a7
+  target[8] = a8 * b0 + a9 * b4 + a10 * b8
+  target[9] = a8 * b1 + a9 * b5 + a10 * b9
+  target[10] = a8 * b2 + a9 * b6 + a10 * b10
+  target[11] = a8 * b3 + a9 * b7 + a10 * b11 + a11
+  target[12] = 0
+  target[13] = 0
+  target[14] = 0
+  target[15] = 1
 
   return target
 }
 
-function sampleVec3Into(keys: [number, Vec3][] | undefined, tick: number, fallback: Vec3, target: Vec3): Vec3 {
-  if (!keys?.length) {
-    target[0] = fallback[0]
-    target[1] = fallback[1]
-    target[2] = fallback[2]
+function sampleVec3TrackInto(track: PackedVec3Track, tick: number, target: Vec3): Vec3 {
+  const times = track.times
+  const values = track.values
 
-    return target
+  if (times.length === 1 || tick <= times[0]!) {
+    return setPackedVec3(values, 0, target)
   }
 
-  if (keys.length === 1 || tick <= keys[0]![0]) {
-    const value = keys[0]![1]
+  const lastIndex = times.length - 1
 
-    target[0] = value[0]
-    target[1] = value[1]
-    target[2] = value[2]
-
-    return target
+  if (tick >= times[lastIndex]!) {
+    return setPackedVec3(values, lastIndex * 3, target)
   }
 
-  const last = keys[keys.length - 1]!
-
-  if (tick >= last[0]) {
-    target[0] = last[1][0]
-    target[1] = last[1][1]
-    target[2] = last[1][2]
-
-    return target
-  }
-
-  const index = nextKeyIndex(keys, tick)
+  const index = nextPackedKeyIndex(track, tick)
 
   if (index > 0) {
-    const from = keys[index - 1]!
-    const to = keys[index]!
-    const t = (tick - from[0]) / (to[0] - from[0])
-    const fromValue = from[1]
-    const toValue = to[1]
+    const fromIndex = index - 1
+    const fromOffset = fromIndex * 3
+    const toOffset = index * 3
+    const fromTime = times[fromIndex]!
+    const toTime = times[index]!
+    const t = (tick - fromTime) / (toTime - fromTime)
 
-    target[0] = fromValue[0] + (toValue[0] - fromValue[0]) * t
-    target[1] = fromValue[1] + (toValue[1] - fromValue[1]) * t
-    target[2] = fromValue[2] + (toValue[2] - fromValue[2]) * t
+    target[0] = values[fromOffset]! + (values[toOffset]! - values[fromOffset]!) * t
+    target[1] = values[fromOffset + 1]! + (values[toOffset + 1]! - values[fromOffset + 1]!) * t
+    target[2] = values[fromOffset + 2]! + (values[toOffset + 2]! - values[fromOffset + 2]!) * t
 
     return target
   }
 
-  target[0] = last[1][0]
-  target[1] = last[1][1]
-  target[2] = last[1][2]
-
-  return target
+  return setPackedVec3(values, lastIndex * 3, target)
 }
 
-function sampleQuatInto(keys: [number, Quat][] | undefined, tick: number, fallback: Quat, target: Quat): Quat {
-  if (!keys?.length) {
-    target[0] = fallback[0]
-    target[1] = fallback[1]
-    target[2] = fallback[2]
-    target[3] = fallback[3]
+function sampleQuatTrackInto(track: PackedQuatTrack, tick: number, target: Quat): Quat {
+  const times = track.times
+  const values = track.values
 
-    return target
+  if (times.length === 1 || tick <= times[0]!) {
+    return setPackedQuat(values, 0, target)
   }
 
-  if (keys.length === 1 || tick <= keys[0]![0]) {
-    const value = keys[0]![1]
+  const lastIndex = times.length - 1
 
-    target[0] = value[0]
-    target[1] = value[1]
-    target[2] = value[2]
-    target[3] = value[3]
-
-    return target
+  if (tick >= times[lastIndex]!) {
+    return setPackedQuat(values, lastIndex * 4, target)
   }
 
-  const last = keys[keys.length - 1]!
-
-  if (tick >= last[0]) {
-    target[0] = last[1][0]
-    target[1] = last[1][1]
-    target[2] = last[1][2]
-    target[3] = last[1][3]
-
-    return target
-  }
-
-  const index = nextKeyIndex(keys, tick)
+  const index = nextPackedKeyIndex(track, tick)
 
   if (index > 0) {
-    const from = keys[index - 1]!
-    const to = keys[index]!
+    const fromIndex = index - 1
+    const fromOffset = fromIndex * 4
+    const toOffset = index * 4
+    const fromTime = times[fromIndex]!
+    const toTime = times[index]!
+    const t = (tick - fromTime) / (toTime - fromTime)
 
-    return slerpInto(from[1], to[1], (tick - from[0]) / (to[0] - from[0]), target)
+    return slerpPackedInto(values, fromOffset, toOffset, t, target)
   }
 
-  target[0] = last[1][0]
-  target[1] = last[1][1]
-  target[2] = last[1][2]
-  target[3] = last[1][3]
+  return setPackedQuat(values, lastIndex * 4, target)
+}
+
+function setPackedVec3(values: Float64Array, offset: number, target: Vec3): Vec3 {
+  target[0] = values[offset]!
+  target[1] = values[offset + 1]!
+  target[2] = values[offset + 2]!
 
   return target
 }
 
-function slerpInto(a: Quat, b: Quat, t: number, target: Quat) {
-  let bw = b[0]
-  let bx = b[1]
-  let by = b[2]
-  let bz = b[3]
-  let value = a[0] * bw + a[1] * bx + a[2] * by + a[3] * bz
+function setPackedQuat(values: Float64Array, offset: number, target: Quat): Quat {
+  target[0] = values[offset]!
+  target[1] = values[offset + 1]!
+  target[2] = values[offset + 2]!
+  target[3] = values[offset + 3]!
+
+  return target
+}
+
+function slerpPackedInto(values: Float64Array, fromOffset: number, toOffset: number, t: number, target: Quat) {
+  const aw = values[fromOffset]!
+  const ax = values[fromOffset + 1]!
+  const ay = values[fromOffset + 2]!
+  const az = values[fromOffset + 3]!
+  let bw = values[toOffset]!
+  let bx = values[toOffset + 1]!
+  let by = values[toOffset + 2]!
+  let bz = values[toOffset + 3]!
+  let value = aw * bw + ax * bx + ay * by + az * bz
 
   if (value < 0) {
     value = -value
@@ -567,10 +561,10 @@ function slerpInto(a: Quat, b: Quat, t: number, target: Quat) {
   }
 
   if (value > 0.9995) {
-    target[0] = a[0] + (bw - a[0]) * t
-    target[1] = a[1] + (bx - a[1]) * t
-    target[2] = a[2] + (by - a[2]) * t
-    target[3] = a[3] + (bz - a[3]) * t
+    target[0] = aw + (bw - aw) * t
+    target[1] = ax + (bx - ax) * t
+    target[2] = ay + (by - ay) * t
+    target[3] = az + (bz - az) * t
 
     const length = Math.hypot(target[0], target[1], target[2], target[3])
 
@@ -587,10 +581,10 @@ function slerpInto(a: Quat, b: Quat, t: number, target: Quat) {
   const from = Math.sin((1 - t) * theta) / sinTheta
   const to = Math.sin(t * theta) / sinTheta
 
-  target[0] = a[0] * from + bw * to
-  target[1] = a[1] * from + bx * to
-  target[2] = a[2] * from + by * to
-  target[3] = a[3] * from + bz * to
+  target[0] = aw * from + bw * to
+  target[1] = ax * from + bx * to
+  target[2] = ay * from + by * to
+  target[3] = az * from + bz * to
 
   return target
 }
@@ -666,35 +660,30 @@ function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], cha
     }
 
     const indices = [...needed].sort((a, b) => a - b)
-    const helpers = new Array<boolean>(rig.nodes.length)
-    const origins = new Array<Vec3>(rig.nodes.length)
-    const parents = new Array<number>(rig.nodes.length)
-    const poseSlots = new Array<number>(rig.nodes.length).fill(-1)
-    const transforms = new Array<Mat4>(rig.nodes.length)
+    const entries: PoseSampleEntry[] = []
+    const nodeSlots = new Array<number>(rig.nodes.length).fill(-1)
 
     for (const index of indices) {
       const node = rig.nodes[index]!
+      const slot = entries.length
+      const parentSlot = node.parent < 0 ? -1 : nodeSlots[node.parent]!
 
-      helpers[index] = node.helper
-      origins[index] = node.origin
-      parents[index] = node.parent
-      transforms[index] = node.transform
-
-      if (!node.helper && characterPoseJointSet.has(node.name)) {
-        poseSlots[index] = characterPoseJoints.indexOf(node.name)
-      }
+      nodeSlots[index] = slot
+      entries.push({
+        helper: node.helper,
+        local: identity(),
+        name: node.name,
+        origin: node.origin,
+        parentSlot,
+        poseSlot: !node.helper && characterPoseJointSet.has(node.name) ? characterPoseJoints.indexOf(node.name) : -1,
+        transform: node.transform,
+        world: identity(),
+      })
     }
 
     plan = {
       channels: new WeakMap(),
-      helpers,
-      indices,
-      local: Array.from({ length: rig.nodes.length }, identity),
-      origins,
-      parents,
-      poseSlots,
-      transforms,
-      world: Array.from({ length: rig.nodes.length }, identity),
+      entries,
     }
     bySet.set(characterPoseJointSet, plan)
   }
@@ -702,14 +691,16 @@ function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], cha
   return plan
 }
 
-function getPoseSampleChannels(rig: CharacterRig, clip: CharacterClip, plan: PoseSamplePlan) {
+function getPoseSampleChannels(clip: CharacterClip, plan: PoseSamplePlan) {
   let channels = plan.channels.get(clip)
 
   if (!channels) {
-    channels = new Array<AssimpChannel | undefined>(rig.nodes.length)
+    channels = new Array<PackedChannel | undefined>(plan.entries.length)
 
-    for (const index of plan.indices) {
-      channels[index] = clip.channels.get(rig.nodes[index]!.name)
+    for (let i = 0; i < plan.entries.length; i++) {
+      const channel = clip.channels.get(plan.entries[i]!.name)
+
+      channels[i] = channel ? packedChannel(channel) : undefined
     }
 
     plan.channels.set(clip, channels)
@@ -718,24 +709,102 @@ function getPoseSampleChannels(rig: CharacterRig, clip: CharacterClip, plan: Pos
   return channels
 }
 
-function nextKeyIndex<T extends Vec3 | Quat>(keys: [number, T][], tick: number) {
-  const interval = keyInterval(keys)
+function packedChannel(channel: AssimpChannel) {
+  let packed = packedChannels.get(channel)
 
-  if (interval) {
-    const index = Math.ceil((tick - interval.start) * interval.inverse)
+  if (!packed) {
+    packed = {
+      position: channel.positionkeys?.length ? packVec3Track(channel.positionkeys) : undefined,
+      rotation: channel.rotationkeys?.length ? packQuatTrack(channel.rotationkeys) : undefined,
+      scale: channel.scalingkeys?.length ? packVec3Track(channel.scalingkeys) : undefined,
+    }
+    packedChannels.set(channel, packed)
+  }
 
-    if (index > 0 && index < keys.length && tick <= keys[index]![0] && tick > keys[index - 1]![0]) {
+  return packed
+}
+
+function packVec3Track(keys: [number, Vec3][]): PackedVec3Track {
+  const times = new Float64Array(keys.length)
+  const values = new Float64Array(keys.length * 3)
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!
+    const offset = i * 3
+
+    times[i] = key[0]
+    values[offset] = key[1][0]
+    values[offset + 1] = key[1][1]
+    values[offset + 2] = key[1][2]
+  }
+
+  return {
+    start: times[0]!,
+    stepInverse: uniformStepInverse(times),
+    times,
+    values,
+  }
+}
+
+function packQuatTrack(keys: [number, Quat][]): PackedQuatTrack {
+  const times = new Float64Array(keys.length)
+  const values = new Float64Array(keys.length * 4)
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!
+    const offset = i * 4
+    const value = key[1]
+    const length = Math.hypot(value[0], value[1], value[2], value[3])
+
+    times[i] = key[0]
+    values[offset] = value[0] / length
+    values[offset + 1] = value[1] / length
+    values[offset + 2] = value[2] / length
+    values[offset + 3] = value[3] / length
+  }
+
+  return {
+    start: times[0]!,
+    stepInverse: uniformStepInverse(times),
+    times,
+    values,
+  }
+}
+
+function uniformStepInverse(times: Float64Array) {
+  const step = times.length > 2 ? times[1]! - times[0]! : 0
+
+  if (step <= 0) {
+    return 0
+  }
+
+  for (let i = 2; i < times.length; i++) {
+    if (Math.abs(times[i]! - times[i - 1]! - step) > 0.000000001) {
+      return 0
+    }
+  }
+
+  return 1 / step
+}
+
+function nextPackedKeyIndex(track: PackedVec3Track | PackedQuatTrack, tick: number) {
+  const times = track.times
+
+  if (track.stepInverse > 0) {
+    const index = Math.ceil((tick - track.start) * track.stepInverse)
+
+    if (index > 0 && index < times.length && tick <= times[index]! && tick > times[index - 1]!) {
       return index
     }
   }
 
   let low = 1
-  let high = keys.length - 1
+  let high = times.length - 1
 
   while (low < high) {
     const middle = (low + high) >> 1
 
-    if (tick <= keys[middle]![0]) {
+    if (tick <= times[middle]!) {
       high = middle
     }
     else {
@@ -743,31 +812,7 @@ function nextKeyIndex<T extends Vec3 | Quat>(keys: [number, T][], tick: number) 
     }
   }
 
-  return tick <= keys[low]![0] ? low : -1
-}
-
-function keyInterval<T extends Vec3 | Quat>(keys: [number, T][]) {
-  const keyArray = keys as KeyArray
-  let interval = keyIntervals.get(keyArray)
-
-  if (interval) {
-    return interval
-  }
-  if (keyIntervalsMissing.has(keyArray)) {
-    return undefined
-  }
-
-  const step = keys.length > 2 ? keys[1]![0] - keys[0]![0] : 0
-
-  if (step <= 0) {
-    keyIntervalsMissing.add(keyArray)
-    return undefined
-  }
-
-  interval = { inverse: 1 / step, start: keys[0]![0] }
-  keyIntervals.set(keyArray, interval)
-
-  return interval
+  return tick <= times[low]! ? low : -1
 }
 
 function isAssimpHelper(node: AssimpNode) {

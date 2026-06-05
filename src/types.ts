@@ -234,6 +234,7 @@ export type SampledPose = {
 }
 
 export type PoseBlendCache = Map<number, Vec3[]>
+export type CharacterLight = (color: Vec3, point: Vec3, normal: Vec3, target: Vec3) => Vec3
 
 export type CharacterBoxGeometry = {
   data: Float32Array

@@ -2,7 +2,7 @@ import { characterFloor } from './character-data.ts'
 import { electricNavy, outsideMotif } from './constants.ts'
 import { clamp, smoothstep } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
-import type { CircleBounds, Vec3, Vertex } from './types.ts'
+import type { CharacterLight, CircleBounds, Vec3, Vertex } from './types.ts'
 
 const nearestWallLightZ = createNearestValue([-2, -6, -10, -14, -18, -22])
 const nearestBackLightX = createNearestValue([-4.5, 0, 4.5])
@@ -86,15 +86,15 @@ export function createSceneLighting(options: {
     )
   }
 
-  function addLocalReflection(color: Vec3, point: Vec3, normal: Vec3): Vec3 {
+  const addLocalReflection: CharacterLight = (color, point, normal, target) => {
     const orange = orangeReflection(point, normal)
     const white = options.strobeReflection(point, normal)
 
-    return [
-      clamp(color[0] + orange * 1.35 + white * 2.85, 0, 1),
-      clamp(color[1] + orange * 0.48 + white * 2.7, 0, 1),
-      clamp(color[2] + orange * 0.04 + white * 2.25, 0, 1),
-    ]
+    target[0] = clamp(color[0] + orange * 1.35 + white * 2.85, 0, 1)
+    target[1] = clamp(color[1] + orange * 0.48 + white * 2.7, 0, 1)
+    target[2] = clamp(color[2] + orange * 0.04 + white * 2.25, 0, 1)
+
+    return target
   }
 
   return { addLocalReflection, addSunLitTriangle }

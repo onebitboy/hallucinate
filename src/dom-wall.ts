@@ -1,4 +1,5 @@
 import { projectedQuadTransform, projectWallPointWithMinDepthInto } from './projection.ts'
+import { createStyleSetter } from './style-setter.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
 import type { Vec3 } from './types.ts'
 
@@ -26,7 +27,7 @@ export function createDomWallProjection(element: HTMLElement, options: {
   opacity?: string
   scale?: number
 } = {}) {
-  const setStyle = createStyleSetter(element.style)
+  const setStyle = createStyleSetter<StyleName>(element.style)
   const minDepth = options.minDepth ?? defaultMinDepth
   const opacity = options.opacity ?? '1'
   const scale = options.scale ?? defaultScale
@@ -39,6 +40,10 @@ export function createDomWallProjection(element: HTMLElement, options: {
   const pointC: ProjectedPoint = { x: 0, y: 0 }
   const pointD: ProjectedPoint = { x: 0, y: 0 }
   const points = [pointA, pointB, pointC, pointD]
+  let lastHeight = -1
+  let lastWidth = -1
+  let heightPx = ''
+  let widthPx = ''
 
   return {
     hide() {
@@ -59,9 +64,18 @@ export function createDomWallProjection(element: HTMLElement, options: {
       const width = wall.width * scale
       const height = wall.height * scale
 
+      if (width !== lastWidth) {
+        lastWidth = width
+        widthPx = `${width}px`
+      }
+      if (height !== lastHeight) {
+        lastHeight = height
+        heightPx = `${height}px`
+      }
+
       setStyle('opacity', opacity)
-      setStyle('width', `${width}px`)
-      setStyle('height', `${height}px`)
+      setStyle('width', widthPx)
+      setStyle('height', heightPx)
       setStyle('transform', projectedQuadTransform(width, height, points))
 
       return true
@@ -113,17 +127,6 @@ function setPoint(target: Vec3, x: number, y: number, z: number) {
   target[0] = x
   target[1] = y
   target[2] = z
-}
-
-function createStyleSetter(style: CSSStyleDeclaration) {
-  const values = new Map<StyleName, string>()
-
-  return (name: StyleName, value: string) => {
-    if (values.get(name) !== value) {
-      values.set(name, value)
-      style[name] = value
-    }
-  }
 }
 
 function domWallFacesCamera(camera: Camera, wall: DomWall) {

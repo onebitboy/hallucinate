@@ -62,6 +62,9 @@ const npcConfig = {
 }
 const doorInside: Vec3 = [backDoor.x, characterFloor, roomBounds.front - 0.75]
 const doorOutside: Vec3 = [backDoor.x, characterFloor, roomBounds.front + 0.75]
+const destinationSeats = seats()
+const loungeDestinationSeats = destinationSeats.filter(seat => !seat.id.startsWith('stool:'))
+const stoolDestinationSeats = destinationSeats.filter(seat => seat.id.startsWith('stool:'))
 
 export function createPlayers(count: number, outsideTree: CircleBounds, occupiedSeats: Set<string>) {
   const next: Player[] = []
@@ -317,13 +320,13 @@ function updateDestinationPlayer(
   const target = activePlayerTarget(player, time)
   const dx = target[0] - player.position[0]
   const dz = target[2] - player.position[2]
-  const distance = Math.sqrt(dx * dx + dz * dz)
+  const distanceSq = dx * dx + dz * dz
   const atDestinationSide = isOutside(player.position) === player.destination.outside
   const destinationDx = player.destination.position[0] - player.position[0]
   const destinationDz = player.destination.position[2] - player.position[2]
-  const destinationDistance = Math.sqrt(destinationDx * destinationDx + destinationDz * destinationDz)
+  const destinationDistanceSq = destinationDx * destinationDx + destinationDz * destinationDz
 
-  if (!atDestinationSide && distance < npcConfig.arrive.waypoint) {
+  if (!atDestinationSide && distanceSq < npcConfig.arrive.waypoint * npcConfig.arrive.waypoint) {
     player.input[0] = 0
     player.input[1] = 0
     player.input[2] = 0
@@ -334,7 +337,7 @@ function updateDestinationPlayer(
     ? npcConfig.arrive.seat
     : npcConfig.arrive.destination
 
-  if (atDestinationSide && destinationDistance < arriveRadius) {
+  if (atDestinationSide && destinationDistanceSq < arriveRadius * arriveRadius) {
     if (player.destination.kind === 'lounge' || player.destination.kind === 'stool') {
       if (trySitPlayer(player, time, occupiedSeats)) {
         return
@@ -366,6 +369,8 @@ function updateDestinationPlayer(
   }
 
   player.sidestepUntil = undefined
+
+  const distance = Math.sqrt(distanceSq)
 
   chooseTravelInput(player, dx / distance, dz / distance, delta, time)
 }
@@ -635,14 +640,32 @@ function seatDestination(
   occupiedSeats: Set<string>,
   kind: 'lounge' | 'stool',
 ): PlayerDestination | undefined {
-  const allSeats = seats().filter(seat =>
-    kind === 'stool' ? seat.id.startsWith('stool:') : !seat.id.startsWith('stool:')
-  )
-  const openSeats = allSeats.filter(seat => !occupiedSeats.has(seat.id))
-  const seat = openSeats[Math.floor(seededRange(seed, step + 104, 0, openSeats.length))]
+  const candidates = kind === 'stool' ? stoolDestinationSeats : loungeDestinationSeats
+  let openCount = 0
 
-  if (!seat) {
+  for (const candidate of candidates) {
+    if (!occupiedSeats.has(candidate.id)) {
+      openCount++
+    }
+  }
+
+  if (openCount === 0) {
     return undefined
+  }
+  let index = Math.floor(seededRange(seed, step + 104, 0, openCount))
+  let seat = candidates[0]!
+
+  for (const candidate of candidates) {
+    if (occupiedSeats.has(candidate.id)) {
+      continue
+    }
+
+    if (index === 0) {
+      seat = candidate
+      break
+    }
+
+    index--
   }
 
   const offset = seededRange(seed, step + 105, -0.18, 0.18)
