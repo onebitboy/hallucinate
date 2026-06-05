@@ -735,36 +735,71 @@ function parseMusicSource(source: string): { kind: 'playlist' | 'video'; source:
 
   try {
     const url = new URL(value)
-    const list = url.searchParams.get('list')
-    const video = url.hostname === 'youtu.be'
-      ? url.pathname.slice(1)
-      : url.searchParams.get('v')
+    const parsed = parseYouTubeUrl(url)
 
-    if (list) {
-      return { kind: 'playlist', source: list }
-    }
-
-    if (video) {
-      return { kind: 'video', source: video }
+    if (parsed) {
+      return validateMusicSource(parsed)
     }
   }
   catch (e) {
     void e
   }
 
-  if (!/^[\w-]{6,128}$/.test(value)) {
-    throw new Error(`Invalid music source ${value}`)
+  return validateRawMusicSource(value)
+}
+
+function parseYouTubeUrl(url: URL): { kind: 'playlist' | 'video'; source: string } | undefined {
+  const list = url.searchParams.get('list')?.trim()
+
+  if (list) {
+    return { kind: 'playlist', source: list }
   }
 
-  if (/^(?:PL|OLAK5uy_|RD|UU|LL|FL)/.test(value)) {
-    return { kind: 'playlist', source: value }
+  const video = youtubeUrlVideoId(url)
+
+  return video ? { kind: 'video', source: video } : undefined
+}
+
+function youtubeUrlVideoId(url: URL) {
+  if (url.hostname === 'youtu.be') {
+    return url.pathname.split('/').filter(Boolean)[0]
   }
 
-  if (!/^[\w-]{6,32}$/.test(value)) {
-    throw new Error(`Invalid video source ${value}`)
+  const fromQuery = url.searchParams.get('v')?.trim()
+
+  if (fromQuery) {
+    return fromQuery
   }
 
-  return { kind: 'video', source: value }
+  const [kind, id] = url.pathname.split('/').filter(Boolean)
+
+  return kind === 'live' || kind === 'shorts' || kind === 'embed' || kind === 'v'
+    ? id
+    : undefined
+}
+
+function validateRawMusicSource(source: string): { kind: 'playlist' | 'video'; source: string } {
+  if (!/^[\w-]{6,128}$/.test(source)) {
+    throw new Error(`Invalid music source ${source}`)
+  }
+
+  if (/^(?:PL|OLAK5uy_|RD|UU|LL|FL)/.test(source)) {
+    return { kind: 'playlist', source }
+  }
+
+  return validateMusicSource({ kind: 'video', source })
+}
+
+function validateMusicSource(music: { kind: 'playlist' | 'video'; source: string }) {
+  if (music.kind === 'video' && !/^[\w-]{6,32}$/.test(music.source)) {
+    throw new Error(`Invalid video source ${music.source}`)
+  }
+
+  if (music.kind === 'playlist' && !/^[\w-]{6,128}$/.test(music.source)) {
+    throw new Error(`Invalid playlist source ${music.source}`)
+  }
+
+  return music
 }
 
 const contentTypes = new Map([
