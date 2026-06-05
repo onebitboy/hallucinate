@@ -221,7 +221,7 @@ canvas {
   font: 700 11px/1.25 "Iansui", ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0;
   padding: 9px 10px;
-  pointer-events: none;
+  pointer-events: auto;
   text-shadow: 0 0 8px rgb(255 20 20 / 0.3);
 }
 
@@ -364,6 +364,7 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   border-top: 1px solid rgb(255 255 255 / 0.12);
   margin-top: 8px;
   padding-top: 8px;
+  pointer-events: none;
   text-align: left;
   white-space: nowrap;
 }
@@ -373,11 +374,37 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
 }
 
 #chat-log {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
   max-width: 100%;
-  overflow: hidden;
-  pointer-events: none;
+  max-height: min(268px, calc(100dvh - 180px));
+  cursor: default;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  pointer-events: auto;
+  scrollbar-color: rgb(255 255 255 / 0.34) transparent;
+  scrollbar-width: thin;
+}
+
+#chat-log::before {
+  content: "";
+  flex: 1 0 auto;
+}
+
+#chat-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+#chat-log::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.28);
+}
+
+#chat-log::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 #chat-log[data-admin="true"] {
@@ -387,6 +414,7 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
 .chat-log-message {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   justify-content: flex-start;
   overflow: hidden;
@@ -407,6 +435,7 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   font-weight: 900;
   text-decoration: underline;
   text-underline-offset: 3px;
+  cursor: pointer;
   pointer-events: auto;
 }
 

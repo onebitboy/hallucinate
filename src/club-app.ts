@@ -134,7 +134,6 @@ const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
 const reactionSlotsKey = 'club-reaction-slots'
 const savedState = readClubState(saveKey)
-const chatLogMax = 15
 let adminPass = ''
 let adminView = false
 const adminIdLabels = new Map<number, HTMLDivElement>()
@@ -377,10 +376,7 @@ function addChatLogMessage(id: number, text: string) {
   ban.addEventListener('click', sendBan)
   row.append(ban, message)
   chatLog.append(row)
-
-  while (chatLog.childElementCount > chatLogMax) {
-    chatLog.firstElementChild!.remove()
-  }
+  chatLog.scrollTop = chatLog.scrollHeight
 
   return color
 }
