@@ -48,6 +48,16 @@ export function characterVisibility(
   width: number,
   height: number,
 ): CharacterVisibility {
+  return characterVisibilityInto(player, view, width, height, { depth: 0, distanceSq: 0, visible: false })
+}
+
+export function characterVisibilityInto(
+  player: Player,
+  view: ReturnType<typeof characterView>,
+  width: number,
+  height: number,
+  target: CharacterVisibility,
+): CharacterVisibility {
   const toPlayerX = player.position[0] - view.eye[0]
   const toPlayerY = player.position[1] + 0.85 - view.eye[1]
   const toPlayerZ = player.position[2] - view.eye[2]
@@ -56,16 +66,20 @@ export function characterVisibility(
   const radius = 1.2
 
   if (depth < -radius || depth > 45) {
-    return { depth, distanceSq, visible: false }
+    target.depth = depth
+    target.distanceSq = distanceSq
+    target.visible = false
+
+    return target
   }
 
   const vertical = fovScale * Math.max(depth, 0.1) + radius
   const horizontal = vertical * (width / height) + radius
 
-  return {
-    depth,
-    distanceSq,
-    visible: Math.abs(toPlayerX * view.rx + toPlayerZ * view.rz) < horizontal
-      && Math.abs(toPlayerX * view.ux + toPlayerY * view.uy + toPlayerZ * view.uz) < vertical,
-  }
+  target.depth = depth
+  target.distanceSq = distanceSq
+  target.visible = Math.abs(toPlayerX * view.rx + toPlayerZ * view.rz) < horizontal
+    && Math.abs(toPlayerX * view.ux + toPlayerY * view.uy + toPlayerZ * view.uz) < vertical
+
+  return target
 }

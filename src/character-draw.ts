@@ -11,7 +11,7 @@ import type { VertexWriter } from './character-geometry.ts'
 import { characterParts, characterPoseJoints, characterPoseJointSet } from './character-parts.ts'
 import { sampleBasePose, sampleCharacterPose } from './character-rig.ts'
 import { resolvePlayerStyle } from './character-style.ts'
-import { characterView, characterVisibility } from './character-visibility.ts'
+import { characterView, characterVisibilityInto } from './character-visibility.ts'
 import { clamp, normalizeIndex } from './math.ts'
 import { roomAt } from './scene.ts'
 import type {
@@ -130,6 +130,7 @@ const sprayCanCapA: Vec3 = [0, 0, 0]
 const sprayCanCapB: Vec3 = [0, 0, 0]
 const sprayCanNozzleA: Vec3 = [0, 0, 0]
 const sprayCanNozzleB: Vec3 = [0, 0, 0]
+const playerVisibility = { depth: 0, distanceSq: 0, visible: false }
 const farHairDistanceSq = 34 * 34
 const glowstickTrailDuration = 0.42
 const glowstickTrailSamples = 10
@@ -168,17 +169,23 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const view = characterView(options.cameraPosition, options.cameraTarget)
 
   for (const player of options.players) {
-    const visibility = characterVisibility(player, view, options.width, options.height)
+    const visibility = characterVisibilityInto(player, view, options.width, options.height, playerVisibility)
 
     if (visibility.visible) {
       const sampledTime = bodySampleTime(options.time, visibility.distanceSq)
       const playerIdleClipIndex = idleClipIndex(player)
       const sampleKey = playerIdleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
-      usedBasePoseKeys.add(sampleKey)
-      usedNpcBlendKeys.add(blendKey)
-      const sampledBasePose = basePoses.get(sampleKey)
-        ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex)
+      const directClip = usesDirectClip(player)
+      const sampledBasePose = directClip
+        ? undefined
+        : basePoses.get(sampleKey)
+          ?? sampleAndCacheBasePose(options.rig, sampledTime, basePoses, sampleKey, playerIdleClipIndex)
+
+      if (!directClip) {
+        usedBasePoseKeys.add(sampleKey)
+      }
+      usedNpcBlendKeys.add(directClip ? sampleKey : blendKey)
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
         npcBlendCache, poses[poseIndex] ??= [], sampledTime, sampleKey, visibility.distanceSq <= farHairDistanceSq)
@@ -206,6 +213,10 @@ export function buildCharacterDrawData(options: BuildOptions) {
 
 function idleClipIndex(character: CharacterInput) {
   return roomAt(character.position) === 'tent' ? 0 : character.idleClipIndex
+}
+
+function usesDirectClip(character: CharacterInput) {
+  return character.mode === 'jump' || character.mode === 'manSitting' || character.mode === 'womanSitting'
 }
 
 function addRenderedCharacter(
@@ -248,7 +259,7 @@ function addRenderedCharacter(
   if (style.accessory) {
     if (style.accessoryKind === 'glowstick') {
       addGlowsticks(target, boxInstances, pose, player, turn, style, options.light, localReflection,
-        options.drawCache?.glowstickTrails, player.glowstickTrailKey ?? 0, options.time)
+        localReflection ? options.drawCache?.glowstickTrails : undefined, player.glowstickTrailKey ?? 0, options.time)
     }
     else {
       addSprayCan(target, boxInstances, pose, player, turn, style, options.light, localReflection)
@@ -506,7 +517,7 @@ function handSideSign(hand: Vec3, torso: Vec3, sideX: number, sideZ: number) {
 }
 
 function bodySampleTime(time: number, distanceSq: number) {
-  const fps = distanceSq > 32 * 32 ? 8 : distanceSq > 20 * 20 ? 15 : distanceSq > 10 * 10 ? 30 : 60
+  const fps = distanceSq > 32 * 32 ? 6 : distanceSq > 20 * 20 ? 10 : distanceSq > 10 * 10 ? 20 : 60
 
   return Math.round(time * fps) / fps
 }

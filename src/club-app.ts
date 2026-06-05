@@ -1,9 +1,11 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
-import { addBeachBallGeometry, createBeachBalls, hitBeachBalls, updateBeachBalls } from './beach-balls.ts'
+import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createCameraController } from './camera-controller.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
 import { characterFloor } from './character-data.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
+import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
+import type { VertexWriter } from './character-geometry.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createCharacterStyleController, glowstickColors } from './character-style.ts'
 import { createChatUi } from './chat-ui.ts'
@@ -32,7 +34,7 @@ import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import { createWallProjector, projectWallPointInto } from './projection.ts'
-import type { ProjectedPoint } from './projection.ts'
+import type { ProjectedPoint, Viewport } from './projection.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import { loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall, outsideBounds, outsideBuddha,
@@ -116,6 +118,8 @@ const {
   introStart,
 } = getDomElements()
 
+let resizeDirty = true
+
 function syncViewportSize() {
   const viewport = visualViewport
   const offsetLeft = viewport?.offsetLeft ?? 0
@@ -129,6 +133,7 @@ function syncViewportSize() {
   document.documentElement.style.setProperty('--app-top', `${offsetTop}px`)
   document.documentElement.style.setProperty('--app-width', `${width}px`)
   scrollTo(0, 0)
+  resizeDirty = true
 }
 
 syncViewportSize()
@@ -776,18 +781,35 @@ function selfLabel() {
 function syncOnlineSelf() {
   const label = selfLabel()
   const name = identityName(multiplayer.selfId || 0, nickname)
+  const color = identityColor(name)
+  const text = ` ${onlineCountValue} online`
 
-  onlineSelf.textContent = label
-  onlineSelf.style.color = identityColor(name)
-  onlineText.textContent = ` ${onlineCountValue} online`
+  if (label !== lastOnlineSelfLabel) {
+    onlineSelf.textContent = label
+    lastOnlineSelfLabel = label
+  }
+  if (color !== lastOnlineSelfColor) {
+    onlineSelf.style.color = color
+    lastOnlineSelfColor = color
+  }
+  if (text !== lastOnlineText) {
+    onlineText.textContent = text
+    lastOnlineText = text
+  }
 }
 
 function syncChatFormColor() {
   const next = activeNicknameInput().value.trim()
   const color = identityColor(identityName(multiplayer.selfId || 0, next))
 
-  chatForm.style.color = color
-  introNicknameInput.style.color = color
+  if (color !== lastChatFormColor) {
+    chatForm.style.color = color
+    lastChatFormColor = color
+  }
+  if (color !== lastIntroNicknameColor) {
+    introNicknameInput.style.color = color
+    lastIntroNicknameColor = color
+  }
   if (multiplayer?.selfId > 0) {
     syncOnlineSelf()
   }
@@ -964,7 +986,13 @@ function seededPlantRandom(seed: number, salt: number) {
 }
 
 useAlternativeInput(alternativeInput)
-const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, canvas)
+const projectorViewport: Viewport = {
+  clientHeight: canvas.clientHeight,
+  clientWidth: canvas.clientWidth,
+  height: canvas.height || 1,
+  width: canvas.width || 1,
+}
+const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] }, projectorViewport)
 const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
 const feedbackMaxAmount = 0.91
@@ -988,6 +1016,15 @@ let rocksLoaded = false
 let treeLoaded = false
 let introHidden = false
 let videoPlaying = false
+let lastPixelRatio = 0
+let lastBloomScale = 0
+let lastIntroProgress = -1
+let lastIntroStartReady = false
+let lastChatFormColor = ''
+let lastIntroNicknameColor = ''
+let lastOnlineSelfColor = ''
+let lastOnlineSelfLabel = ''
+let lastOnlineText = ''
 let introWaveSent = false
 
 intro.addEventListener('touchmove', event => {
@@ -1384,7 +1421,8 @@ let hasMultiplayer = false
 const predictedMessages = new Map<string, number>()
 const playerNicknames = new Map<number, string>()
 const beachBalls = createBeachBalls()
-let beachBallPoints = new Float32Array()
+let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
 const graffitiSplats: import('./types.ts').GraffitiSplat[] = []
@@ -2269,6 +2307,10 @@ const resize = () => {
   const ratio = pixelRatio.ratio()
   const width = Math.floor(canvas.clientWidth * ratio)
   const height = Math.floor(canvas.clientHeight * ratio)
+  projectorViewport.clientWidth = width / ratio
+  projectorViewport.clientHeight = height / ratio
+  projectorViewport.width = width
+  projectorViewport.height = height
   const bloomWidth = Math.max(1, Math.floor(width * bloomScale.scale()))
   const bloomHeight = Math.max(1, Math.floor(height * bloomScale.scale()))
   const feedbackWidth = feedback.current.width
@@ -2370,10 +2412,17 @@ const draw = (stamp: number) => {
 
   strobeController.setFrame(frame)
   lastStamp = stamp
-  pixelRatio.update(delta, stamp)
-  bloomScale.update(delta, stamp)
-  clubGlobal.clubPixelRatio = pixelRatio.ratio()
-  resize()
+  const nextPixelRatio = pixelRatio.update(delta, stamp)
+  const nextBloomScale = bloomScale.update(delta, stamp)
+
+  resizeDirty = resizeDirty || nextPixelRatio !== lastPixelRatio || nextBloomScale !== lastBloomScale
+  clubGlobal.clubPixelRatio = nextPixelRatio
+  if (resizeDirty) {
+    resize()
+    resizeDirty = false
+    lastPixelRatio = nextPixelRatio
+    lastBloomScale = nextBloomScale
+  }
   const inLoft = appSpace.kind === 'loft'
 
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
@@ -2455,7 +2504,7 @@ const draw = (stamp: number) => {
   strobeController.updateInstances(stamp * 0.001, zone)
   const lightCount = lightPoints.length / vertexSize
 
-  const projector = createWallProjector(camera, canvas, wallProjector)
+  const projector = createWallProjector(camera, projectorViewport, wallProjector)
 
   if (introHidden) {
     djVideoUi.update(camera, projector)
@@ -2481,7 +2530,9 @@ const draw = (stamp: number) => {
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateBeachBallBuffer()
-  updateIntro()
+  if (!introHidden) {
+    updateIntro()
+  }
 
   renderClubFrame({
     arrays: {
@@ -2582,10 +2633,9 @@ function updateBeachBallBuffer() {
     return
   }
 
-  const points: Vertex[] = []
-
-  addBeachBallGeometry(points, beachBalls)
-  beachBallPoints = new Float32Array(points.flat())
+  resetVertexWriter(beachBallWriter)
+  writeBeachBallGeometry(beachBallWriter, beachBalls)
+  beachBallPoints = vertexWriterData(beachBallWriter)
   gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
 }
@@ -2684,9 +2734,15 @@ function updateIntro() {
     ? Math.max(5, coreProgress * 100)
     : 0)
 
-  introProgress.textContent = `${progress}%`
-  introBar.style.transform = `scaleX(${progress / 100})`
-  introStart.dataset.ready = String(startReady)
+  if (progress !== lastIntroProgress) {
+    introProgress.textContent = `${progress}%`
+    introBar.style.transform = `scaleX(${progress / 100})`
+    lastIntroProgress = progress
+  }
+  if (startReady !== lastIntroStartReady) {
+    introStart.dataset.ready = String(startReady)
+    lastIntroStartReady = startReady
+  }
 
   const ready = characterRenderSystem.assetsLoaded && videoPlaying
 
@@ -2765,7 +2821,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
   getTree: () => outsideTree,
   strobeReflection: (point, normal) => strobeController.reflection(point, normal),
 })
-const npcPlayers = createPlayers(250, outsideTree, occupiedSeats)
+const npcPlayers = createPlayers(180, outsideTree, occupiedSeats)
 const renderPlayers: Player[] = [...npcPlayers]
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,

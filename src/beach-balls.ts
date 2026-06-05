@@ -1,9 +1,10 @@
 import { characterFloor } from './character-data.ts'
-import { pack } from './geometry.ts'
 import { clamp } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import { collideSphereRoom, walkHeight } from './scene.ts'
-import type { BeachBall, CircleBounds, Vec3, Vertex } from './types.ts'
+import { reserveFloats } from './character-geometry.ts'
+import type { VertexWriter } from './character-geometry.ts'
+import type { BeachBall, CircleBounds, Vec3 } from './types.ts'
 
 export const beachBallRadius = 0.52
 
@@ -77,9 +78,13 @@ export function hitBeachBalls(balls: BeachBall[], player: Vec3) {
   return hits
 }
 
-export function addBeachBallGeometry(target: Vertex[], balls: BeachBall[]) {
+export function writeBeachBallGeometry(target: VertexWriter, balls: BeachBall[]) {
+  const verticesPerBall = beachBallRows * beachBallColumns * 6
+
+  reserveFloats(target, balls.length * verticesPerBall * 11)
+
   for (const ball of balls) {
-    addBeachBall(target, ball)
+    writeBeachBall(target, ball)
   }
 }
 
@@ -107,26 +112,31 @@ function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
   }
 }
 
-function addBeachBall(target: Vertex[], ball: BeachBall) {
-  const rows = 10
-  const columns = 20
+const beachBallRows = 8
+const beachBallColumns = 16
+const beachBallA: Vec3 = [0, 0, 0]
+const beachBallB: Vec3 = [0, 0, 0]
+const beachBallC: Vec3 = [0, 0, 0]
+const beachBallD: Vec3 = [0, 0, 0]
+
+function writeBeachBall(target: VertexWriter, ball: BeachBall) {
   const color = palette[ball.id]!
 
-  for (let y = 0; y < rows; y++) {
-    const top = -Math.PI / 2 + Math.PI * y / rows
-    const bottom = -Math.PI / 2 + Math.PI * (y + 1) / rows
+  for (let y = 0; y < beachBallRows; y++) {
+    const top = -Math.PI / 2 + Math.PI * y / beachBallRows
+    const bottom = -Math.PI / 2 + Math.PI * (y + 1) / beachBallRows
 
-    for (let x = 0; x < columns; x++) {
-      const left = Math.PI * 2 * x / columns
-      const right = Math.PI * 2 * (x + 1) / columns
+    for (let x = 0; x < beachBallColumns; x++) {
+      const left = Math.PI * 2 * x / beachBallColumns
+      const right = Math.PI * 2 * (x + 1) / beachBallColumns
 
-      addBallQuad(target, ball.position, top, bottom, left, right, color)
+      writeBallQuad(target, ball.position, top, bottom, left, right, color)
     }
   }
 }
 
-function addBallQuad(
-  target: Vertex[],
+function writeBallQuad(
+  target: VertexWriter,
   center: Vec3,
   top: number,
   bottom: number,
@@ -134,21 +144,41 @@ function addBallQuad(
   right: number,
   color: Vec3,
 ) {
-  const a = spherePoint(center, top, left)
-  const b = spherePoint(center, top, right)
-  const c = spherePoint(center, bottom, right)
-  const d = spherePoint(center, bottom, left)
+  spherePointInto(center, top, left, beachBallA)
+  spherePointInto(center, top, right, beachBallB)
+  spherePointInto(center, bottom, right, beachBallC)
+  spherePointInto(center, bottom, left, beachBallD)
 
-  target.push(pack(a, color, glow), pack(b, color, glow), pack(c, color, glow))
-  target.push(pack(a, color, glow), pack(c, color, glow), pack(d, color, glow))
+  writeVertex(target, beachBallA, color)
+  writeVertex(target, beachBallB, color)
+  writeVertex(target, beachBallC, color)
+  writeVertex(target, beachBallA, color)
+  writeVertex(target, beachBallC, color)
+  writeVertex(target, beachBallD, color)
 }
 
-function spherePoint(center: Vec3, vertical: number, horizontal: number): Vec3 {
+function spherePointInto(center: Vec3, vertical: number, horizontal: number, target: Vec3) {
   const radius = Math.cos(vertical) * beachBallRadius
 
-  return [
-    center[0] + Math.cos(horizontal) * radius,
-    center[1] + Math.sin(vertical) * beachBallRadius,
-    center[2] + Math.sin(horizontal) * radius,
-  ]
+  target[0] = center[0] + Math.cos(horizontal) * radius
+  target[1] = center[1] + Math.sin(vertical) * beachBallRadius
+  target[2] = center[2] + Math.sin(horizontal) * radius
+}
+
+function writeVertex(target: VertexWriter, point: Vec3, color: Vec3) {
+  const offset = target.length
+  const data = target.data
+
+  data[offset] = point[0]
+  data[offset + 1] = point[1]
+  data[offset + 2] = point[2]
+  data[offset + 3] = color[0]
+  data[offset + 4] = color[1]
+  data[offset + 5] = color[2]
+  data[offset + 6] = glow
+  data[offset + 7] = 0
+  data[offset + 8] = 0
+  data[offset + 9] = 0
+  data[offset + 10] = 0
+  target.length += 11
 }

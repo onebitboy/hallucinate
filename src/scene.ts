@@ -381,13 +381,11 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
 }
 
 export function seats() {
-  return [
-    buddhaSeat(),
-    ...tentSeats(),
-    ...tentCenterSeats(),
-    ...outsideCouches.flatMap(couch => couchSeats(couch, 'couch', outsideCouches.indexOf(couch), walkHeight)),
-    ...seatStools.map((stool, index) => stoolSeat(stool, index)),
-  ]
+  return cachedSeats
+}
+
+export function seatById(id: string) {
+  return cachedSeatById.get(id)!
 }
 
 function buddhaSeat(): Seat {
@@ -399,15 +397,13 @@ function buddhaSeat(): Seat {
 }
 
 function tentSeat(position: Vec3, occupiedSeats: Set<string>, includeOccupied: boolean) {
-  const seats = tentSeats().filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
-  const seat = nearestSeat(seats, position)
+  const seat = nearestSeat(cachedTentSeats, position, occupiedSeats, includeOccupied)
 
   return seat && distanceSq(position, seat.position) < 1 ? seat : undefined
 }
 
 function tentCenterSeat(position: Vec3, occupiedSeats: Set<string>, includeOccupied: boolean) {
-  const seats = tentCenterSeats().filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
-  const seat = nearestSeat(seats, position)
+  const seat = nearestSeat(cachedTentCenterSeats, position, occupiedSeats, includeOccupied)
 
   return seat && distanceSq(position, seat.position) < 0.9 ? seat : undefined
 }
@@ -483,18 +479,31 @@ function couchSeatAt(
     if (position[0] > bounds.left && position[0] < bounds.right && position[2] > bounds.back
       && position[2] < bounds.front)
     {
-      const seats = couchSeats(couch, idPrefix, i, heightAt)
-        .filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
+      const seats = idPrefix === 'couch' ? cachedOutsideCouchSeatsByCouch[i]! : couchSeats(couch, idPrefix, i, heightAt)
 
-      return nearestSeat(seats, position)
+      return nearestSeat(seats, position, occupiedSeats, includeOccupied)
     }
   }
 }
 
-function nearestSeat(seats: Seat[], position: Vec3) {
-  seats.sort((a, b) => distanceSq(position, a.position) - distanceSq(position, b.position))
+function nearestSeat(seats: Seat[], position: Vec3, occupiedSeats: Set<string>, includeOccupied: boolean) {
+  let nearest: Seat | undefined
+  let nearestDistance = Infinity
 
-  return seats[0]
+  for (const seat of seats) {
+    if (!includeOccupied && occupiedSeats.has(seat.id)) {
+      continue
+    }
+
+    const distance = distanceSq(position, seat.position)
+
+    if (distance < nearestDistance) {
+      nearest = seat
+      nearestDistance = distance
+    }
+  }
+
+  return nearest
 }
 
 function couchSeats(
@@ -529,6 +538,21 @@ function stoolSeat(stool: Bounds, index: number): Seat {
     turn: outside ? Math.PI / 2 : Math.PI,
   }
 }
+
+const cachedBuddhaSeat = buddhaSeat()
+const cachedTentSeats = tentSeats()
+const cachedTentCenterSeats = tentCenterSeats()
+const cachedOutsideCouchSeatsByCouch = outsideCouches.map((couch, index) => couchSeats(couch, 'couch', index, walkHeight))
+const cachedOutsideCouchSeats = cachedOutsideCouchSeatsByCouch.flat()
+const cachedStoolSeats = seatStools.map((stool, index) => stoolSeat(stool, index))
+const cachedSeats = [
+  cachedBuddhaSeat,
+  ...cachedTentSeats,
+  ...cachedTentCenterSeats,
+  ...cachedOutsideCouchSeats,
+  ...cachedStoolSeats,
+]
+const cachedSeatById = new Map(cachedSeats.map(seat => [seat.id, seat]))
 
 function couchSeatDirection(face: (typeof outsideCouches)[number]['face']): Vec3 {
   if (face === 'north') {

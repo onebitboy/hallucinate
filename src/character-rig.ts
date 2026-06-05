@@ -9,6 +9,8 @@ type PoseSamplePlan = {
   poseSlots: number[]
   world: Mat4[]
 }
+type KeyArray = [number, Vec3 | Quat][]
+type KeyInterval = { inverse: number; start: number }
 
 const identityMatrix = identity()
 const identityQuat: Quat = [1, 0, 0, 0]
@@ -17,6 +19,8 @@ const samplePosition: Vec3 = [0, 0, 0]
 const sampleRotation: Quat = [1, 0, 0, 0]
 const sampleScale: Vec3 = [1, 1, 1]
 const poseSamplePlans = new WeakMap<CharacterRig, WeakMap<Set<string>, PoseSamplePlan>>()
+const keyIntervals = new WeakMap<KeyArray, KeyInterval>()
+const keyIntervalsMissing = new WeakSet<KeyArray>()
 const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
 const waveLoopEnd = 62 / 30
@@ -104,7 +108,7 @@ export function sampleCharacterPose(
   characterPoseJointSet: Set<string>,
   characterGroundJointIndices: number[],
   characterScale: number,
-  basePose = sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, player.idleClipIndex ?? 0),
+  basePose?: SampledPose,
   blendCache?: PoseBlendCache,
   placedPose?: Vec3[],
   cacheFrame = 0,
@@ -140,7 +144,8 @@ export function sampleCharacterPose(
       characterScale, placedPose)
   }
 
-  const { stand, run } = basePose
+  const { stand, run } = basePose ?? sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet,
+    player.idleClipIndex ?? 0)
 
   if (player.mode === 'wave' || player.mode === 'waveOut') {
     const pose = blendCharacterPose(stand, run, player.motionBlend, characterPoseJoints)
@@ -318,9 +323,9 @@ function setTransformOrigin(matrix: Mat4, target: Vec3[], index: number) {
 
 function sampleChannelTransform(node: RigNode, channel: AssimpChannel, tick: number, target: Mat4) {
   return composeInto(
-    sampleVec3Into(channel.positionkeys, tick, node.origin, samplePosition),
-    sampleQuatInto(channel.rotationkeys, tick, identityQuat, sampleRotation),
-    sampleVec3Into(channel.scalingkeys, tick, unitScale, sampleScale),
+    channel.positionkeys?.length ? sampleVec3Into(channel.positionkeys, tick, node.origin, samplePosition) : node.origin,
+    channel.rotationkeys?.length ? sampleQuatInto(channel.rotationkeys, tick, identityQuat, sampleRotation) : identityQuat,
+    channel.scalingkeys?.length ? sampleVec3Into(channel.scalingkeys, tick, unitScale, sampleScale) : unitScale,
     target,
   )
 }
@@ -645,6 +650,16 @@ function getPoseSampleChannels(rig: CharacterRig, clip: CharacterClip, plan: Pos
 }
 
 function nextKeyIndex<T extends Vec3 | Quat>(keys: [number, T][], tick: number) {
+  const interval = keyInterval(keys)
+
+  if (interval) {
+    const index = Math.ceil((tick - interval.start) * interval.inverse)
+
+    if (index > 0 && index < keys.length && tick <= keys[index]![0] && tick > keys[index - 1]![0]) {
+      return index
+    }
+  }
+
   let low = 1
   let high = keys.length - 1
 
@@ -660,6 +675,30 @@ function nextKeyIndex<T extends Vec3 | Quat>(keys: [number, T][], tick: number) 
   }
 
   return tick <= keys[low]![0] ? low : -1
+}
+
+function keyInterval<T extends Vec3 | Quat>(keys: [number, T][]) {
+  const keyArray = keys as KeyArray
+  let interval = keyIntervals.get(keyArray)
+
+  if (interval) {
+    return interval
+  }
+  if (keyIntervalsMissing.has(keyArray)) {
+    return undefined
+  }
+
+  const step = keys.length > 2 ? keys[1]![0] - keys[0]![0] : 0
+
+  if (step <= 0) {
+    keyIntervalsMissing.add(keyArray)
+    return undefined
+  }
+
+  interval = { inverse: 1 / step, start: keys[0]![0] }
+  keyIntervals.set(keyArray, interval)
+
+  return interval
 }
 
 function isAssimpHelper(node: AssimpNode) {

@@ -9,6 +9,7 @@ type ChatBubble = {
   position: Vec3
   hideAt: number
   shownAt: number
+  visible: boolean
   x: number
   y: number
   particles?: ReactionParticle[]
@@ -21,6 +22,7 @@ type ChatLabel = {
   owner: number
   position: Vec3
   text: string
+  visible: boolean
   x: number
   y: number
 }
@@ -200,12 +202,16 @@ export function createChatUi(
 
       label.text = text
       label.position = labelPosition
-      label.color = color
+      if (label.color !== color) {
+        label.color = color
+        label.element.style.color = color
+      }
       if (label.hideAt === 0) {
-        label.element.textContent = text
+        if (label.element.textContent !== text) {
+          label.element.textContent = text
+        }
         label.element.dataset.speaking = 'false'
       }
-      label.element.style.color = color
     },
     update(projector: WallProjector, stamp: number) {
       if (form.dataset.open === 'true') {
@@ -259,6 +265,7 @@ function createLabel(root: HTMLDivElement, owner: number, position: Vec3): ChatL
     owner,
     position,
     text: '',
+    visible: false,
     x: Number.NaN,
     y: Number.NaN,
   }
@@ -277,6 +284,7 @@ function createBubble(root: HTMLDivElement, owner: number, position: Vec3): Chat
     position,
     hideAt: 0,
     shownAt: 0,
+    visible: false,
     x: Number.NaN,
     y: Number.NaN,
   }
@@ -288,7 +296,7 @@ function createBubble(root: HTMLDivElement, owner: number, position: Vec3): Chat
 }
 
 function positionElement(
-  item: { element: HTMLElement; position: Vec3; x: number; y: number },
+  item: { element: HTMLElement; position: Vec3; visible: boolean; x: number; y: number },
   projector: WallProjector,
   point: ProjectedPoint,
   anchor: Vec3,
@@ -297,11 +305,17 @@ function positionElement(
   anchor[1] = item.position[1] + 1.05
   anchor[2] = item.position[2]
   if (!projectVisiblePointInto(anchor, projector, point)) {
-    item.element.dataset.visible = 'false'
+    if (item.visible) {
+      item.visible = false
+      item.element.dataset.visible = 'false'
+    }
     return
   }
 
-  item.element.dataset.visible = 'true'
+  if (!item.visible) {
+    item.visible = true
+    item.element.dataset.visible = 'true'
+  }
   const x = Math.round(point.x)
   const y = Math.round(point.y - 68)
 
@@ -327,6 +341,7 @@ function createReactionBubble(
     position,
     hideAt: 0,
     shownAt: 0,
+    visible: false,
     x: Number.NaN,
     y: Number.NaN,
     particles,

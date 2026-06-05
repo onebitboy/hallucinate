@@ -24,8 +24,8 @@ export function resetVertexWriter(writer: VertexWriter) {
   writer.length = 0
 }
 
-export function vertexWriterData(writer: VertexWriter) {
-  return writer.data.length === writer.length ? writer.data : writer.data.subarray(0, writer.length)
+export function vertexWriterData(writer: VertexWriter): Float32Array {
+  return writer.data.length === writer.length ? writer.data : (writer.data.subarray(0, writer.length) as Float32Array)
 }
 
 function reserveVertices(writer: VertexWriter, vertices: number) {

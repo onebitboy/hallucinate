@@ -1,7 +1,7 @@
 import type { Vec3 } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
-type Viewport = { width: number; height: number; clientWidth: number; clientHeight: number }
+export type Viewport = { width: number; height: number; clientWidth: number; clientHeight: number }
 export type ProjectedPoint = { x: number; y: number }
 export type WallProjector = ReturnType<typeof createWallProjector>
 

@@ -8,7 +8,7 @@ import {
   outsideHutBar,
   roomBounds,
 } from './scene-data.ts'
-import { collideRoom, isOutside, seatAt, seats, walkHeight } from './scene.ts'
+import { collideRoom, isOutside, seatAt, seatById, seats, walkHeight } from './scene.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const npcConfig = {
@@ -131,7 +131,7 @@ export function updatePlayers(
   for (const player of players) {
     if (player.seat) {
       if (time < player.sittingUntil!) {
-        const seat = seats().find(seat => seat.id === player.seat)!
+        const seat = seatById(player.seat)
         player.position[0] = seat.position[0]
         player.position[1] = seat.position[1]
         player.position[2] = seat.position[2]
@@ -185,9 +185,13 @@ export function updatePlayers(
     if (moving) {
       const lastX = player.position[0]
       const lastZ = player.position[2]
-      const direction = playerInputDirection(player)
-      const directionX = direction[0]
-      const directionZ = direction[2]
+      const turnSin = Math.sin(player.turn)
+      const turnCos = Math.cos(player.turn)
+      const inputX = turnSin * player.input[2] + turnCos * player.input[0]
+      const inputZ = turnCos * player.input[2] - turnSin * player.input[0]
+      const inputLength = Math.hypot(inputX, inputZ)
+      const directionX = inputX / inputLength
+      const directionZ = inputZ / inputLength
 
       const speed = Math.min(Math.sqrt(inputLengthSq), 1)
 
@@ -395,16 +399,6 @@ function travelLateralInput(player: Player, time: number) {
   player.travelLateralDirection = seededRandom(player.seed, Math.floor(time * 2.7)) < 0.5 ? -1 : 1
 
   return player.travelLateralDirection
-}
-
-function playerInputDirection(player: Player): Vec3 {
-  const sin = Math.sin(player.turn)
-  const cos = Math.cos(player.turn)
-  const x = sin * player.input[2] + cos * player.input[0]
-  const z = cos * player.input[2] - sin * player.input[0]
-  const length = Math.hypot(x, z)
-
-  return [x / length, 0, z / length]
 }
 
 function blockedForward(
