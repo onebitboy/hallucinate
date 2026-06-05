@@ -1,6 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { clamp, lengthSq, lerpVec3, mix, smoothAngle } from './math.ts'
-import { backDoor, outsideBounds, outsideToilets, roomBounds, tent } from './scene-data.ts'
+import { backDoor, loftBounds, outsideBounds, outsideToilets, roomBounds, tent } from './scene-data.ts'
 import { collideBuildingWalls, isOutside, roomAt, walkHeight } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
@@ -115,7 +115,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         center: [target[0], target[1], target[2]] as Vec3,
       }
     },
-    update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean, lookDown = false) {
+    update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean, lookDown = false, loft = false) {
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
 
@@ -165,7 +165,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       target[0] = characterPosition[0]
       target[1] = characterPosition[1] + 1.2
       target[2] = characterPosition[2]
-      const zone = roomAt(characterPosition)
+      const zone = loft ? 'loft' : roomAt(characterPosition)
 
       if (holdingManualCamera && !dragging) {
         clampCameraToZone(position, zone, characterPosition)
@@ -173,7 +173,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         return
       }
 
-      const outside = zone !== 'inside'
+      const outside = !loft && zone !== 'inside'
       const cameraOutside = isOutside(position)
       const crossingOutside = outside && !cameraOutside
       const time = performance.now() * 0.001
@@ -187,13 +187,17 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         characterPosition[2] - Math.cos(turn) * distance,
       ]
 
-      ideal[0] = zone === 'tent'
+      ideal[0] = zone === 'loft'
+        ? clamp(ideal[0], loftBounds.left + 0.65, loftBounds.right - 0.65)
+        : zone === 'tent'
         ? clamp(ideal[0], tent.x - tent.radius + 1, tent.x + tent.radius - 1)
         : outside
           ? clamp(ideal[0], outsideBounds.left + 1, outsideBounds.right - 1)
           : clamp(ideal[0], roomBounds.left + 0.4, roomBounds.right - 0.4)
       ideal[1] = clamp(ideal[1], characterFloor + 0.35, 4.3)
-      ideal[2] = zone === 'tent'
+      ideal[2] = zone === 'loft'
+        ? clamp(ideal[2], loftBounds.back + 0.65, loftBounds.front - 0.65)
+        : zone === 'tent'
         ? clamp(ideal[2], tent.z - tent.radius + 1, tent.z + tent.radius - 1)
         : outside
           ? clamp(ideal[2], outsideBounds.back + 1, outsideBounds.front - 1)
@@ -220,7 +224,8 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       }
       clampCameraToZone(position, zone, characterPosition)
 
-      position[1] = Math.max(position[1], walkHeight(position[0], characterPosition[1], position[2]) + 0.35)
+      position[1] = Math.max(position[1], (loft ? characterFloor : walkHeight(position[0], characterPosition[1],
+        position[2])) + 0.35)
     },
   }
 }
@@ -240,7 +245,13 @@ function interactiveTarget(target: EventTarget | null) {
     || target instanceof HTMLAnchorElement
 }
 
-function clampCameraToZone(position: Vec3, zone: ReturnType<typeof roomAt>, characterPosition: Vec3) {
+function clampCameraToZone(position: Vec3, zone: ReturnType<typeof roomAt> | 'loft', characterPosition: Vec3) {
+  if (zone === 'loft') {
+    position[0] = clamp(position[0], loftBounds.left + 0.65, loftBounds.right - 0.65)
+    position[2] = clamp(position[2], loftBounds.back + 0.65, loftBounds.front - 0.65)
+    return
+  }
+
   if (inOutsideToilets(characterPosition)) {
     clampOutsideToiletCamera(position, characterPosition)
     return

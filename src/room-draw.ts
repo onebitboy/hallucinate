@@ -1,5 +1,4 @@
 import type { CameraMatrix } from './camera-matrix.ts'
-import { roomAt } from './scene.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = { eye: Vec3; center: Vec3 }
@@ -78,6 +77,7 @@ export function useLightProgram(options: {
   gl: WebGL2RenderingContext
   height: number
   program: WebGLProgram
+  renderZone: number
   smokeMap: WebGLTexture
   uniforms: {
     renderZone: WebGLUniformLocation
@@ -89,13 +89,9 @@ export function useLightProgram(options: {
 }) {
   options.gl.useProgram(options.program)
   options.gl.uniform1f(options.uniforms.time, options.frame)
-  options.gl.uniform1i(options.uniforms.renderZone, renderZone(roomAt(options.characterPosition)))
+  options.gl.uniform1i(options.uniforms.renderZone, options.renderZone)
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.activeTexture(options.gl.TEXTURE2)
   options.gl.bindTexture(options.gl.TEXTURE_2D, options.smokeMap)
   options.gl.uniform1i(options.uniforms.smokeMap, 2)
-}
-
-function renderZone(zone: ReturnType<typeof roomAt>) {
-  return zone === 'inside' ? 0 : zone === 'tent' ? 2 : 1
 }

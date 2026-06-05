@@ -353,7 +353,7 @@ function addOutsideLounges(target: Vertex[], floor: number) {
   addBonfireBase(target, floor)
 }
 
-function addLowPolyCouch(
+export function addLowPolyCouch(
   target: Vertex[],
   couch: Bounds & { color: Vec3; face: 'east' | 'north' | 'south' | 'west' },
   floor: number,
@@ -538,7 +538,7 @@ function addDjBooth(target: Vertex[]) {
   addDjBoothAt(target, djBooth, djSpeakers, 1, [1, 0.03, 0.015], 0.45)
 }
 
-function addDjBoothAt(target: Vertex[], booth: Bounds, speakers: Bounds[], direction: number, accent: Vec3,
+export function addDjBoothAt(target: Vertex[], booth: Bounds, speakers: Bounds[], direction: number, accent: Vec3,
   accentGlow: number)
 {
   const body: Vec3 = [0.026, 0.018, 0.021]

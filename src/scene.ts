@@ -2,8 +2,10 @@ import { characterFloor } from './character-data.ts'
 import { clamp } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, outsideBounds, outsideBuddha, outsideCouches,
   outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools, outsideHutDeckHeight,
-  outsidePalmTree, outsideStage, outsideToiletDoor, outsideToilets, roomBounds, tent, tentCenterBench, tentDjBooth,
-  tentDjSpeakers, tentDoor, tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
+  outsidePalmTree,
+  outsideStage, outsideToiletDoor, outsideToilets, loftBounds, loftCornerFigures, loftCouches, loftDjBooth,
+  loftDjSpeakers, loftPlants, loftTables, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor,
+  tentDoorAngle, tentPole, tentVideoAngle } from './scene-data.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 export type Seat = {
@@ -29,6 +31,10 @@ const outsideStageCollision = paddedBounds(outsideStage, 0.12)
 const outsideDjSpeakerCollisions = outsideDjSpeakers.map(bounds => paddedBounds(bounds))
 const tentDjBoothCollision = paddedBounds(tentDjBooth)
 const tentDjSpeakerCollisions = tentDjSpeakers.map(bounds => paddedBounds(bounds))
+const loftDjBoothCollision = paddedBounds(loftDjBooth)
+const loftDjSpeakerCollisions = loftDjSpeakers.map(bounds => paddedBounds(bounds))
+const loftCouchCollisions = loftCouches.map(bounds => couchCollisionBounds(bounds))
+const loftTableCollisions = loftTables.map(bounds => paddedBounds(bounds, 0.18))
 const outsideCouchCollisions = outsideCouches.map(bounds => couchCollisionBounds(bounds))
 const outsideHutBarCollision = paddedBounds(outsideHutBar)
 const outsideHutBarStoolCollisions = outsideHutBarStools.map(bounds => paddedBounds(bounds))
@@ -44,11 +50,16 @@ const insideLeft = roomBounds.left + 0.8
 const insideRight = roomBounds.right - 0.8
 const insideBack = roomBounds.back + 0.8
 const insideFront = roomBounds.front - 0.8
+const loftLeft = loftBounds.left + 0.65
+const loftRight = loftBounds.right - 0.65
+const loftBack = loftBounds.back + 0.65
+const loftFront = loftBounds.front - 0.65
 const buddhaSeatId = 'buddha'
 const djBoothTop = characterFloor + 0.71
 const speakerTop = characterFloor + 1.82
 const barTop = characterFloor + 0.86
 const couchTop = characterFloor + 0.78
+const tableTop = characterFloor + 0.4
 const stoolTop = characterFloor + 0.72
 const outsideHutStoolTop = characterFloor + outsideHutDeckHeight + 0.72
 const outsideStageTop = characterFloor + 4.2
@@ -63,6 +74,16 @@ export function walkHeight(x: number, y: number, z: number) {
 
   if (inBounds(x, z, outsideHut) || inBounds(x, z, outsideHutBarDeckBounds)) {
     return characterFloor + outsideHutDeckHeight
+  }
+
+  return characterFloor
+}
+
+export function walkLoftHeight(x: number, y: number, z: number) {
+  const platform = loftPlatformHeight(x, z)
+
+  if (platform !== undefined && y > platform - platformStep) {
+    return platform
   }
 
   return characterFloor
@@ -175,6 +196,36 @@ export function collideRoom(position: Vec3, outsideTree: CircleBounds, outside =
   }
 }
 
+export function collideLoftRoom(position: Vec3) {
+  position[0] = clamp(position[0], loftLeft, loftRight)
+  position[2] = clamp(position[2], loftBack, loftFront)
+
+  if (!onPaddedPlatform(position, loftDjBoothCollision, djBoothTop)) {
+    collidePaddedBounds(position, loftDjBoothCollision)
+  }
+  for (const speaker of loftDjSpeakerCollisions) {
+    if (!onPaddedPlatform(position, speaker, speakerTop)) {
+      collidePaddedBounds(position, speaker)
+    }
+  }
+  for (const couch of loftCouchCollisions) {
+    if (!onPaddedPlatform(position, couch, couchTop)) {
+      collidePaddedBounds(position, couch)
+    }
+  }
+  for (const table of loftTableCollisions) {
+    if (!onPaddedPlatform(position, table, tableTop)) {
+      collidePaddedBounds(position, table)
+    }
+  }
+  for (const plant of loftPlants) {
+    collideCircle(position, plant)
+  }
+  for (const figure of loftCornerFigures) {
+    collideCircle(position, figure)
+  }
+}
+
 export function collideSphereRoom(position: Vec3, radius: number, outsideTree: CircleBounds) {
   position[0] = clamp(position[0], outsideBounds.left + radius, outsideBounds.right - radius)
   position[2] = clamp(position[2], outsideBounds.back + radius, outsideBounds.front - radius)
@@ -284,10 +335,15 @@ function inTentWall(x: number, z: number, padding: number) {
   return distance < tent.radius + padding && distance > tent.radius - 0.62 && !isAtTentDoor([x, characterFloor, z], padding)
 }
 
-export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), padding = 0.46, includeOccupied = false):
+export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), padding = 0.46, includeOccupied = false,
+  loft = false):
   | Seat
   | undefined
 {
+  if (loft) {
+    return couchSeatAt(loftCouches, 'loft-couch', position, occupiedSeats, padding, includeOccupied, walkLoftHeight)
+  }
+
   const buddha = buddhaSeat()
   const tent = tentSeat(position, occupiedSeats, includeOccupied) ?? tentCenterSeat(position, occupiedSeats,
     includeOccupied)
@@ -305,14 +361,10 @@ export function seatAt(position: Vec3, occupiedSeats = new Set<string>(), paddin
     return buddha
   }
 
-  for (const couch of outsideCouches) {
-    const bounds = paddedBounds(couch, padding)
+  const couchSeat = couchSeatAt(outsideCouches, 'couch', position, occupiedSeats, padding, includeOccupied, walkHeight)
 
-    if (position[0] > bounds.left && position[0] < bounds.right && position[2] > bounds.back
-      && position[2] < bounds.front)
-    {
-      return nearestCouchSeat(couch, position, occupiedSeats, includeOccupied)
-    }
+  if (couchSeat) {
+    return couchSeat
   }
 
   for (let i = 0; i < seatStools.length; i++) {
@@ -333,7 +385,7 @@ export function seats() {
     buddhaSeat(),
     ...tentSeats(),
     ...tentCenterSeats(),
-    ...outsideCouches.flatMap(couch => couchSeats(couch)),
+    ...outsideCouches.flatMap(couch => couchSeats(couch, 'couch', outsideCouches.indexOf(couch), walkHeight)),
     ...seatStools.map((stool, index) => stoolSeat(stool, index)),
   ]
 }
@@ -415,15 +467,28 @@ function pointAngle(x: number, z: number) {
   return Math.atan2(x - tent.x, z - tent.z)
 }
 
-function nearestCouchSeat(
-  couch: (typeof outsideCouches)[number],
+function couchSeatAt(
+  couches: typeof outsideCouches,
+  idPrefix: string,
   position: Vec3,
   occupiedSeats: Set<string>,
+  padding: number,
   includeOccupied: boolean,
+  heightAt: (x: number, y: number, z: number) => number,
 ) {
-  const seats = couchSeats(couch).filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
+  for (let i = 0; i < couches.length; i++) {
+    const couch = couches[i]!
+    const bounds = paddedBounds(couch, padding)
 
-  return nearestSeat(seats, position)
+    if (position[0] > bounds.left && position[0] < bounds.right && position[2] > bounds.back
+      && position[2] < bounds.front)
+    {
+      const seats = couchSeats(couch, idPrefix, i, heightAt)
+        .filter(seat => includeOccupied || !occupiedSeats.has(seat.id))
+
+      return nearestSeat(seats, position)
+    }
+  }
 }
 
 function nearestSeat(seats: Seat[], position: Vec3) {
@@ -432,19 +497,23 @@ function nearestSeat(seats: Seat[], position: Vec3) {
   return seats[0]
 }
 
-function couchSeats(couch: (typeof outsideCouches)[number]): Seat[] {
+function couchSeats(
+  couch: (typeof outsideCouches)[number],
+  idPrefix: string,
+  couchIndex: number,
+  heightAt: (x: number, y: number, z: number) => number,
+): Seat[] {
   const direction = couchSeatDirection(couch.face)
   const side = couchSeatSide(couch.face)
-  const couchIndex = outsideCouches.indexOf(couch)
   const depth = couch.face === 'north' || couch.face === 'south' ? couch.depth : couch.width
   const width = couch.face === 'north' || couch.face === 'south' ? couch.width : couch.depth
   const offsets = [-width * 0.3, 0, width * 0.3]
 
   return offsets.map((offset, index) => ({
-    id: `${couchIndex}:${index}`,
+    id: `${idPrefix}:${couchIndex}:${index}`,
     position: [
       couch.x + direction[0] * depth * 0.12 + side[0] * offset,
-      walkHeight(couch.x, characterFloor, couch.z) + 0.28,
+      heightAt(couch.x, characterFloor, couch.z) + 0.28,
       couch.z + direction[2] * depth * 0.12 + side[2] * offset,
     ] as Vec3,
     turn: Math.atan2(direction[0], direction[2]),
@@ -688,6 +757,24 @@ function platformHeight(x: number, z: number) {
 
   if (inPaddedBounds(x, z, bartenderBarCollision) || inPaddedBounds(x, z, outsideHutBarCollision)) {
     return barTop
+  }
+}
+
+function loftPlatformHeight(x: number, z: number) {
+  if (inPaddedBounds(x, z, loftDjBoothCollision)) {
+    return djBoothTop
+  }
+
+  if (loftDjSpeakerCollisions.some(bounds => inPaddedBounds(x, z, bounds))) {
+    return speakerTop
+  }
+
+  if (loftCouchCollisions.some(bounds => inPaddedBounds(x, z, bounds))) {
+    return couchTop
+  }
+
+  if (loftTableCollisions.some(bounds => inPaddedBounds(x, z, bounds))) {
+    return tableTop
   }
 }
 

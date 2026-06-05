@@ -121,6 +121,9 @@ bool sceneVisible() {
   if (renderZone == 2) {
     return tentPoint;
   }
+  if (renderZone == 3) {
+    return true;
+  }
 
   return (outsidePoint && !tentInterior) || (shell && light < 0.12) || door;
 }
@@ -198,6 +201,9 @@ bool sceneVisible() {
   if (renderZone == 2) {
     return tentPoint;
   }
+  if (renderZone == 3) {
+    return true;
+  }
 
   return (outsidePoint && (!tentInterior || tentRoofShell || graffiti)) || (shell && light < 0.12) || door;
 }
@@ -247,6 +253,10 @@ vec3 grassColor() {
 
 void main() {
   if (!sceneVisible()) {
+    discard;
+  }
+
+  if (strobeId < 0.0) {
     discard;
   }
 
@@ -318,7 +328,10 @@ bool sceneVisible() {
     && worldPosition.x > -5.75 && worldPosition.x < -3.75
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
-  return renderZone == 0 ? (!outsidePoint || door) : renderZone == 2 ? tentPoint : ((outsidePoint && !tentInterior) || door);
+  return renderZone == 3 ? true
+    : renderZone == 0 ? (!outsidePoint || door)
+    : renderZone == 2 ? tentPoint
+    : ((outsidePoint && !tentInterior) || door);
 }
 
 float smokeDensity(vec2 uv) {
@@ -408,7 +421,10 @@ bool sceneVisible() {
     && worldPosition.x > -5.75 && worldPosition.x < -3.75
     && worldPosition.y > -2.15 && worldPosition.y < 0.75;
 
-  return renderZone == 0 ? (!outsidePoint || door) : renderZone == 2 ? tentPoint : ((outsidePoint && !tentInterior) || door);
+  return renderZone == 3 ? true
+    : renderZone == 0 ? (!outsidePoint || door)
+    : renderZone == 2 ? tentPoint
+    : ((outsidePoint && !tentInterior) || door);
 }
 
 void main() {
@@ -617,6 +633,57 @@ vec3 nightSky(vec2 point) {
   return sky + starColor * star * twinkle + moonColor * moonGlow + moonColor * moon;
 }
 
+float skyscraperMask(vec2 point, float count, float layer) {
+  vec2 scaled = point * vec2(count, 1.0);
+  vec2 cell = floor(scaled);
+  vec2 local = fract(scaled);
+  vec3 seed = hashStar(cell + layer * 31.7);
+  float width = mix(0.44, 0.92, seed.y);
+  float height = mix(0.28, 0.76, pow(seed.x, 0.72));
+  float roof = step(0.78, seed.z) * smoothstep(height + 0.065, height, point.y)
+    * smoothstep(height - 0.02, height + 0.06, point.y)
+    * smoothstep(0.48, 0.5, 1.0 - abs(local.x - 0.5) * 2.0);
+  float body = step(point.y, height) * step(abs(local.x - 0.5) * 2.0, width);
+
+  return max(body, roof);
+}
+
+vec3 skyscraperWindows(vec2 point, float count, float layer) {
+  vec2 scaled = point * vec2(count, 1.0);
+  vec2 cell = floor(scaled);
+  vec2 local = fract(scaled);
+  vec2 grid = fract(vec2(local.x * 5.0, point.y * 42.0 + layer * 3.0));
+  vec3 seed = hashStar(floor(vec2(scaled.x * 5.0, point.y * 42.0)) + layer * 67.0);
+  float pane = step(0.18, grid.x) * step(grid.x, 0.58) * step(0.16, grid.y) * step(grid.y, 0.52);
+  float lit = step(0.48, seed.x) * pane;
+  vec3 warm = vec3(1.0, 0.76, 0.32);
+  vec3 cool = vec3(0.36, 0.74, 1.0);
+  vec3 pink = vec3(1.0, 0.28, 0.78);
+
+  return lit * (seed.y < 0.62 ? warm : seed.y < 0.86 ? cool : pink) * mix(0.85, 2.4, seed.z);
+}
+
+vec3 loftSkyline(vec2 point) {
+  vec3 sky = nightSky(point);
+  vec3 color = sky;
+  float haze = smoothstep(0.62, 0.08, point.y);
+
+  for (int i = 0; i < 3; i++) {
+    float layer = float(i);
+    float count = mix(38.0, 82.0, layer / 2.0);
+    float mask = skyscraperMask(point + vec2(layer * 0.071, 0.0), count, layer);
+    vec3 body = mix(vec3(0.002, 0.004, 0.014), vec3(0.026, 0.034, 0.064), layer / 2.0);
+    vec3 windows = skyscraperWindows(point + vec2(layer * 0.071, 0.0), count, layer);
+    float depth = mix(0.45, 1.0, layer / 2.0);
+
+    color = mix(color, body * depth + windows, mask * mix(0.76, 1.0, layer / 2.0));
+  }
+
+  color += vec3(0.2, 0.07, 0.28) * haze * 0.34;
+
+  return color;
+}
+
 vec2 skyPoint(vec2 point) {
   vec2 screen = point * 2.0 - 1.0;
   float aspect = bloomResolution.x / bloomResolution.y;
@@ -638,6 +705,13 @@ void main() {
     vec2 skyUv = skyPoint(uv);
 
     base = mix(base, ${outsideMotif === 'night' ? 'nightSky(skyUv)' : 'afternoonSky(skyUv)'}, sky);
+  }
+  else if (renderSky == 2) {
+    vec2 skyUv = skyPoint(uv);
+    skyUv.x = fract(skyUv.x + 0.55);
+    vec3 skyline = nightSky(skyUv);
+
+    base = mix(skyline, base, source.a);
   }
 
   glow += bright(texture(bloom, uv + vec2(near.x, 0.0))) * 0.18;

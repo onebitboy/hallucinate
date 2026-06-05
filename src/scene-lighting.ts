@@ -87,31 +87,31 @@ export function createSceneLighting(options: {
   }
 
   function addLocalReflection(color: Vec3, point: Vec3, normal: Vec3): Vec3 {
-    const red = redReflection(point, normal)
+    const orange = orangeReflection(point, normal)
     const white = options.strobeReflection(point, normal)
 
     return [
-      clamp(color[0] + red * 1.45 + white * 2.85, 0, 1),
-      clamp(color[1] + red * 0.06 + white * 2.7, 0, 1),
-      clamp(color[2] + red * 0.03 + white * 2.25, 0, 1),
+      clamp(color[0] + orange * 1.35 + white * 2.85, 0, 1),
+      clamp(color[1] + orange * 0.48 + white * 2.7, 0, 1),
+      clamp(color[2] + orange * 0.04 + white * 2.25, 0, 1),
     ]
   }
 
   return { addLocalReflection, addSunLitTriangle }
 }
 
-function redReflection(point: Vec3, normal: Vec3) {
+function orangeReflection(point: Vec3, normal: Vec3) {
   if (Math.abs(normal[0]) > Math.abs(normal[2])) {
     const x = normal[0] > 0 ? 6.98 : -6.98
     const z = nearestWallLightZ(point[2])
 
-    return redLightAmount(point, normal, x, point[1], z)
+    return orangeLightAmount(point, normal, x, point[1], z)
   }
 
   const z = normal[2] > 0 ? 3.98 : -23.98
   const x = nearestBackLightX(point[0])
 
-  return redLightAmount(point, normal, x, point[1], z)
+  return orangeLightAmount(point, normal, x, point[1], z)
 }
 
 function createNearestValue(values: number[]) {
@@ -133,7 +133,7 @@ function createNearestValue(values: number[]) {
   }
 }
 
-function redLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
+function orangeLightAmount(point: Vec3, normal: Vec3, x: number, y: number, z: number) {
   const dx = x - point[0]
   const dy = y - point[1]
   const dz = z - point[2]

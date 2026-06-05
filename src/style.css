@@ -236,7 +236,7 @@ html[data-touch-controls="true"] #online-indicator[data-hidden="true"] {
 #reaction-buttons {
   position: fixed;
   right: 8px;
-  bottom: 48px;
+  bottom: 80px;
   z-index: 110;
   display: grid;
   gap: 8px;
@@ -269,17 +269,27 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 }
 
 #reaction-picker {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
   width: min(344px, calc(100dvw - 32px));
   max-height: min(460px, calc(100dvh - 32px));
+  box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 0.18);
-  background: rgb(8 8 10 / 0.92);
-  box-shadow: 0 0 28px rgb(255 0 0 / 0.18);
-  padding: 10px;
+  border: 2px solid rgb(255 255 255 / 0.92);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 29 35 / 0.96), rgb(7 8 13 / 0.97)),
+    rgb(7 8 13);
+  box-shadow:
+    0 18px 60px rgb(0 0 0 / 0.68),
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 28px rgb(255 255 255 / 0.08);
+  padding: 12px;
 }
 
 #reaction-picker::backdrop {
-  background: rgb(0 0 0 / 0.5);
+  background: rgb(0 0 0 / 0.62);
 }
 
 #reaction-picker-grid {
@@ -294,8 +304,9 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
   display: grid;
   height: 34px;
   place-items: center;
-  border: 0;
-  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.04);
   color: white;
   cursor: pointer;
   font: 700 23px/1 "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", ui-sans-serif, system-ui, sans-serif;
@@ -303,9 +314,14 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
   text-shadow: 0 0 8px rgb(255 20 20 / 0.36);
 }
 
+.reaction-picker-option:hover {
+  border-color: rgb(255 255 255 / 0.42);
+  background: rgb(255 255 255 / 0.1);
+}
+
+#rooms-button,
 #support-link {
   position: fixed;
-  right: 12px;
   bottom: 12px;
   z-index: 110;
   display: grid;
@@ -316,12 +332,30 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
   font: 700 18px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
   text-decoration: none;
   text-shadow: 0 0 8px rgb(255 20 20 / 0.3);
+  outline: none;
 }
 
+#rooms-button {
+  bottom: 48px;
+  right: 12px;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", ui-sans-serif, system-ui, sans-serif;
+  padding: 0;
+}
+
+#support-link {
+  right: 12px;
+}
+
+#rooms-button[data-hidden="true"],
 #support-link[data-hidden="true"] {
   display: none;
 }
 
+html[data-touch-controls="true"] #rooms-button[data-hidden="true"],
 html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   display: grid;
 }
@@ -368,6 +402,14 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
   overflow-wrap: anywhere;
 }
 
+.chat-room-link {
+  color: inherit;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  pointer-events: auto;
+}
+
 .chat-ban-button {
   background: rgb(255 40 120 / 0.22);
   border: 1px solid rgb(255 255 255 / 0.28);
@@ -407,34 +449,265 @@ html[data-touch-controls="true"] #support-link[data-hidden="true"] {
 }
 
 #admin-dialog,
-#ban-dialog {
-  background: rgb(6 8 14 / 0.94);
-  border: 1px solid rgb(255 255 255 / 0.24);
+#ban-dialog,
+#loft-music-dialog,
+#rooms-dialog,
+#rent-room-dialog,
+#loft-claim-dialog {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: max-content;
+  max-width: calc(100dvw - 28px);
+  max-height: calc(100dvh - 28px);
+  box-sizing: border-box;
+  overflow: auto;
+  border: 2px solid rgb(255 255 255 / 0.92);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgb(28 29 35 / 0.96), rgb(7 8 13 / 0.97)),
+    rgb(7 8 13);
+  box-shadow:
+    0 18px 60px rgb(0 0 0 / 0.68),
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 28px rgb(255 255 255 / 0.08);
   color: white;
-  padding: 12px;
+  padding: 14px;
+  font: 700 13px/1.2 "Iansui", ui-sans-serif, system-ui, sans-serif;
 }
 
 #admin-dialog::backdrop,
-#ban-dialog::backdrop {
-  background: rgb(0 0 0 / 0.48);
+#ban-dialog::backdrop,
+#loft-music-dialog::backdrop,
+#rooms-dialog::backdrop,
+#rent-room-dialog::backdrop,
+#loft-claim-dialog::backdrop {
+  background: rgb(0 0 0 / 0.62);
 }
 
 #admin-dialog form,
-#ban-dialog form {
+#ban-dialog form,
+#loft-music-dialog form,
+#rent-room-dialog form,
+#loft-claim-dialog form {
   display: flex;
   gap: 8px;
 }
 
-#ban-dialog form {
-  align-items: start;
+#admin-dialog input,
+#ban-dialog input,
+#loft-music-dialog input,
+#rent-room-dialog input,
+#loft-claim-dialog input {
+  min-width: 0;
+  box-sizing: border-box;
+  border: 2px solid rgb(255 255 255 / 0.84);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.44);
+  color: white;
+  font: inherit;
+  outline: none;
+  padding: 9px 10px;
+}
+
+#admin-dialog input:focus,
+#ban-dialog input:focus,
+#loft-music-dialog input:focus,
+#rent-room-dialog input:focus,
+#loft-claim-dialog input:focus {
+  border-color: white;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.16), 0 0 20px rgb(255 255 255 / 0.12);
+}
+
+#admin-dialog button,
+#ban-dialog button,
+#loft-music-dialog button,
+#rooms-dialog button,
+#rent-room-dialog button,
+#loft-claim-dialog button {
+  min-width: 38px;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid rgb(255 255 255 / 0.26);
+  border-bottom-color: rgb(0 0 0 / 0.5);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(82 84 94 / 0.95), rgb(31 32 40 / 0.98)),
+    rgb(31 32 40);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    inset 0 -2px 0 rgb(0 0 0 / 0.32),
+    0 2px 0 rgb(0 0 0 / 0.42);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 11px;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.7);
+}
+
+#admin-dialog button:hover,
+#ban-dialog button:hover,
+#loft-music-dialog button:hover,
+#rooms-dialog button:hover,
+#rent-room-dialog button:hover,
+#loft-claim-dialog button:hover {
+  background:
+    linear-gradient(180deg, rgb(100 102 112 / 0.98), rgb(40 42 52 / 0.98)),
+    rgb(40 42 52);
+  border-color: rgb(255 255 255 / 0.34);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    inset 0 -2px 0 rgb(0 0 0 / 0.3),
+    0 2px 0 rgb(0 0 0 / 0.42),
+    0 0 18px rgb(255 255 255 / 0.08);
+}
+
+#admin-dialog button:active,
+#ban-dialog button:active,
+#loft-music-dialog button:active,
+#rooms-dialog button:active,
+#rent-room-dialog button:active,
+#loft-claim-dialog button:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.5),
+    0 1px 0 rgb(0 0 0 / 0.42);
+}
+
+#admin-dialog form {
+  display: grid;
+  grid-template-columns: minmax(128px, 1fr) auto minmax(64px, 0.55fr) auto minmax(128px, 1fr) auto auto;
+  max-width: min(760px, calc(100dvw - 56px));
+}
+
+#loft-music-dialog form {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) auto auto;
   flex-wrap: wrap;
   max-width: min(360px, calc(100dvw - 32px));
 }
 
+#ban-dialog form {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  max-width: min(420px, calc(100dvw - 32px));
+}
+
 #ban-dialog p {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   margin: 0;
   overflow-wrap: anywhere;
+  color: rgb(255 255 255 / 0.82);
+}
+
+#loft-exit {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 2px solid rgb(255 255 255 / 0.88);
+  border-radius: 10px;
+  background: rgb(8 10 16 / 0.76);
+  color: white;
+  font: 700 19px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  left: 14px;
+  padding: 0;
+  position: fixed;
+  top: 14px;
+  z-index: 70;
+}
+
+#rooms-panel {
+  display: grid;
+  gap: 14px;
+  min-width: min(360px, calc(100dvw - 32px));
+}
+
+#rooms-header,
+#rooms-actions,
+#rent-room-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+#rooms-header {
+  justify-content: space-between;
+}
+
+#rooms-header h2,
+#rent-room-dialog h2,
+#loft-claim-dialog h2 {
+  font: 800 16px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
+  margin: 0;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px rgb(255 255 255 / 0.16);
+}
+
+#rooms-list {
+  display: grid;
+  gap: 6px;
+  max-height: min(360px, calc(100dvh - 180px));
+  overflow: auto;
+}
+
+.rooms-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.045);
+  padding: 7px;
+}
+
+.rooms-row[data-admin="true"] {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.rooms-name {
+  color: rgb(255 245 245);
+  font-weight: 800;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-shadow: 0 0 8px rgb(255 20 20 / 0.34);
+}
+
+.rooms-count,
+.rooms-empty {
+  color: rgb(255 255 255 / 0.76);
+  font-size: 13px;
+}
+
+.rooms-empty {
+  margin: 0;
+}
+
+#rent-room-dialog form {
+  flex-direction: column;
+  min-width: min(300px, calc(100dvw - 32px));
+}
+
+#loft-claim-dialog form {
+  flex-direction: column;
+  min-width: min(320px, 82dvw);
+}
+
+#loft-claim-dialog input,
+#loft-claim-dialog button {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+
+  #admin-dialog form,
+  #loft-music-dialog form,
+  #ban-dialog form {
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .help-cluster,
@@ -813,7 +1086,7 @@ html[data-video-hint-dismissed="true"] #help-ui .help-box-video {
   min-width: 28px;
   width: max-content;
   color: inherit;
-  font: 600 13px/1.2 ui-sans-serif, system-ui, sans-serif;
+  font: 600 13px/1.2 "Iansui", ui-sans-serif, system-ui, sans-serif;
   overflow-wrap: anywhere;
   padding: 0 0 8px;
   pointer-events: none;

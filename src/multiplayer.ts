@@ -76,6 +76,7 @@ export function createMultiplayer(options: {
     accessoryIndex: number
   }
   initialRoom: number
+  spaceSlug?: string
   onRoomState: (room: number) => void
   onMessage: (id: number, text: string) => void
   onNickname: (id: number, text: string) => void
@@ -146,7 +147,9 @@ export function createMultiplayer(options: {
       ? location.origin.replace(/^http/, 'ws')
       : `ws://${location.hostname}:3001`
 
-    return `${base}?protocol=${protocolVersion}&session=${reconnect ? 'reconnect' : 'init'}`
+    const space = options.spaceSlug ? `&space=${encodeURIComponent(options.spaceSlug)}` : ''
+
+    return `${base}?protocol=${protocolVersion}&session=${reconnect ? 'reconnect' : 'init'}${space}`
   }
 
   function receive(event: MessageEvent<ArrayBuffer>) {

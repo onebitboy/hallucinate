@@ -29,6 +29,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
   let reflectionFrame = -1
   let reflectionLights: StrobeReflectionLight[] = []
   let frame = 0
+  let activeZone: VideoZone = 'inside'
 
   return {
     setFrame(nextFrame: number) {
@@ -36,6 +37,7 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
     },
     updateInstances(time: number, zone: VideoZone) {
       let length = 0
+      activeZone = zone
 
       for (const light of options.lights) {
         if (light.zone !== zone) {
@@ -108,6 +110,10 @@ export function createStrobeDrawController(options: StrobeDrawOptions) {
       reflectionFrame = frame
 
       for (const light of options.lights) {
+        if (light.zone !== activeZone) {
+          continue
+        }
+
         const strobe = Math.floor(strobeRandom(light.id, frame) + 0.18)
 
         if (strobe > 0) {

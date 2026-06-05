@@ -112,6 +112,7 @@ export function renderClubFrame(options: {
   }
   program: WebGLProgram
   roomUniforms: RoomUniforms
+  skyline: boolean
   sky: boolean
   smoke: {
     map: WebGLTexture
@@ -281,8 +282,8 @@ export function renderClubFrame(options: {
   gl.uniform1i(options.post.feedback, 2)
   gl.uniform1f(options.post.feedbackAmount, options.feedback.amount)
   gl.uniform2f(options.post.bloomResolution, options.bloomTarget.width, options.bloomTarget.height)
-  gl.uniform1i(options.post.renderSky, options.sky ? 1 : 0)
-  if (options.sky) {
+  gl.uniform1i(options.post.renderSky, options.sky ? 1 : options.skyline ? 2 : 0)
+  if (options.sky || options.skyline) {
     gl.uniform3f(options.post.skyForward, mainCameraMatrix.forward[0], mainCameraMatrix.forward[1],
       mainCameraMatrix.forward[2])
     gl.uniform3f(options.post.skyRight, mainCameraMatrix.right[0], mainCameraMatrix.right[1], mainCameraMatrix.right[2])
@@ -372,6 +373,7 @@ function drawLights(options: Parameters<typeof renderClubFrame>[0], width: numbe
     gl: options.gl,
     height,
     program: options.light.program,
+    renderZone: options.renderZone,
     smokeMap: options.smoke.map,
     uniforms: options.light.uniforms,
     width,

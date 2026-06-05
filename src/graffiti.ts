@@ -132,6 +132,8 @@ export const graffitiWallCount = walls.length
 const graffitiAtlasRows = Math.ceil(graffitiWallCount / graffitiAtlasColumns)
 const graffitiCellWidth = graffitiTextureSize / graffitiAtlasColumns
 const graffitiCellHeight = graffitiTextureSize / graffitiAtlasRows
+const paintingAtlasIndex = graffitiAtlasColumns * graffitiAtlasRows - 1
+const paintingAtlasPadding = 12
 
 export function sprayWallPoint(clientX: number, clientY: number, projector: WallProjector) {
   const ray = screenRay(clientX, clientY, projector)
@@ -186,6 +188,45 @@ export function createGraffitiCanvas() {
   return canvas
 }
 
+export function paintingTextureBounds(index: number) {
+  const [u0, v0, u1, v1] = wallTextureBounds(paintingAtlasIndex)
+  const gap = paintingAtlasPadding / graffitiTextureSize
+  const tile = (graffitiCellWidth - paintingAtlasPadding * 4) / 3 / graffitiTextureSize
+  const left = u0 + gap + index * (tile + gap)
+
+  return [
+    left,
+    v0 + paintingAtlasPadding / graffitiTextureSize,
+    left + tile,
+    v1 - paintingAtlasPadding / graffitiTextureSize,
+  ] as const
+}
+
+export function paintLoftPaintingTextures(context: CanvasRenderingContext2D) {
+  const column = paintingAtlasIndex % graffitiAtlasColumns
+  const row = Math.floor(paintingAtlasIndex / graffitiAtlasColumns)
+  const x = column * graffitiCellWidth
+  const y = row * graffitiCellHeight
+  const width = graffitiCellWidth
+  const height = graffitiCellHeight
+  const gap = paintingAtlasPadding
+  const tileWidth = (width - gap * 4) / 3
+  const tileHeight = height - gap * 2
+  const tileY = y + gap
+  const palettes: Vec3[][] = [
+    [[0.2, 0.15, 0.18], [0.52, 0.34, 0.28], [0.72, 0.55, 0.38], [0.86, 0.77, 0.62], [0.46, 0.55, 0.58]],
+    [[0.13, 0.18, 0.24], [0.3, 0.5, 0.58], [0.55, 0.68, 0.66], [0.86, 0.78, 0.62], [0.58, 0.4, 0.46]],
+    [[0.18, 0.17, 0.15], [0.48, 0.48, 0.34], [0.74, 0.64, 0.42], [0.82, 0.74, 0.58], [0.42, 0.5, 0.62]],
+  ]
+
+  context.save()
+  context.clearRect(x, y, width, height)
+  for (let i = 0; i < palettes.length; i++) {
+    paintAbstractTile(context, x + gap + i * (tileWidth + gap), tileY, tileWidth, tileHeight, palettes[i]!, i)
+  }
+  context.restore()
+}
+
 export function graffitiRadiusForScreenDistance(distance: number) {
   const t = Math.max(0, Math.min(1, (distance - screenSplatNear) / screenSplatRange))
   const scale = splatBaseScale + Math.pow(t, screenSplatPower) * splatRadiusScale
@@ -197,6 +238,68 @@ export function paintGraffitiSplats(context: CanvasRenderingContext2D, splats: G
   for (const splat of splats) {
     paintGraffitiSplat(context, splat)
   }
+}
+
+function paintAbstractTile(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  palette: Vec3[],
+  style: number,
+) {
+  const seed = style * 2.17 + 0.6
+
+  context.save()
+  context.beginPath()
+  context.rect(x, y, width, height)
+  context.clip()
+  context.fillStyle = cssColor(palette[0]!)
+  context.fillRect(x, y, width, height)
+  context.globalCompositeOperation = 'lighter'
+  context.filter = `blur(${Math.max(3, width * 0.055)}px)`
+
+  for (let i = 0; i < 9; i++) {
+    const t = i / 8
+    const cx = x + width * (0.18 + 0.68 * fract(Math.sin(seed * 21 + i * 13.7) * 97.23))
+    const cy = y + height * (0.16 + 0.7 * fract(Math.sin(seed * 17 + i * 9.1) * 83.41))
+    const radius = width * (0.22 + 0.2 * fract(Math.sin(seed * 11 + i * 5.6) * 31.7))
+    const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius)
+    const color = cssColor(palette[Math.min(palette.length - 1, 1 + Math.floor(t * (palette.length - 1)))]!)
+
+    gradient.addColorStop(0, color)
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    context.globalAlpha = 0.34
+    context.fillStyle = gradient
+    context.fillRect(x - width * 0.2, y - height * 0.2, width * 1.4, height * 1.4)
+  }
+
+  context.filter = 'none'
+  context.globalCompositeOperation = 'source-over'
+  context.globalAlpha = 0.22
+  context.fillStyle = '#ffffff'
+  for (let i = 0; i < 3; i++) {
+    context.beginPath()
+    context.ellipse(x + width * (0.28 + i * 0.22), y + height * (0.32 + i * 0.16), width * 0.2,
+      height * 0.1, seed + i * 0.7, 0, Math.PI * 2)
+    context.fill()
+  }
+  context.restore()
+}
+
+function cssColor(color: Vec3) {
+  return `rgb(${Math.round(color[0] * 255)} ${Math.round(color[1] * 255)} ${Math.round(color[2] * 255)})`
+}
+
+function fract(value: number) {
+  return value - Math.floor(value)
+}
+
+function smoothstepNumber(edge0: number, edge1: number, value: number) {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)))
+
+  return t * t * (3 - 2 * t)
 }
 
 function screenRay(clientX: number, clientY: number, projector: WallProjector) {

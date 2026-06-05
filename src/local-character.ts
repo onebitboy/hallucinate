@@ -7,7 +7,7 @@ import {
   smoothAngle,
 } from './math.ts'
 import { findPath } from './pathfinding.ts'
-import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
+import { collideLoftRoom, collideRoom, isOutside, seatAt, walkHeight, walkLoftHeight } from './scene.ts'
 import type { Seat } from './scene.ts'
 import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 
@@ -95,6 +95,18 @@ export function createLocalCharacter(keys: Set<string>) {
     readInput() {
       return readMoveInput(keys, input)
     },
+    stopMoving() {
+      keys.clear()
+      input[0] = 0
+      input[1] = 0
+      input[2] = 0
+      hasDestination = false
+      hasJumpTarget = false
+      destinationSeat = ''
+      path = []
+      jumpHeld = false
+      waveHeld = false
+    },
     startJumping() {
       jumpHeld = !seated
 
@@ -152,6 +164,7 @@ export function createLocalCharacter(keys: Set<string>) {
       cameraTurn: number,
       outsideTree: CircleBounds,
       bottomMode: BottomMode,
+      loft: boolean,
       occupiedSeats: Set<string>,
       takeSeat: (seat: Seat) => void,
     ) {
@@ -165,7 +178,8 @@ export function createLocalCharacter(keys: Set<string>) {
       if (hasDestination) {
         if (path.length === 0) {
           try {
-            path = findPath(position, destination, outsideTree)
+            path = loft ? [[destination[0], destination[1], destination[2]]] : findPath(position, destination,
+              outsideTree)
           }
           catch (e) {
             void e
@@ -287,7 +301,8 @@ export function createLocalCharacter(keys: Set<string>) {
       const previousPosition: Vec3 = [position[0], position[1], position[2]]
 
       if (jumpTime > 0) {
-        const floorY = walkHeight(position[0], position[1], position[2])
+        const floorY = loft ? walkLoftHeight(position[0], position[1], position[2])
+          : walkHeight(position[0], position[1], position[2])
 
         position[1] = floorY + jumpOffset(jumpElapsed)
         velocityY = 0
@@ -318,7 +333,7 @@ export function createLocalCharacter(keys: Set<string>) {
 
         position[0] += direction[0] * delta * 5
         position[2] += direction[2] * delta * 5
-        const foundSeat = couchRelease <= 0 ? seatAt(position, occupiedSeats, 0.46, true) : undefined
+        const foundSeat = couchRelease <= 0 ? seatAt(position, occupiedSeats, 0.46, true, loft) : undefined
         const nextSeat = foundSeat && (!hasDestination || foundSeat.id === destinationSeat) ? foundSeat : undefined
 
         if (nextSeat) {
@@ -341,11 +356,17 @@ export function createLocalCharacter(keys: Set<string>) {
           return
         }
 
-        collideRoom(position, outsideTree, isOutside(position), previousPosition)
+        if (loft) {
+          collideLoftRoom(position)
+        }
+        else {
+          collideRoom(position, outsideTree, isOutside(position), previousPosition)
+        }
         turn = smoothAngle(turn, Math.atan2(direction[0], direction[2]), 10, delta)
       }
 
-      const floorY = walkHeight(position[0], position[1], position[2])
+      const floorY = loft ? walkLoftHeight(position[0], position[1], position[2])
+        : walkHeight(position[0], position[1], position[2])
 
       if (jumpTime > 0) {
         position[1] = floorY + jumpOffset(jumpElapsed)
@@ -365,7 +386,12 @@ export function createLocalCharacter(keys: Set<string>) {
         }
       }
 
-      collideRoom(position, outsideTree, isOutside(position), previousPosition)
+      if (loft) {
+        collideLoftRoom(position)
+      }
+      else {
+        collideRoom(position, outsideTree, isOutside(position), previousPosition)
+      }
     },
   }
 }

@@ -1,7 +1,7 @@
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
 import { projectedQuadTransform, projectWallPointWithMinDepthInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
-import { djVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists } from './scene-data.ts'
+import { djVideoWall, loftVideoWall, outsideVideoWall, tentVideoWall, videoPlaylists } from './scene-data.ts'
 import { roomAt } from './scene.ts'
 import type { Vec3, VideoZone, YouTubePlayer, YouTubeWindow } from './types.ts'
 
@@ -21,7 +21,7 @@ const playlistDiscoveryAttempts = 5
 const syncSeekTolerance = 2
 
 export function videoZones(): VideoZone[] {
-  return ['inside', 'outside', 'tent']
+  return ['inside', 'outside', 'tent', 'loft']
 }
 
 export function createDjVideoUi(
@@ -30,16 +30,20 @@ export function createDjVideoUi(
   options: {
     onEnded?: (entry: VideoEndedEntry) => void
     onPlaylistDiscovered?: (zone: VideoZone, ids: string[]) => void
+    playlistSource?: (zone: VideoZone) => string | undefined
     recoverFocus?: () => void
+    zone?: () => VideoZone
   } = {},
 ) {
   const layers: Record<VideoZone, HTMLElement> = {
     inside: document.createElement('div'),
+    loft: document.createElement('div'),
     outside: document.createElement('div'),
     tent: document.createElement('div'),
   }
   const mounts: Record<VideoZone, HTMLElement> = {
     inside: document.createElement('div'),
+    loft: document.createElement('div'),
     outside: document.createElement('div'),
     tent: document.createElement('div'),
   }
@@ -48,10 +52,11 @@ export function createDjVideoUi(
   const ready: Partial<Record<VideoZone, boolean>> = {}
   const discoveringPlaylists: Partial<Record<VideoZone, boolean>> = {}
   const reportedPlaylists: Partial<Record<VideoZone, string>> = {}
-  let zone: VideoZone = roomAt(position)
+  let zone: VideoZone = currentZone()
   let playUnlocked = false
   const setElementStyle = createStyleSetter(element.style)
   const setInsideStyle = createStyleSetter(layers.inside.style)
+  const setLoftStyle = createStyleSetter(layers.loft.style)
   const setOutsideStyle = createStyleSetter(layers.outside.style)
   const cornerA: Vec3 = [0, 0, 0]
   const cornerB: Vec3 = [0, 0, 0]
@@ -93,12 +98,20 @@ export function createDjVideoUi(
     element.append(layer)
   }
 
+  function currentZone() {
+    return options.zone?.() ?? roomAt(position)
+  }
+
+  function playlistSource(area: VideoZone) {
+    return options.playlistSource?.(area) ?? videoPlaylists[area]
+  }
+
   return {
     get zone() {
       return zone
     },
     setZoneFromPosition() {
-      zone = roomAt(position)
+      zone = currentZone()
     },
     applySync(entries: VideoSyncEntry[]) {
       for (const entry of entries) {
@@ -188,7 +201,7 @@ export function createDjVideoUi(
       }
     },
     update(camera: Camera, projector: WallProjector) {
-      const nextZone: VideoZone = roomAt(position)
+      const nextZone: VideoZone = currentZone()
 
       if (nextZone !== zone) {
         syncZoneTime(zone, players, ready, states)
@@ -209,6 +222,7 @@ export function createDjVideoUi(
       if (!djVideoFacesCamera(camera, wall)) {
         setElementStyle('opacity', '0')
         setInsideStyle('pointerEvents', 'none')
+        setLoftStyle('pointerEvents', 'none')
         setOutsideStyle('pointerEvents', 'none')
         layers.tent.style.pointerEvents = 'none'
         return
@@ -259,11 +273,13 @@ export function createDjVideoUi(
 
       setElementStyle('opacity', '0.74')
       setInsideStyle('opacity', zone === 'inside' ? '1' : '0')
+      setLoftStyle('opacity', zone === 'loft' ? '1' : '0')
       setOutsideStyle('opacity', zone === 'outside' ? '1' : '0')
       layers.tent.style.opacity = zone === 'tent' ? '1' : '0'
       const pointerEvents = performance.now() > pointerPassthroughUntil ? 'auto' : 'none'
 
       setInsideStyle('pointerEvents', zone === 'inside' ? pointerEvents : 'none')
+      setLoftStyle('pointerEvents', zone === 'loft' ? pointerEvents : 'none')
       setOutsideStyle('pointerEvents', zone === 'outside' ? pointerEvents : 'none')
       layers.tent.style.pointerEvents = zone === 'tent' ? pointerEvents : 'none'
       setElementStyle('width', `${wall.width * 120}px`)
@@ -354,7 +370,9 @@ export function createDjVideoUi(
   }
 
   function requestPlaylist(area: VideoZone) {
-    if (!videoPlaylists[area]) {
+    const source = playlistSource(area)
+
+    if (!source) {
       return
     }
 
@@ -374,7 +392,7 @@ export function createDjVideoUi(
     discoveringPlaylists[area] = true
     players[area]!.cuePlaylist({
       index: 0,
-      list: videoPlaylists[area]!,
+      list: source,
       listType: 'playlist',
       startSeconds: 0,
     })
@@ -412,12 +430,16 @@ function videoWall(zone: VideoZone): Wall {
   if (zone === 'inside') {
     return djVideoWall
   }
+  if (zone === 'loft') {
+    return loftVideoWall
+  }
   if (zone === 'outside') {
     return outsideVideoWall
   }
 
   return tentVideoWall
 }
+
 
 function syncZoneTime(
   area: VideoZone,

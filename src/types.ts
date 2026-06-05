@@ -46,6 +46,11 @@ export type AssimpScene = {
 }
 
 export type AssimpMesh = {
+  bones?: {
+    name: string
+    offsetmatrix: Mat4
+    weights: [number, number][]
+  }[]
   name: string
   vertices: number[]
   faces: number[][]
@@ -69,7 +74,7 @@ export type TreeMesh = {
   color: Vec3
 }
 
-export type VideoZone = 'inside' | 'outside' | 'tent'
+export type VideoZone = 'inside' | 'loft' | 'outside' | 'tent'
 
 export type YouTubePlayer = {
   cueVideoById(options: { videoId: string; startSeconds: number }): void

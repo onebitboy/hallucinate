@@ -80,6 +80,34 @@ export const tentVideoWall = {
   height: 2.025,
   normal: [-1, 0, 0] as Vec3,
 }
+export const loftBounds = { left: -12, right: 12, back: -12, front: 12 }
+export const loftDoor = { x: 5.8, width: 2.05, height: 2.8 }
+export const loftVideoWall = { x: 0, y: 0.35, z: loftBounds.back + 0.04, width: 5.8, height: 3.25, normal: [0, 0, 1] as Vec3 }
+export const loftDjBooth: Bounds = { x: 0, z: loftBounds.back + 2.55, width: 3.6, depth: 1.24 }
+export const loftDjSpeakers: Bounds[] = [
+  { x: -4.16, z: loftBounds.back + 2.47, width: 0.71, depth: 0.79 },
+  { x: 4.16, z: loftBounds.back + 2.47, width: 0.71, depth: 0.79 },
+]
+export const loftCouches: (Bounds & { color: Vec3; face: 'east' | 'north' | 'south' | 'west' })[] = [
+  { x: -7.9, z: -1.2, width: 0.88, depth: 3.1, color: [0.48, 0.4, 0.3], face: 'east' },
+  { x: -7.9, z: 2.5, width: 0.88, depth: 3.1, color: [0.48, 0.4, 0.3], face: 'east' },
+  { x: 7.9, z: -1.2, width: 0.88, depth: 3.1, color: [0.48, 0.4, 0.3], face: 'west' },
+  { x: 7.9, z: 2.5, width: 0.88, depth: 3.1, color: [0.48, 0.4, 0.3], face: 'west' },
+]
+export const loftTables: Bounds[] = [
+  { x: -6.15, z: -1.2, width: 0.82, depth: 2.05 },
+  { x: -6.15, z: 2.5, width: 0.82, depth: 2.05 },
+  { x: 6.15, z: -1.2, width: 0.82, depth: 2.05 },
+  { x: 6.15, z: 2.5, width: 0.82, depth: 2.05 },
+]
+export const loftPlants: CircleBounds[] = [
+  { x: -10.25, z: loftBounds.back + 1.05, radius: 0.48 },
+  { x: 10.25, z: loftBounds.back + 1.05, radius: 0.48 },
+]
+export const loftCornerFigures: CircleBounds[] = [
+  { x: -10.1, z: loftBounds.front - 1.15, radius: 0.42 },
+  { x: 10.1, z: loftBounds.front - 1.15, radius: 0.42 },
+]
 export const tentDjBooth: Bounds = { x: tent.x + tent.radius - 1.3, z: tent.z, width: 1.08, depth: 3.1 }
 export const tentDjSpeakers: Bounds[] = [
   { x: tentDjBooth.x + 0.08, z: tent.z - 2.35, width: 0.68, depth: 0.58 },
@@ -89,11 +117,13 @@ export const tentPole: CircleBounds = { x: tent.x, z: tent.z, radius: 0.13 }
 export const tentCenterBench = { x: tent.x, z: tent.z, innerRadius: 0.34, outerRadius: 0.9 }
 export const videoTracks: Record<VideoZone, string> = {
   inside: '0oB97YhEukw',
+  loft: '0oB97YhEukw',
   outside: 'rO6gtwvM764', // 'CU0wjRIL1AQ', // 'IIbcGjZy6OM', //  'AJ7lbqyLbX8', // 'HIn1BxT38mE', // '0oB97YhEukw', // 'mqz9HpVNSAQ', // '5lthiQoQiRA', // 'ZEaqqk8V1bY', // 'CU0wjRIL1AQ', // '5aqWdYBG_js', //  'mqz9HpVNSAQ', // 'JviNPyhY6U4', // 'DK5XBwLiWZY', // 'IIbcGjZy6OM', // '5lthiQoQiRA', 'CsGauHXioos', // 'HIn1BxT38mE', // , //
   tent: 'fz6nN5AtcYk',
 }
 export const videoStartTimes: Record<VideoZone, number> = {
   inside: 0,
+  loft: 0,
   outside: 0,
   tent: 0,
 }

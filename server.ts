@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite'
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
@@ -65,6 +66,7 @@ type Client = {
   poseSynced: boolean
   nickname: string
   room: number
+  spaceKey: string
   socket: Bun.ServerWebSocket<SocketData>
   pose: SpawnPacket
   video?: StoredVideoProgressEntry
@@ -95,21 +97,50 @@ type ChatHistoryEntry = {
   text: string
 }
 
+type LoftRoom = {
+  slug: string
+  displaySlug: string
+  passwordHash: string
+  createdAt: number
+  expiresAt: number
+  musicKind: 'playlist' | 'video'
+  musicSource: string
+}
+
+type SpaceState = {
+  key: string
+  kind: 'loft' | 'main'
+  roomCount: number
+  rooms: Set<Client>[]
+  chatHistory: ChatHistoryEntry[]
+  videoQueues: StoredVideoQueueEntry[]
+  videoPlaylistOrders: StoredVideoPlaylistEntry[]
+  videoPlaylistRequests: Partial<Record<VideoZone, number>>
+  beachBalls: ReturnType<typeof createBeachBalls>
+  beachBallAuthorities: { client: number; until: number }[]
+  slug?: string
+  musicKind?: 'playlist' | 'video'
+  musicSource?: string
+}
+
 type SocketData = {
   initialState: boolean
   ip: string
   protocolOk: boolean
+  spaceKey: string
 }
 
 const port = Number(process.env.PORT ?? 3001)
 const dist = join(import.meta.dir, 'dist')
-const rooms = Array.from({ length: roomCount }, () => new Set<Client>())
 const clients = new Map<Bun.ServerWebSocket<SocketData>, Client>()
 const heartbeatInterval = 10_000
 const clientTimeout = 30_000
 const onlineActivityTimeout = 5 * 60_000
 const chatHistoryMax = 15
 const graffitiPacketSplats = 4000
+const defaultLoftVideoId = '0oB97YhEukw'
+const loftRentMs = 30 * 24 * 60 * 60 * 1000
+const loftSlugPattern = /^[A-Za-z0-9_-]+$/
 const maxConnectionsPerIp = 4
 const maxClientSpeed = 8
 const maxClientStep = 1.2
@@ -119,21 +150,21 @@ const memoryAssets = new Map<string, MemoryAsset>()
 const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
 const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
-let videoQueues = await loadVideoQueues()
-let videoPlaylistOrders = await loadVideoPlaylists()
 const videoPlaylistRequestInterval = 3000
-const videoPlaylistRequests: Partial<Record<VideoZone, number>> = {}
-if (initializeVideoQueuesFromPlaylists(Date.now())) {
-  await saveVideoQueues()
-}
-let beachBalls = createBeachBalls()
-const chatHistory: ChatHistoryEntry[] = []
-const beachBallAuthorities = createBeachBalls().map(() => ({ client: 0, until: 0 }))
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
 let graffitiSplats = await loadGraffitiSplats()
 let nextGraffitiId = (graffitiSplats.at(-1)?.id ?? 0) + 1
+const spaces = new Map<string, SpaceState>()
+const mainSpace = createSpace('main', 'main', roomCount)
+
+mainSpace.videoQueues = await loadVideoQueues(mainSpace)
+mainSpace.videoPlaylistOrders = await loadVideoPlaylists(mainSpace)
+spaces.set(mainSpace.key, mainSpace)
+if (initializeVideoQueuesFromPlaylists(mainSpace, Date.now())) {
+  await saveVideoQueues(mainSpace)
+}
 
 let nextId = 1
 
@@ -153,6 +184,10 @@ const server = Bun.serve<SocketData>({
     const ip = clientIp(request)
     const url = new URL(request.url)
 
+    if (url.pathname === '/api/rooms' || url.pathname.startsWith('/api/rooms/')) {
+      return handleRoomApi(request, url)
+    }
+
     if (bannedIp(ip)) {
       return new Response('Forbidden', { status: 403 })
     }
@@ -166,6 +201,7 @@ const server = Bun.serve<SocketData>({
         initialState: url.searchParams.get('session') !== 'reconnect',
         ip,
         protocolOk: clientProtocolOk(url.searchParams.get('protocol')),
+        spaceKey: websocketSpaceKey(url, ip),
       },
     })) {
       return
@@ -182,6 +218,13 @@ const server = Bun.serve<SocketData>({
 
       const id = nextId++
       const now = Date.now()
+      const space = socket.data.spaceKey ? spaceForKey(socket.data.spaceKey) : undefined
+
+      if (!space) {
+        socket.close(1008, 'room')
+        return
+      }
+
       const client: Client = {
         id,
         ip: socket.data.ip,
@@ -191,6 +234,7 @@ const server = Bun.serve<SocketData>({
         nickname: '',
         poseSynced: false,
         room: 0,
+        spaceKey: space.key,
         socket,
         pose: {
           id,
@@ -222,8 +266,8 @@ const server = Bun.serve<SocketData>({
       if (socket.data.initialState) {
         sendGraffiti(client)
       }
-      broadcastOnline()
-      broadcast(client.room, encodeSpawn(client.pose), client)
+      broadcastOnline(clientSpace(client))
+      broadcast(client, encodeSpawn(client.pose))
     },
     async message(socket, message) {
       const client = clients.get(socket)!
@@ -246,8 +290,8 @@ const server = Bun.serve<SocketData>({
           client.pose = { id: client.id, ...motion }
           client.lastMotionAt = Date.now()
           client.poseSynced = true
-          requestMissingVideoPlaylist(clientVideoZone(client))
-          broadcast(client.room, encodeServerMotion(client.pose), client)
+          requestMissingVideoPlaylist(clientSpace(client), clientVideoZone(client))
+          broadcast(client, encodeServerMotion(client.pose))
           return
         }
 
@@ -266,8 +310,8 @@ const server = Bun.serve<SocketData>({
           touchInteraction(client)
           if ((normalizedText || emoji) && !binaryText(text) && !slur) {
             console.log(`[chat] ${client.id} ${client.ip}: ${text}`)
-            addChatHistory(client.id, text)
-            broadcastAll(encodeServerMessage({ id: client.id, text }))
+            addChatHistory(client, text)
+            broadcastSpace(clientSpace(client), encodeServerMessage({ id: client.id, text }))
           }
 
           return
@@ -281,7 +325,7 @@ const server = Bun.serve<SocketData>({
 
         if (type === ADMIN) {
           touchInteraction(client)
-          await applyAdminMessage(decodeAdminMessage(view))
+          await applyAdminMessage(client, decodeAdminMessage(view))
           return
         }
 
@@ -308,22 +352,26 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === VIDEO_PLAYLIST) {
-          await applyVideoPlaylist(client, validateVideoPlaylist(decodeVideoPlaylist(view).entries))
+          await applyVideoPlaylist(client, validateVideoPlaylist(client, decodeVideoPlaylist(view).entries))
           return
         }
 
         if (type === BEACH_BALLS) {
           touchInteraction(client)
-          const appliedBalls = applyBeachBalls(client, validateBeachBalls(decodeBeachBalls(view).balls))
+          const appliedBalls = applyBeachBalls(client, validateBeachBalls(client, decodeBeachBalls(view).balls))
 
           if (appliedBalls.length > 0) {
-            broadcastBeachBalls(appliedBalls)
+            broadcastBeachBalls(clientSpace(client), appliedBalls)
           }
 
           return
         }
 
         if (type === GRAFFITI) {
+          if (client.spaceKey !== mainSpace.key) {
+            return
+          }
+
           try {
             touchInteraction(client)
             const splats = await saveGraffiti(validateGraffiti(decodeGraffiti(view).splats))
@@ -509,6 +557,216 @@ function assetContentType(path: string, file: Bun.BunFile) {
     : file.type || contentType(path)
 }
 
+async function handleRoomApi(request: Request, url: URL) {
+  if (request.method === 'GET' && url.pathname === '/api/rooms') {
+    return jsonResponse({ rooms: listLoftRooms() })
+  }
+
+  const slug = roomApiSlug(url.pathname)
+
+  if (!slug) {
+    return new Response('Not Found', { status: 404 })
+  }
+
+  if (request.method === 'GET' && url.pathname === `/api/rooms/${slug.display}`) {
+    return jsonResponse(roomPayload(slug.normalized))
+  }
+
+  if (request.method === 'POST' && url.pathname === `/api/rooms/${slug.display}/claim`) {
+    const body = await request.json() as { password?: string; musicSource?: string }
+    const existing = loadLoftRoom(slug.normalized)
+
+    if (existing && !loftExpired(existing)) {
+      return jsonResponse(roomPayload(slug.normalized), 409)
+    }
+
+    const password = body.password?.trim()
+
+    if (!password) {
+      throw new Error('Missing loft room password')
+    }
+
+    const music = parseMusicSource(body.musicSource ?? defaultLoftVideoId)
+    const now = Date.now()
+    const room: LoftRoom = {
+      slug: slug.normalized,
+      displaySlug: slug.display,
+      passwordHash: hashPassword(password),
+      createdAt: now,
+      expiresAt: now + loftRentMs,
+      musicKind: music.kind,
+      musicSource: music.source,
+    }
+
+    saveLoftRoom(room)
+    refreshLoftSpace(room)
+
+    return jsonResponse(roomPayload(slug.normalized))
+  }
+
+  if (request.method === 'POST' && url.pathname === `/api/rooms/${slug.display}/music`) {
+    const body = await request.json() as { pass?: string; source?: string }
+    const room = activeLoftRoom(slug.normalized)
+
+    if (!room) {
+      return new Response('Not Found', { status: 404 })
+    }
+
+    if (!validLoftPassword(room, body.pass ?? '') && (adminPass === '' || body.pass !== adminPass)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    const music = parseMusicSource(body.source ?? '')
+    const next = { ...room, musicKind: music.kind, musicSource: music.source }
+
+    saveLoftRoom(next)
+    const space = refreshLoftSpace(next)
+
+    saveVideoQueues(space)
+    saveVideoPlaylists(space)
+    broadcastVideoSync(space, new Set(['loft']))
+
+    return jsonResponse(roomPayload(slug.normalized))
+  }
+
+  if (request.method === 'DELETE' && url.pathname === `/api/rooms/${slug.display}`) {
+    const body = await request.json() as { pass?: string }
+
+    if (adminPass === '' || body.pass !== adminPass) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    deleteLoftRoom(slug.normalized)
+
+    return jsonResponse({ ok: true })
+  }
+
+  return new Response('Method Not Allowed', {
+    status: 405,
+    headers: { allow: 'GET, POST, DELETE' },
+  })
+}
+
+function jsonResponse(value: unknown, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+    },
+  })
+}
+
+function roomApiSlug(path: string) {
+  const match = /^\/api\/rooms\/([^/]+)(?:\/(?:claim|music))?$/.exec(path)
+
+  if (!match) {
+    return
+  }
+
+  const display = decodeURIComponent(match[1]!)
+
+  if (!loftSlugPattern.test(display)) {
+    throw new Error(`Invalid room slug ${display}`)
+  }
+
+  return {
+    display,
+    normalized: display.toLowerCase(),
+  }
+}
+
+function roomPayload(slug: string) {
+  const room = loadLoftRoom(slug)
+  const claimed = !!room && !loftExpired(room)
+
+  return {
+    claimed,
+    displaySlug: room?.displaySlug ?? slug,
+    expired: !!room && loftExpired(room),
+    expiresAt: claimed ? room.expiresAt : 0,
+    musicKind: room?.musicKind ?? 'video',
+    musicSource: room?.musicSource ?? defaultLoftVideoId,
+    slug,
+  }
+}
+
+function listLoftRooms() {
+  const rows = db.query<{
+    slug: string
+    displaySlug: string
+    expiresAt: number
+    musicKind: 'playlist' | 'video'
+    musicSource: string
+  }, { now: number }>(`
+    SELECT slug, display_slug AS displaySlug, expires_at AS expiresAt, music_kind AS musicKind,
+      music_source AS musicSource
+    FROM loft_rooms
+    WHERE expires_at > $now
+    ORDER BY display_slug COLLATE NOCASE
+  `).all({ now: Date.now() })
+
+  return rows.map(room => ({
+    ...room,
+    players: [...clients.values()].filter(client => client.spaceKey === loftSpaceKey(room.slug)).length,
+  }))
+}
+
+function hashPassword(password: string) {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(password, salt, 32).toString('hex')
+
+  return `scrypt:${salt}:${hash}`
+}
+
+function validLoftPassword(room: LoftRoom, password: string) {
+  const [, salt, hash] = room.passwordHash.split(':')
+  const next = scryptSync(password, salt!, 32)
+  const saved = Buffer.from(hash!, 'hex')
+
+  return saved.length === next.length && timingSafeEqual(saved, next)
+}
+
+function parseMusicSource(source: string): { kind: 'playlist' | 'video'; source: string } {
+  const value = source.trim()
+
+  if (!value) {
+    throw new Error('Missing music source')
+  }
+
+  try {
+    const url = new URL(value)
+    const list = url.searchParams.get('list')
+    const video = url.hostname === 'youtu.be'
+      ? url.pathname.slice(1)
+      : url.searchParams.get('v')
+
+    if (list) {
+      return { kind: 'playlist', source: list }
+    }
+
+    if (video) {
+      return { kind: 'video', source: video }
+    }
+  }
+  catch (e) {
+    void e
+  }
+
+  if (!/^[\w-]{6,128}$/.test(value)) {
+    throw new Error(`Invalid music source ${value}`)
+  }
+
+  if (/^(?:PL|OLAK5uy_|RD|UU|LL|FL)/.test(value)) {
+    return { kind: 'playlist', source: value }
+  }
+
+  if (!/^[\w-]{6,32}$/.test(value)) {
+    throw new Error(`Invalid video source ${value}`)
+  }
+
+  return { kind: 'video', source: value }
+}
+
 const contentTypes = new Map([
   ['.avif', 'image/avif'],
   ['.css', 'text/css; charset=utf-8'],
@@ -637,7 +895,9 @@ function compressiblePath(path: string) {
 }
 
 function changeRoom(client: Client, room: number) {
-  if (room < 0 || room >= roomCount) {
+  const space = clientSpace(client)
+
+  if (room < 0 || room >= space.roomCount) {
     throw new Error(`Invalid room ${room}`)
   }
 
@@ -655,24 +915,26 @@ function changeRoom(client: Client, room: number) {
 
   removeFromRoom(client)
   addToRoom(client, room)
-  requestMissingVideoPlaylist(previousZone)
-  requestMissingVideoPlaylist(clientVideoZone(client))
+  requestMissingVideoPlaylist(space, previousZone)
+  requestMissingVideoPlaylist(space, clientVideoZone(client))
   sendRoomState(client)
-  broadcast(client.room, encodeSpawn(client.pose), client)
+  broadcast(client, encodeSpawn(client.pose))
 }
 
 function addToRoom(client: Client, room: number) {
   client.room = room
-  rooms[room]!.add(client)
+  clientSpace(client).rooms[room]!.add(client)
 }
 
 function removeFromRoom(client: Client) {
-  rooms[client.room]!.delete(client)
-  broadcast(client.room, encodeLeave(client.id))
+  const space = clientSpace(client)
+
+  space.rooms[client.room]!.delete(client)
+  broadcast(client, encodeLeave(client.id))
 }
 
 function validateMotion(client: Client, motion: MotionPacket) {
-  validateMotionValues(motion)
+  validateMotionValues(client, motion)
   validateMotionStep(client, motion)
 }
 
@@ -790,7 +1052,7 @@ const slurPatterns = [
   /g+o+o+k+s?/,
 ]
 
-function validateMotionValues(motion: MotionPacket) {
+function validateMotionValues(client: Client, motion: MotionPacket) {
   const x = protocolToScene(motion.x)
   const z = protocolToScene(motion.y)
 
@@ -816,7 +1078,11 @@ function validateMotionValues(motion: MotionPacket) {
     throw new Error('Invalid style')
   }
 
-  if (x < outsideBounds.left || x > outsideBounds.right || z < outsideBounds.back || z > outsideBounds.front) {
+  const bounds = client.spaceKey === mainSpace.key
+    ? outsideBounds
+    : { left: -12, right: 12, back: -12, front: 12 }
+
+  if (x < bounds.left || x > bounds.right || z < bounds.back || z > bounds.front) {
     throw new Error(`Invalid position ${x}, ${z}`)
   }
 
@@ -826,7 +1092,9 @@ function validateMotionValues(motion: MotionPacket) {
     throw new Error(`Invalid height ${height}`)
   }
 
-  if ((motion.mode === 2 || motion.mode === 3) && !seatAt([x, 0, z], new Set(), 0.46, true)) {
+  if (client.spaceKey === mainSpace.key && (motion.mode === 2 || motion.mode === 3)
+    && !seatAt([x, 0, z], new Set(), 0.46, true))
+  {
     throw new Error(`Invalid seated position ${x}, ${z}`)
   }
 }
@@ -860,15 +1128,17 @@ function clientPoseRoom(client: Client) {
 }
 
 function sendRoomState(client: Client) {
+  const space = clientSpace(client)
+
   client.socket.send(encodeRoomState({
     selfId: client.id,
     room: client.room,
-    players: [...rooms[client.room]!.values()].map(player => player.pose),
+    players: [...space.rooms[client.room]!.values()].map(player => player.pose),
   }))
 }
 
 function sendNicknames(client: Client) {
-  for (const next of clients.values()) {
+  for (const next of spaceClients(clientSpace(client))) {
     if (next.nickname) {
       client.socket.send(encodeServerNickname({ id: next.id, text: next.nickname }))
     }
@@ -876,22 +1146,24 @@ function sendNicknames(client: Client) {
 }
 
 function sendChatHistory(client: Client) {
-  for (const entry of chatHistory) {
+  for (const entry of clientSpace(client).chatHistory) {
     client.socket.send(encodeServerMessage(entry))
   }
 }
 
-function addChatHistory(id: number, text: string) {
-  chatHistory.push({ id, text })
-  while (chatHistory.length > chatHistoryMax) {
-    chatHistory.shift()
+function addChatHistory(client: Client, text: string) {
+  const history = clientSpace(client).chatHistory
+
+  history.push({ id: client.id, text })
+  while (history.length > chatHistoryMax) {
+    history.shift()
   }
 }
 
-function removeChatHistory(id: number) {
-  for (let i = chatHistory.length - 1; i >= 0; i--) {
-    if (chatHistory[i]!.id === id) {
-      chatHistory.splice(i, 1)
+function removeChatHistory(space: SpaceState, id: number) {
+  for (let i = space.chatHistory.length - 1; i >= 0; i--) {
+    if (space.chatHistory[i]!.id === id) {
+      space.chatHistory.splice(i, 1)
     }
   }
 }
@@ -904,27 +1176,31 @@ function setNickname(client: Client, text: string) {
   }
 
   client.nickname = nickname
-  broadcastAll(encodeServerNickname({ id: client.id, text: nickname }))
+  broadcastSpace(clientSpace(client), encodeServerNickname({ id: client.id, text: nickname }))
 }
 
 function sendBeachBalls(client: Client) {
-  client.socket.send(encodeBeachBalls({ balls: beachBalls }))
+  client.socket.send(encodeBeachBalls({ balls: clientSpace(client).beachBalls }))
 }
 
 function sendGraffiti(client: Client) {
+  if (client.spaceKey !== mainSpace.key) {
+    return
+  }
+
   sendGraffitiSplats(client.socket, graffitiSplats)
 }
 
 function sendVideoSync(client: Client) {
-  const entries = currentVideoSyncForJoin()
+  const entries = currentVideoSyncForJoin(clientSpace(client))
 
   if (entries.length > 0) {
     client.socket.send(encodeVideoSync({ entries }))
   }
 }
 
-function broadcastVideoSync(zones?: Set<VideoZone>) {
-  const entries = currentVideoSync(Date.now(), zones)
+function broadcastVideoSync(space: SpaceState, zones?: Set<VideoZone>) {
+  const entries = currentVideoSync(space, Date.now(), zones)
 
   if (entries.length === 0) {
     return
@@ -932,13 +1208,13 @@ function broadcastVideoSync(zones?: Set<VideoZone>) {
 
   const data = encodeVideoSync({ entries })
 
-  for (const client of clients.values()) {
+  for (const client of spaceClients(space)) {
     client.socket.send(data)
   }
 }
 
-function currentVideoSync(now = Date.now(), zones?: Set<VideoZone>): VideoSyncEntry[] {
-  return videoQueues
+function currentVideoSync(space: SpaceState, now = Date.now(), zones?: Set<VideoZone>): VideoSyncEntry[] {
+  return space.videoQueues
     .filter(entry => !zones || zones.has(entry.zone))
     .map(entry => ({
       zone: entry.zone,
@@ -948,9 +1224,9 @@ function currentVideoSync(now = Date.now(), zones?: Set<VideoZone>): VideoSyncEn
     }))
 }
 
-function currentVideoSyncForJoin(now = Date.now()): VideoSyncEntry[] {
-  return videoQueues.map(entry => {
-    const live = videoProgressFromRandomClient(entry.zone, entry.currentId, now)
+function currentVideoSyncForJoin(space: SpaceState, now = Date.now()): VideoSyncEntry[] {
+  return space.videoQueues.map(entry => {
+    const live = videoProgressFromRandomClient(space, entry.zone, entry.currentId, now)
 
     return {
       zone: entry.zone,
@@ -961,8 +1237,8 @@ function currentVideoSyncForJoin(now = Date.now()): VideoSyncEntry[] {
   })
 }
 
-function videoProgressFromRandomClient(zone: VideoZone, id: string, now: number) {
-  const entries = [...clients.values()]
+function videoProgressFromRandomClient(space: SpaceState, zone: VideoZone, id: string, now: number) {
+  const entries = [...spaceClients(space)]
     .filter(client => client.video?.zone === zone && client.video.id === id)
     .map(client => client.video!)
   const entry = entries[Math.floor(Math.random() * entries.length)]
@@ -991,6 +1267,20 @@ function setupDb() {
     CREATE TABLE IF NOT EXISTS bans (
       value TEXT PRIMARY KEY
     );
+    CREATE TABLE IF NOT EXISTS loft_rooms (
+      slug TEXT PRIMARY KEY,
+      display_slug TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      music_kind TEXT NOT NULL,
+      music_source TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS loft_room_bans (
+      slug TEXT NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (slug, value)
+    );
   `)
 }
 
@@ -1005,60 +1295,265 @@ function saveJson(key: string, value: unknown) {
     .run({ key, value: JSON.stringify(value) })
 }
 
-async function loadVideoQueues() {
-  const saved = loadJson<StoredVideoQueues>('queues')
+function createSpace(key: string, kind: SpaceState['kind'], count: number, slug?: string): SpaceState {
+  const balls = createBeachBalls()
 
-  return saved?.entries ?? []
+  return {
+    key,
+    kind,
+    roomCount: count,
+    rooms: Array.from({ length: count }, () => new Set<Client>()),
+    chatHistory: [],
+    videoQueues: [],
+    videoPlaylistOrders: [],
+    videoPlaylistRequests: {},
+    beachBalls: balls,
+    beachBallAuthorities: balls.map(() => ({ client: 0, until: 0 })),
+    slug,
+  }
 }
 
-async function saveVideoQueues() {
-  saveJson('queues', { entries: videoQueues })
+function spaceStorageKey(space: SpaceState, key: string) {
+  return space.key === mainSpace.key ? key : `${space.key}:${key}`
 }
 
-async function loadVideoPlaylists() {
-  const saved = loadJson<StoredVideoPlaylists>('playlists')
+function clientSpace(client: Client) {
+  const space = spaces.get(client.spaceKey)
 
-  return saved?.entries ?? []
+  if (!space) {
+    throw new Error(`Missing space ${client.spaceKey}`)
+  }
+
+  return space
 }
 
-async function saveVideoPlaylists() {
-  saveJson('playlists', { entries: videoPlaylistOrders })
+function spaceClients(space: SpaceState) {
+  return [...clients.values()].filter(client => client.spaceKey === space.key)
 }
 
-function requestMissingVideoPlaylist(zone: VideoZone) {
-  if (!videoPlaylists[zone]) {
+function spaceForKey(key: string) {
+  if (key === mainSpace.key) {
+    return mainSpace
+  }
+
+  const slug = key.startsWith('loft:') ? key.slice(5) : ''
+  const room = activeLoftRoom(slug)
+
+  if (!room) {
     return
   }
 
-  if (videoPlaylistOrders.some(entry => entry.zone === zone)) {
+  return refreshLoftSpace(room)
+}
+
+function refreshLoftSpace(room: LoftRoom) {
+  const key = loftSpaceKey(room.slug)
+  let space = spaces.get(key)
+
+  if (!space) {
+    space = createSpace(key, 'loft', 1, room.slug)
+    space.videoQueues = loadVideoQueues(space)
+    space.videoPlaylistOrders = loadVideoPlaylists(space)
+    spaces.set(key, space)
+  }
+
+  syncLoftMusic(space, room)
+
+  return space
+}
+
+function syncLoftMusic(space: SpaceState, room: LoftRoom) {
+  space.musicKind = room.musicKind
+  space.musicSource = room.musicSource
+  if (room.musicKind === 'video') {
+    setVideoPlaylistOrder(space, 'loft', [room.musicSource])
+    setVideoQueue(space, { zone: 'loft', currentId: room.musicSource, nextId: room.musicSource, time: 0, updatedAt: Date.now() })
+    return
+  }
+
+  const order = space.videoPlaylistOrders.find(entry => entry.zone === 'loft')
+
+  if (order?.sourceIds[0] !== room.musicSource) {
+    space.videoPlaylistOrders = space.videoPlaylistOrders.filter(entry => entry.zone !== 'loft')
+    space.videoQueues = space.videoQueues.filter(entry => entry.zone !== 'loft')
+  }
+}
+
+function loftSpaceKey(slug: string) {
+  return `loft:${slug}`
+}
+
+function websocketSpaceKey(url: URL, ip: string) {
+  const raw = url.searchParams.get('space')
+
+  if (!raw) {
+    return mainSpace.key
+  }
+
+  if (!loftSlugPattern.test(raw)) {
+    return ''
+  }
+
+  const slug = raw.toLowerCase()
+  const room = activeLoftRoom(slug)
+
+  if (!room || loftBannedIp(slug, ip)) {
+    return ''
+  }
+
+  refreshLoftSpace(room)
+
+  return loftSpaceKey(slug)
+}
+
+function loadLoftRoom(slug: string): LoftRoom | undefined {
+  const row = db.query<{
+    slug: string
+    displaySlug: string
+    passwordHash: string
+    createdAt: number
+    expiresAt: number
+    musicKind: 'playlist' | 'video'
+    musicSource: string
+  }, { slug: string }>(`
+    SELECT slug, display_slug AS displaySlug, password_hash AS passwordHash, created_at AS createdAt,
+      expires_at AS expiresAt, music_kind AS musicKind, music_source AS musicSource
+    FROM loft_rooms
+    WHERE slug = $slug
+  `).get({ slug })
+
+  return row
+}
+
+function activeLoftRoom(slug: string) {
+  const room = loadLoftRoom(slug)
+
+  return room && !loftExpired(room) ? room : undefined
+}
+
+function loftExpired(room: LoftRoom) {
+  return Date.now() >= room.expiresAt
+}
+
+function saveLoftRoom(room: LoftRoom) {
+  db.query(`
+    INSERT INTO loft_rooms (slug, display_slug, password_hash, created_at, expires_at, music_kind, music_source)
+    VALUES ($slug, $displaySlug, $passwordHash, $createdAt, $expiresAt, $musicKind, $musicSource)
+    ON CONFLICT(slug) DO UPDATE SET display_slug = excluded.display_slug, password_hash = excluded.password_hash,
+      created_at = excluded.created_at, expires_at = excluded.expires_at, music_kind = excluded.music_kind,
+      music_source = excluded.music_source
+  `).run(room)
+}
+
+function deleteLoftRoom(slug: string) {
+  const key = loftSpaceKey(slug)
+  const space = spaces.get(key)
+
+  db.transaction(() => {
+    db.query('DELETE FROM loft_rooms WHERE slug = $slug').run({ slug })
+    db.query('DELETE FROM loft_room_bans WHERE slug = $slug').run({ slug })
+    db.query('DELETE FROM kv WHERE key = $queues OR key = $playlists')
+      .run({ queues: `${key}:queues`, playlists: `${key}:playlists` })
+  })()
+
+  if (space) {
+    for (const client of spaceClients(space)) {
+      client.socket.close(1008, 'room deleted')
+    }
+    spaces.delete(key)
+  }
+}
+
+function loftBannedIp(slug: string, ip: string) {
+  const rows = db.query<{ value: string }, { slug: string }>(
+    'SELECT value FROM loft_room_bans WHERE slug = $slug',
+  ).all({ slug })
+
+  return rows.some(row => ipMatchesBan(ip, row.value))
+}
+
+function saveLoftBan(space: SpaceState, value: string) {
+  if (!space.slug) {
+    throw new Error(`Missing loft slug for ${space.key}`)
+  }
+
+  db.query('INSERT OR IGNORE INTO loft_room_bans (slug, value) VALUES ($slug, $value)')
+    .run({ slug: space.slug, value })
+}
+
+async function validRoomAdmin(space: SpaceState, pass: string) {
+  if (space.kind !== 'loft' || !space.slug) {
+    return false
+  }
+
+  const room = activeLoftRoom(space.slug)
+
+  return !!room && validLoftPassword(room, pass)
+}
+
+function spacePlaylistSource(space: SpaceState, zone: VideoZone) {
+  if (space.kind === 'loft') {
+    return zone === 'loft' && space.musicKind === 'playlist' ? space.musicSource : undefined
+  }
+
+  return videoPlaylists[zone]
+}
+
+function loadVideoQueues(space: SpaceState) {
+  const saved = loadJson<StoredVideoQueues>(spaceStorageKey(space, 'queues'))
+
+  return saved?.entries ?? []
+}
+
+function saveVideoQueues(space: SpaceState) {
+  saveJson(spaceStorageKey(space, 'queues'), { entries: space.videoQueues })
+}
+
+function loadVideoPlaylists(space: SpaceState) {
+  const saved = loadJson<StoredVideoPlaylists>(spaceStorageKey(space, 'playlists'))
+
+  return saved?.entries ?? []
+}
+
+function saveVideoPlaylists(space: SpaceState) {
+  saveJson(spaceStorageKey(space, 'playlists'), { entries: space.videoPlaylistOrders })
+}
+
+function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
+  if (!spacePlaylistSource(space, zone)) {
+    return
+  }
+
+  if (space.videoPlaylistOrders.some(entry => entry.zone === zone)) {
     return
   }
 
   const now = Date.now()
 
-  if (now - (videoPlaylistRequests[zone] ?? 0) < videoPlaylistRequestInterval) {
+  if (now - (space.videoPlaylistRequests[zone] ?? 0) < videoPlaylistRequestInterval) {
     return
   }
 
-  const candidate = [...clients.values()]
+  const candidate = [...spaceClients(space)]
     .filter(client => client.poseSynced && clientVideoZone(client) === zone)
     .sort((a, b) => a.id - b.id)[0]
 
   if (candidate) {
-    videoPlaylistRequests[zone] = now
+    space.videoPlaylistRequests[zone] = now
     candidate.socket.send(encodeVideoPlaylistRequest({ zones: [zone] }))
   }
 }
 
 function applyVideoProgress(client: Client, entry: VideoProgressEntry) {
-  const queue = videoQueue(entry.zone)
+  const space = clientSpace(client)
+  const queue = videoQueue(space, entry.zone)
 
   if (entry.zone !== clientVideoZone(client)) {
     throw new Error(`Invalid video progress zone ${entry.zone}`)
   }
 
   if (!queue) {
-    requestMissingVideoPlaylist(entry.zone)
+    requestMissingVideoPlaylist(space, entry.zone)
     return
   }
 
@@ -1071,14 +1566,15 @@ function applyVideoProgress(client: Client, entry: VideoProgressEntry) {
 }
 
 async function applyVideoEnded(client: Client, entry: VideoEndedEntry) {
-  const queue = videoQueue(entry.zone)
+  const space = clientSpace(client)
+  const queue = videoQueue(space, entry.zone)
 
   if (entry.zone !== clientVideoZone(client)) {
     throw new Error(`Invalid video ended zone ${entry.zone}`)
   }
 
   if (!queue) {
-    requestMissingVideoPlaylist(entry.zone)
+    requestMissingVideoPlaylist(space, entry.zone)
     return
   }
 
@@ -1086,54 +1582,55 @@ async function applyVideoEnded(client: Client, entry: VideoEndedEntry) {
     return
   }
 
-  const order = videoPlaylist(entry.zone)
+  const order = videoPlaylist(space, entry.zone)
   const now = Date.now()
   const currentId = queue.nextId
   const nextId = randomVideoId(order.ids, new Set([currentId]))
 
-  setVideoQueue({ zone: entry.zone, currentId, nextId, time: 0, updatedAt: now })
-  clearClientVideoProgress(entry.zone)
-  await saveVideoQueues()
-  broadcastVideoSync(new Set([entry.zone]))
+  setVideoQueue(space, { zone: entry.zone, currentId, nextId, time: 0, updatedAt: now })
+  clearClientVideoProgress(space, entry.zone)
+  await saveVideoQueues(space)
+  broadcastVideoSync(space, new Set([entry.zone]))
 }
 
-async function applyVideoPlaylist(_client: Client, entries: VideoPlaylistEntry[]) {
+async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[]) {
+  const space = clientSpace(client)
   const now = Date.now()
   const changedZones = new Set<VideoZone>()
 
   for (const entry of entries) {
-    const current = videoPlaylistOrders.find(current => current.zone === entry.zone)
+    const current = space.videoPlaylistOrders.find(current => current.zone === entry.zone)
     const ids = uniqueVideoIds(entry.ids)
     const sourceKey = ids.join('\n')
-    const queue = videoQueue(entry.zone)
+    const queue = videoQueue(space, entry.zone)
 
     if (current && current.ids.join('\n') === sourceKey && queue) {
       continue
     }
 
-    setVideoPlaylistOrder(entry.zone, ids)
+    setVideoPlaylistOrder(space, entry.zone, ids)
     if (queue) {
-      setRandomNextVideo(entry.zone, ids)
+      setRandomNextVideo(space, entry.zone, ids)
     }
     else {
-      setRandomVideoQueue(entry.zone, now)
+      setRandomVideoQueue(space, entry.zone, now)
     }
     changedZones.add(entry.zone)
   }
 
   if (changedZones.size > 0) {
-    await saveVideoPlaylists()
-    await saveVideoQueues()
-    broadcastVideoSync(changedZones)
+    await saveVideoPlaylists(space)
+    await saveVideoQueues(space)
+    broadcastVideoSync(space, changedZones)
   }
 }
 
-function initializeVideoQueuesFromPlaylists(now: number) {
+function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   let changed = false
 
-  for (const entry of videoPlaylistOrders) {
-    if (!videoQueue(entry.zone)) {
-      setRandomVideoQueue(entry.zone, now)
+  for (const entry of space.videoPlaylistOrders) {
+    if (!videoQueue(space, entry.zone)) {
+      setRandomVideoQueue(space, entry.zone, now)
       changed = true
     }
   }
@@ -1141,42 +1638,46 @@ function initializeVideoQueuesFromPlaylists(now: number) {
   return changed
 }
 
-function setVideoPlaylistOrder(zone: VideoZone, ids: string[]) {
-  videoPlaylistOrders = [
-    ...videoPlaylistOrders.filter(entry => entry.zone !== zone),
-    { zone, ids, sourceIds: ids },
+function setVideoPlaylistOrder(space: SpaceState, zone: VideoZone, ids: string[]) {
+  const sourceIds = space.kind === 'loft' && zone === 'loft' && space.musicSource
+    ? [space.musicSource]
+    : ids
+
+  space.videoPlaylistOrders = [
+    ...space.videoPlaylistOrders.filter(entry => entry.zone !== zone),
+    { zone, ids, sourceIds },
   ]
 }
 
-function setRandomVideoQueue(zone: VideoZone, now: number) {
-  const order = videoPlaylist(zone).ids
+function setRandomVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
+  const order = videoPlaylist(space, zone).ids
   const currentId = randomVideoId(order)
   const nextId = randomVideoId(order, new Set([currentId]))
 
-  setVideoQueue({ zone, currentId, nextId, time: 0, updatedAt: now })
-  clearClientVideoProgress(zone)
+  setVideoQueue(space, { zone, currentId, nextId, time: 0, updatedAt: now })
+  clearClientVideoProgress(space, zone)
 }
 
-function setRandomNextVideo(zone: VideoZone, ids = videoPlaylist(zone).ids) {
-  const queue = videoQueue(zone)!
+function setRandomNextVideo(space: SpaceState, zone: VideoZone, ids = videoPlaylist(space, zone).ids) {
+  const queue = videoQueue(space, zone)!
   const nextId = randomVideoId(ids, new Set([queue.currentId]))
 
-  setVideoQueue({ ...queue, nextId })
+  setVideoQueue(space, { ...queue, nextId })
 }
 
-function setVideoQueue(entry: StoredVideoQueueEntry) {
-  videoQueues = [
-    ...videoQueues.filter(queue => queue.zone !== entry.zone),
+function setVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry) {
+  space.videoQueues = [
+    ...space.videoQueues.filter(queue => queue.zone !== entry.zone),
     entry,
   ]
 }
 
-function videoQueue(zone: VideoZone) {
-  return videoQueues.find(entry => entry.zone === zone)
+function videoQueue(space: SpaceState, zone: VideoZone) {
+  return space.videoQueues.find(entry => entry.zone === zone)
 }
 
-function videoPlaylist(zone: VideoZone) {
-  const order = videoPlaylistOrders.find(entry => entry.zone === zone)
+function videoPlaylist(space: SpaceState, zone: VideoZone) {
+  const order = space.videoPlaylistOrders.find(entry => entry.zone === zone)
 
   if (!order) {
     throw new Error(`Missing video playlist ${zone}`)
@@ -1186,18 +1687,19 @@ function videoPlaylist(zone: VideoZone) {
 }
 
 function clientVideoZone(client: Client) {
-  return roomVideoZone(client.room)
+  return clientSpace(client).kind === 'loft' ? 'loft' : roomVideoZone(client.room)
 }
 
 function roomVideoZone(room: number): VideoZone {
   return room === 1 ? 'inside' : room === 2 ? 'tent' : 'outside'
 }
 
-function validateVideoPlaylist(entries: VideoPlaylistEntry[]) {
+function validateVideoPlaylist(client: Client, entries: VideoPlaylistEntry[]) {
   const seen = new Set<string>()
+  const space = clientSpace(client)
 
   for (const entry of entries) {
-    if (!videoPlaylists[entry.zone]) {
+    if (!spacePlaylistSource(space, entry.zone)) {
       throw new Error(`Invalid video playlist zone ${entry.zone}`)
     }
 
@@ -1247,11 +1749,12 @@ function validateVideoEnded(entry: VideoEndedEntry) {
   return entry
 }
 
-function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
+function validateBeachBalls(client: Client, balls: ReturnType<typeof createBeachBalls>) {
   const ids = new Set<number>()
+  const space = clientSpace(client)
 
   for (const ball of balls) {
-    const existing = beachBalls[ball.id]
+    const existing = space.beachBalls[ball.id]
 
     if (!existing || ids.has(ball.id)) {
       throw new Error(`Invalid beach ball ${ball.id}`)
@@ -1278,9 +1781,10 @@ function validateBeachBalls(balls: ReturnType<typeof createBeachBalls>) {
 function applyBeachBalls(client: Client, balls: ReturnType<typeof createBeachBalls>) {
   const now = Date.now()
   const applied: ReturnType<typeof createBeachBalls> = []
+  const space = clientSpace(client)
 
   for (const ball of balls) {
-    const authority = beachBallAuthorities[ball.id]!
+    const authority = space.beachBallAuthorities[ball.id]!
 
     if (authority.client !== 0 && authority.client !== client.id && now < authority.until) {
       continue
@@ -1288,17 +1792,17 @@ function applyBeachBalls(client: Client, balls: ReturnType<typeof createBeachBal
 
     authority.client = client.id
     authority.until = now + beachBallAuthorityDuration
-    beachBalls[ball.id] = ball
+    space.beachBalls[ball.id] = ball
     applied.push(ball)
   }
 
   return applied
 }
 
-function broadcastBeachBalls(balls = beachBalls) {
+function broadcastBeachBalls(space: SpaceState, balls = space.beachBalls) {
   const data = encodeBeachBalls({ balls })
 
-  for (const client of clients.values()) {
+  for (const client of spaceClients(space)) {
     client.socket.send(data)
   }
 }
@@ -1384,59 +1888,58 @@ function saveBan(value: string) {
   db.query('INSERT OR IGNORE INTO bans (value) VALUES ($value)').run({ value })
 }
 
-async function applyAdminMessage(packet: ReturnType<typeof decodeAdminMessage>) {
+async function applyAdminMessage(client: Client, packet: ReturnType<typeof decodeAdminMessage>) {
+  const space = clientSpace(client)
+  const globalAdmin = adminPass !== '' && packet.pass === adminPass
+  const roomAdmin = !globalAdmin && await validRoomAdmin(space, packet.pass)
+
   console.log(`Admin command: command=${packet.command} target=${packet.id}`)
 
-  if (adminPass === '') {
-    console.log('Admin command rejected: ADMIN_PASS is not set')
-    throw new Error('Missing admin pass')
-  }
-
-  if (packet.pass !== adminPass) {
+  if (!globalAdmin && !roomAdmin) {
     console.log(`Admin command rejected: invalid pass target=${packet.id}`)
     throw new Error('Invalid admin pass')
   }
 
   if (packet.command === 'ban') {
-    await banClient(packet.id)
+    await banClient(space, packet.id, globalAdmin)
   }
   else if (packet.command === 'banSubnet') {
-    await banClientSubnet(packet.id)
+    await banClientSubnet(space, packet.id, globalAdmin)
   }
   else if (packet.command === 'randomTrack') {
-    await randomizeVideoTrack(roomVideoZone(packet.id))
+    await randomizeVideoTrack(space, space.kind === 'loft' ? 'loft' : roomVideoZone(packet.id))
   }
 }
 
-async function randomizeVideoTrack(zone: VideoZone) {
+async function randomizeVideoTrack(space: SpaceState, zone: VideoZone) {
   const now = Date.now()
 
-  if (!videoPlaylists[zone]) {
+  if (!spacePlaylistSource(space, zone)) {
     console.log(`Admin random track skipped: no playlist ${zone}`)
     return
   }
 
-  if (!videoPlaylistOrders.some(entry => entry.zone === zone)) {
+  if (!space.videoPlaylistOrders.some(entry => entry.zone === zone)) {
     console.log(`Admin random track skipped: missing playlist order ${zone}`)
     return
   }
 
-  if (videoQueue(zone)) {
-    setRandomNextVideo(zone)
+  if (videoQueue(space, zone)) {
+    setRandomNextVideo(space, zone)
   }
   else {
-    setRandomVideoQueue(zone, now)
+    setRandomVideoQueue(space, zone, now)
   }
 
-  const queue = videoQueue(zone)!
+  const queue = videoQueue(space, zone)!
 
   console.log(`[video] random queued ${zone}: current=${queue.currentId} next=${queue.nextId}`)
-  await saveVideoQueues()
-  broadcastVideoSync(new Set([zone]))
+  await saveVideoQueues(space)
+  broadcastVideoSync(space, new Set([zone]))
 }
 
-function clearClientVideoProgress(zone: VideoZone) {
-  for (const client of clients.values()) {
+function clearClientVideoProgress(space: SpaceState, zone: VideoZone) {
+  for (const client of spaceClients(space)) {
     if (client.video?.zone === zone) {
       client.video = undefined
     }
@@ -1451,50 +1954,68 @@ function randomVideoId(ids: string[], exclude = new Set<string>()) {
   const uniqueIds = [...new Set(ids)]
   const choices = uniqueIds.filter(id => !exclude.has(id))
 
-  if (choices.length === 0) {
+  if (uniqueIds.length === 0) {
     throw new Error('Missing video choices')
+  }
+
+  if (choices.length === 0) {
+    return uniqueIds[0]!
   }
 
   return choices[Math.floor(Math.random() * choices.length)]!
 }
 
-async function banClient(id: number) {
-  removeChatHistory(id)
-  broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id }))
-
-  const client = [...clients.values()].find(next => next.id === id)
+async function banClient(space: SpaceState, id: number, globalAdmin: boolean) {
+  const client = [...(globalAdmin ? clients.values() : spaceClients(space))].find(next => next.id === id)
 
   if (!client) {
     console.log(`Admin ban rejected: invalid target id=${id}`)
     throw new Error(`Invalid ban target ${id}`)
   }
 
-  const banned = [...clients.values()].filter(next => next.ip === client.ip)
+  removeChatHistory(clientSpace(client), id)
+  broadcastSpace(clientSpace(client), encodeModerationMessage({ command: 'deleteMessages', id }))
 
-  bannedIps.add(client.ip)
-  saveBan(client.ip)
+  const banned = globalAdmin
+    ? [...clients.values()].filter(next => next.ip === client.ip)
+    : [...spaceClients(space)].filter(next => next.ip === client.ip)
+
+  if (globalAdmin) {
+    bannedIps.add(client.ip)
+    saveBan(client.ip)
+  }
+  else {
+    saveLoftBan(space, client.ip)
+  }
   console.log(`Admin ban: id=${id} ip=${client.ip}`)
-  banClients(id, banned)
+  banClients(space, id, banned, globalAdmin)
 }
 
-async function banClientSubnet(id: number) {
-  removeChatHistory(id)
-  broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id }))
-
-  const client = [...clients.values()].find(next => next.id === id)
+async function banClientSubnet(space: SpaceState, id: number, globalAdmin: boolean) {
+  const client = [...(globalAdmin ? clients.values() : spaceClients(space))].find(next => next.id === id)
 
   if (!client) {
     console.log(`Admin subnet ban rejected: invalid target id=${id}`)
     throw new Error(`Invalid ban target ${id}`)
   }
 
-  const subnet = ipSubnet(client.ip)
-  const banned = [...clients.values()].filter(next => ipMatchesBan(next.ip, subnet))
+  removeChatHistory(clientSpace(client), id)
+  broadcastSpace(clientSpace(client), encodeModerationMessage({ command: 'deleteMessages', id }))
 
-  bannedIps.add(subnet)
-  saveBan(subnet)
+  const subnet = ipSubnet(client.ip)
+  const banned = globalAdmin
+    ? [...clients.values()].filter(next => ipMatchesBan(next.ip, subnet))
+    : [...spaceClients(space)].filter(next => ipMatchesBan(next.ip, subnet))
+
+  if (globalAdmin) {
+    bannedIps.add(subnet)
+    saveBan(subnet)
+  }
+  else {
+    saveLoftBan(space, subnet)
+  }
   console.log(`Admin subnet ban: id=${id} subnet=${subnet}*`)
-  banClients(id, banned)
+  banClients(space, id, banned, globalAdmin)
 }
 
 function ipSubnet(ip: string) {
@@ -1549,11 +2070,16 @@ function ipv6Parts(section: string) {
     })
 }
 
-function banClients(id: number, banned: Client[]) {
+function banClients(space: SpaceState, id: number, banned: Client[], globalAdmin: boolean) {
   for (const next of banned) {
     if (next.id !== id) {
-      removeChatHistory(next.id)
-      broadcastAll(encodeModerationMessage({ command: 'deleteMessages', id: next.id }))
+      removeChatHistory(globalAdmin ? clientSpace(next) : space, next.id)
+      if (globalAdmin) {
+        broadcastSpace(clientSpace(next), encodeModerationMessage({ command: 'deleteMessages', id: next.id }))
+      }
+      else {
+        broadcastSpace(space, encodeModerationMessage({ command: 'deleteMessages', id: next.id }))
+      }
     }
   }
 
@@ -1603,43 +2129,54 @@ function removeClient(client: Client) {
     return
   }
 
+  const space = clientSpace(client)
   const zone = clientVideoZone(client)
 
   removeFromRoom(client)
-  requestMissingVideoPlaylist(zone)
-  broadcastOnline()
+  requestMissingVideoPlaylist(space, zone)
+  broadcastOnline(space)
 }
 
-function broadcastOnline() {
-  const online = onlineCount()
+function broadcastOnline(space?: SpaceState) {
+  if (!space) {
+    for (const next of spaces.values()) {
+      broadcastOnline(next)
+    }
+
+    return
+  }
+
+  const online = onlineCount(space)
   const data = encodeOnline(online)
 
-  for (const client of clients.values()) {
+  for (const client of spaceClients(space)) {
     client.socket.send(data)
   }
 }
 
-function onlineCount() {
+function onlineCount(space = mainSpace) {
   const now = Date.now()
 
-  return [...clients.values()]
+  return [...spaceClients(space)]
     .filter(client => now - client.lastInteractionAt <= onlineActivityTimeout)
     .length
 }
 
 function logStats() {
-  console.log(`[stats] online: ${onlineCount()}`)
+  console.log(`[stats] online: ${onlineCount(mainSpace)}`)
 }
 
-function broadcastAll(data: ArrayBuffer) {
-  for (const client of clients.values()) {
+function broadcastSpace(space: SpaceState, data: ArrayBuffer) {
+  for (const client of spaceClients(space)) {
     client.socket.send(data)
   }
 }
 
-function broadcast(room: number, data: ArrayBuffer, except?: Client) {
-  for (const client of rooms[room]!) {
-    if (client !== except) {
+function broadcast(source: Client, data: ArrayBuffer) {
+  const space = clientSpace(source)
+
+  for (const client of space.rooms[source.room]!) {
+    if (client !== source) {
       client.socket.send(data)
     }
   }

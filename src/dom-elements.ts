@@ -12,6 +12,7 @@ export function getDomElements() {
   const onlineCount = document.createElement('div')
   const chatLog = document.createElement('div')
   const reactionButtons = document.createElement('div')
+  const roomsButton = document.createElement('button')
   const supportLink = document.createElement('a')
   const intro = document.createElement('div')
   const introPanel = document.createElement('div')
@@ -58,6 +59,10 @@ export function getDomElements() {
   onlineText.textContent = ' 0 online'
   chatLog.id = 'chat-log'
   reactionButtons.id = 'reaction-buttons'
+  roomsButton.id = 'rooms-button'
+  roomsButton.type = 'button'
+  roomsButton.textContent = '🏘️'
+  roomsButton.setAttribute('aria-label', 'rooms')
 
   supportLink.id = 'support-link'
   supportLink.href = 'https://buymeacoffee.com/stagas'
@@ -91,7 +96,8 @@ export function getDomElements() {
   introTrack.append(introBar)
   introPanel.append(introLogo, introTrack, introProgress, introNicknameInput, introStart)
   intro.append(introPanel)
-  document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, supportLink, intro)
+  document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, roomsButton,
+    supportLink, intro)
 
   return {
     canvas,
@@ -106,6 +112,7 @@ export function getDomElements() {
     onlineSelf,
     onlineText,
     reactionButtons,
+    roomsButton,
     supportLink,
     intro,
     introBar,

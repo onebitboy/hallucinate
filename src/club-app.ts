@@ -20,11 +20,13 @@ import {
   graffitiRadiusForScreenDistance,
   maxGraffitiSplats,
   paintGraffitiSplats,
+  paintLoftPaintingTextures,
   sprayWallPoint,
 } from './graffiti.ts'
 import { createHelpUi } from './help-ui.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
 import { createLocalCharacter } from './local-character.ts'
+import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
@@ -33,8 +35,8 @@ import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint } from './projection.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
-import { outsideBounds, outsideBuddha, outsidePalmTree, outsideToilets, roomBounds, tent,
-  tentDoorAngle } from './scene-data.ts'
+import { loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall, outsideBounds, outsideBuddha,
+  outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -56,7 +58,7 @@ import {
   strobeVertex,
   vertex,
 } from './shaders.ts'
-import { loadStaticFbxObject, loadStaticFbxObjects } from './static-fbx-object.ts'
+import { loadStaticFbxObject, loadStaticFbxObjects, loadStaticFbxObjectWithPose } from './static-fbx-object.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
 import { loadOutsideTree } from './tree-world.ts'
@@ -105,6 +107,7 @@ const {
   onlineSelf,
   onlineText,
   reactionButtons,
+  roomsButton,
   supportLink,
   intro,
   introBar,
@@ -198,6 +201,24 @@ const characterPosition = localCharacter.position
 const hairController = createCharacterHairController()
 const styleController = createCharacterStyleController()
 const chatUi = createChatUi(chatForm, chatInput, chatBubble, characterPosition)
+type AppSpace = {
+  kind: 'main'
+} | {
+  displaySlug: string
+  kind: 'loft'
+  musicKind: 'playlist' | 'video'
+  musicSource: string
+  slug: string
+}
+let appSpace: AppSpace = { kind: 'main' }
+type MainPose = {
+  room: number
+  turn: number
+  x: number
+  y: number
+  z: number
+}
+let lastMainPose: MainPose | undefined
 let nickname = savedState?.nickname ?? ''
 nicknameInput.value = nickname
 introNicknameInput.value = nickname
@@ -208,6 +229,11 @@ const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
   recoverFocus: () => canvas.focus(),
   onEnded: entry => sendVideoEndedNow(entry),
   onPlaylistDiscovered: (zone, ids) => sendVideoPlaylistNow(zone, ids),
+  playlistSource: zone =>
+    appSpace.kind === 'loft' && zone === 'loft' && appSpace.musicKind === 'playlist'
+      ? appSpace.musicSource
+      : undefined,
+  zone: () => currentVideoZone(),
 })
 const helpUi = createHelpUi()
 const helpSeen = localStorage.getItem(helpSeenKey) === 'true'
@@ -216,6 +242,7 @@ const reactionSlotEmojis = loadReactionSlotEmojis()
 function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  roomsButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   supportLink.dataset.hidden = String(helpUi.root.dataset.open === 'true')
 }
 
@@ -329,7 +356,7 @@ function addChatLogMessage(id: number, text: string) {
   row.className = 'chat-log-message'
   row.style.color = color
   row.dataset.userId = String(id)
-  message.textContent = text
+  renderChatLogText(message, text)
   ban.type = 'button'
   ban.className = 'chat-ban-button'
   ban.textContent = 'ban'
@@ -358,6 +385,53 @@ function addChatLogMessage(id: number, text: string) {
   return color
 }
 
+function renderChatLogText(target: HTMLElement, text: string) {
+  target.replaceChildren()
+  if (appSpace.kind !== 'main') {
+    target.textContent = text
+    return
+  }
+
+  const tokens = text.split(/(\s+)/)
+
+  for (const token of tokens) {
+    const slug = roomSlugFromToken(token)
+
+    if (!slug) {
+      target.append(document.createTextNode(token))
+      continue
+    }
+
+    const link = document.createElement('a')
+
+    link.href = `/${slug}`
+    link.className = 'chat-room-link'
+    link.textContent = `🏘️ ${slug}`
+    link.addEventListener('click', event => {
+      event.preventDefault()
+      void openLoftRoute(slug, true)
+    })
+    target.append(link)
+  }
+}
+
+function roomSlugFromToken(token: string) {
+  if (/^\/[A-Za-z0-9_-]+$/.test(token)) {
+    return token.slice(1)
+  }
+
+  try {
+    const url = new URL(token)
+
+    if (url.origin === location.origin && /^\/[A-Za-z0-9_-]+$/.test(url.pathname)) {
+      return url.pathname.slice(1)
+    }
+  }
+  catch (e) {
+    void e
+  }
+}
+
 function deleteChatLogMessages(id: number) {
   for (const row of [...chatLog.children]) {
     if (row instanceof HTMLElement && row.dataset.userId === String(id)) {
@@ -372,7 +446,15 @@ const adminInput = document.createElement('input')
 const adminSubmit = document.createElement('button')
 const adminBanIdInput = document.createElement('input')
 const adminBanIdSubmit = document.createElement('button')
+const adminMusicInput = document.createElement('input')
+const adminMusicSubmit = document.createElement('button')
 const adminRandomTrackSubmit = document.createElement('button')
+const loftMusicDialog = document.createElement('dialog')
+const loftMusicForm = document.createElement('form')
+const loftMusicPassword = document.createElement('input')
+const loftMusicSource = document.createElement('input')
+const loftMusicCancel = document.createElement('button')
+const loftMusicSubmit = document.createElement('button')
 const banDialog = document.createElement('dialog')
 const banForm = document.createElement('form')
 const banMessage = document.createElement('p')
@@ -386,31 +468,60 @@ adminInput.type = 'password'
 adminInput.autocomplete = 'current-password'
 adminInput.placeholder = 'admin pass'
 adminSubmit.type = 'submit'
-adminSubmit.textContent = 'enter'
+adminSubmit.textContent = '🔓'
+adminSubmit.setAttribute('aria-label', 'enter admin')
 adminBanIdInput.type = 'number'
 adminBanIdInput.min = '1'
 adminBanIdInput.step = '1'
 adminBanIdInput.placeholder = 'id'
 adminBanIdSubmit.type = 'button'
-adminBanIdSubmit.textContent = 'ban id'
+adminBanIdSubmit.textContent = '🚫 id'
+adminBanIdSubmit.setAttribute('aria-label', 'ban id')
+adminMusicInput.placeholder = 'room music'
+adminMusicSubmit.type = 'button'
+adminMusicSubmit.textContent = '🎵'
+adminMusicSubmit.setAttribute('aria-label', 'set room music')
 adminRandomTrackSubmit.type = 'button'
-adminRandomTrackSubmit.textContent = 'random track'
-adminForm.append(adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminRandomTrackSubmit)
+adminRandomTrackSubmit.textContent = '🔀'
+adminRandomTrackSubmit.setAttribute('aria-label', 'random track')
+adminForm.append(adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminMusicInput, adminMusicSubmit,
+  adminRandomTrackSubmit)
 adminDialog.append(adminForm)
+loftMusicDialog.id = 'loft-music-dialog'
+loftMusicForm.method = 'dialog'
+loftMusicPassword.type = 'password'
+loftMusicPassword.autocomplete = 'current-password'
+loftMusicPassword.placeholder = 'room password'
+loftMusicSource.placeholder = 'youtube id'
+loftMusicSource.autocomplete = 'off'
+loftMusicCancel.type = 'button'
+loftMusicCancel.textContent = '✕'
+loftMusicCancel.setAttribute('aria-label', 'cancel')
+loftMusicSubmit.type = 'submit'
+loftMusicSubmit.textContent = '📺'
+loftMusicSubmit.setAttribute('aria-label', 'set video')
+loftMusicForm.append(loftMusicPassword, loftMusicSource, loftMusicCancel, loftMusicSubmit)
+loftMusicDialog.append(loftMusicForm)
 banDialog.id = 'ban-dialog'
 banForm.method = 'dialog'
 banCancel.type = 'button'
 banSubmit.type = 'submit'
 banSubnetSubmit.type = 'button'
-banCancel.textContent = 'cancel'
-banSubmit.textContent = 'ban'
-banSubnetSubmit.textContent = 'ban subnet'
+banCancel.textContent = '✕'
+banCancel.setAttribute('aria-label', 'cancel')
+banSubmit.textContent = '🚫'
+banSubmit.setAttribute('aria-label', 'ban')
+banSubnetSubmit.textContent = '🌐'
+banSubnetSubmit.setAttribute('aria-label', 'ban subnet')
 banForm.append(banMessage, banCancel, banSubmit, banSubnetSubmit)
 banDialog.append(banForm)
-document.body.append(adminDialog, banDialog)
+document.body.append(adminDialog, loftMusicDialog, banDialog)
 for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
   adminInput.addEventListener(eventName, event => event.stopPropagation())
   adminBanIdInput.addEventListener(eventName, event => event.stopPropagation())
+  adminMusicInput.addEventListener(eventName, event => event.stopPropagation())
+  loftMusicPassword.addEventListener(eventName, event => event.stopPropagation())
+  loftMusicSource.addEventListener(eventName, event => event.stopPropagation())
 }
 
 let pendingBan: { id: number; message: string } | undefined
@@ -438,7 +549,34 @@ adminRandomTrackSubmit.addEventListener('click', () => {
   multiplayer.sendAdmin(adminPass, 'randomTrack', videoZoneRoom(djVideoUi.zone))
 })
 
+adminMusicSubmit.addEventListener('click', async () => {
+  adminPass = adminInput.value
+  setAdminView(adminPass.length > 0)
+  await updateLoftMusic(adminPass, adminMusicInput.value)
+})
+
+loftMusicCancel.addEventListener('click', () => {
+  loftMusicDialog.close()
+  canvas.focus()
+})
+
+loftMusicDialog.addEventListener('click', event => {
+  if (event.target === loftMusicDialog) {
+    loftMusicDialog.close()
+    canvas.focus()
+  }
+})
+
+loftMusicForm.addEventListener('submit', event => {
+  event.preventDefault()
+  void submitLoftMusicDialog()
+})
+
 function videoZoneRoom(zone: VideoZone) {
+  if (zone === 'loft') {
+    return 0
+  }
+
   return zone === 'inside' ? 1 : zone === 'tent' ? 2 : 0
 }
 
@@ -478,6 +616,7 @@ function openBanDialog(id: number, message: string) {
 
 function openAdminDialog() {
   adminInput.value = adminPass
+  adminMusicInput.value = appSpace.kind === 'loft' ? appSpace.musicSource : ''
   adminDialog.showModal()
   adminInput.focus()
 }
@@ -487,6 +626,9 @@ function setAdminView(value: boolean) {
   chatLog.dataset.admin = String(adminView)
   adminIdRoot.dataset.admin = String(adminView)
   onlineIndicator.style.pointerEvents = adminView ? 'auto' : ''
+  if (roomsDialog.open) {
+    void refreshRoomsList()
+  }
   if (!adminView) {
     clearAdminIdLabels()
   }
@@ -773,8 +915,9 @@ addEventListener('keydown', event => {
   }
 })
 let wasOutside = isOutside(characterPosition)
+let wasInLoftMusicSpot = false
 let doorCoverReleased = true
-let activeRoom = savedState ? roomIndex(roomAt(savedState.character)) : 0
+let activeRoom = routeSlug() ? 0 : savedState ? roomIndex(roomAt(savedState.character)) : 0
 let requestedRoom = activeRoom
 let lastPoseLog = 0
 const saveTimer = createSaveTimer(0.5)
@@ -789,23 +932,58 @@ const roomStarts = [
 ]
 
 function roomIndex(zone: VideoZone) {
+  if (zone === 'loft') {
+    return 0
+  }
+
   return zone === 'inside' ? 1 : zone === 'tent' ? 2 : 0
 }
 
 function renderZoneIndex(zone: VideoZone) {
+  if (zone === 'loft') {
+    return 3
+  }
+
   return zone === 'inside' ? 0 : zone === 'tent' ? 2 : 1
+}
+
+function currentVideoZone(): VideoZone {
+  return appSpace.kind === 'loft' ? 'loft' : roomAt(characterPosition)
+}
+
+function currentRoomIndex() {
+  return appSpace.kind === 'loft' ? 0 : roomIndex(roomAt(characterPosition))
+}
+
+function routeSlug() {
+  const slug = decodeURIComponent(location.pathname.slice(1))
+
+  return slug && /^[A-Za-z0-9_-]+$/.test(slug) ? slug : ''
 }
 
 addRoom(vertices)
 addWallStrips(lights)
 addRoomSmoke(smoke)
+const loftVertices: Vertex[] = []
+const loftLights: Vertex[] = []
+const loftSmoke: Vertex[] = []
+addLoftRoom(loftVertices)
+addLoftLightGeometry(loftLights)
+addLoftSmoke(loftSmoke)
 const graffitiWallVertices: Vertex[] = []
 addGraffitiWallGeometry(graffitiWallVertices)
 
-let points = new Float32Array(vertices.flat())
-let lightPoints = new Float32Array(lights.flat())
-const smokePoints = new Float32Array(smoke.flat())
+let mainPoints = new Float32Array(vertices.flat())
+const mainLightPoints = new Float32Array(lights.flat())
+const mainSmokePoints = new Float32Array(smoke.flat())
+let loftRoomPoints = new Float32Array(loftVertices.flat())
+const loftLightPoints = new Float32Array(loftLights.flat())
+const loftSmokePoints = new Float32Array(loftSmoke.flat())
+let points = mainPoints
+let lightPoints = mainLightPoints
+let smokePoints = mainSmokePoints
 const graffitiPoints = new Float32Array(graffitiWallVertices.flat())
+const emptyPoints = new Float32Array()
 const program = createProgram(gl, vertex, fragment)
 const lightProgram = createProgram(gl, vertex, lightFragment)
 const strobeProgram = createProgram(gl, strobeVertex, lightFragment)
@@ -920,14 +1098,32 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+paintLoftPaintingTextures(graffitiContext)
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
 
 setupVertexArray({ array, buffer, data: points, gl, stride, usage: gl.STATIC_DRAW })
 
-function refreshRoomBuffer() {
-  points = new Float32Array(vertices.flat())
+function applySceneBuffers() {
+  points = appSpace.kind === 'loft' ? loftRoomPoints : mainPoints
+  lightPoints = appSpace.kind === 'loft' ? loftLightPoints : mainLightPoints
+  smokePoints = appSpace.kind === 'loft' ? loftSmokePoints : mainSmokePoints
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
   gl.bufferData(gl.ARRAY_BUFFER, points, gl.STATIC_DRAW)
+  gl.bindBuffer(gl.ARRAY_BUFFER, lightBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, lightPoints, gl.DYNAMIC_DRAW)
+  gl.bindBuffer(gl.ARRAY_BUFFER, smokeBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, smokePoints, gl.STATIC_DRAW)
+}
+
+function refreshRoomBuffer() {
+  mainPoints = new Float32Array(vertices.flat())
+  loftRoomPoints = new Float32Array(loftVertices.flat())
+  if (appSpace.kind === 'main') {
+    applySceneBuffers()
+  }
+  if (appSpace.kind === 'loft') {
+    applySceneBuffers()
+  }
 }
 
 setupVertexArray({ array: lightArray, buffer: lightBuffer, data: lightPoints, gl, stride, usage: gl.DYNAMIC_DRAW })
@@ -972,6 +1168,11 @@ djVideoUi.setZoneFromPosition()
 djVideoUi.load()
 
 function moveToRoom(room: number) {
+  if (appSpace.kind === 'loft') {
+    moveToLoft()
+    return
+  }
+
   const start = roomStarts[room]!
 
   characterPosition[0] = start.x
@@ -982,6 +1183,45 @@ function moveToRoom(room: number) {
   localCharacter.velocityY = 0
   djVideoUi.setZoneFromPosition()
   logPlayerPose(`room ${room}`)
+}
+
+function rememberMainPose() {
+  lastMainPose = {
+    room: currentRoomIndex(),
+    turn: localCharacter.turn,
+    x: characterPosition[0],
+    y: characterPosition[1],
+    z: characterPosition[2],
+  }
+}
+
+function restoreMainPose() {
+  if (!lastMainPose) {
+    moveToRoom(activeRoom)
+    return
+  }
+
+  activeRoom = lastMainPose.room
+  requestedRoom = lastMainPose.room
+  characterPosition[0] = lastMainPose.x
+  characterPosition[1] = lastMainPose.y
+  characterPosition[2] = lastMainPose.z
+  localCharacter.turn = lastMainPose.turn
+  cameraController.turn = lastMainPose.turn
+  localCharacter.velocityY = 0
+  djVideoUi.setZoneFromPosition()
+  logPlayerPose(`room ${activeRoom}`)
+}
+
+function moveToLoft() {
+  characterPosition[0] = loftSpawn.x
+  characterPosition[1] = characterFloor
+  characterPosition[2] = loftSpawn.z
+  localCharacter.turn = loftSpawn.angle
+  cameraController.turn = loftSpawn.angle
+  localCharacter.velocityY = 0
+  djVideoUi.setZoneFromPosition()
+  logPlayerPose(`loft ${appSpace.kind === 'loft' ? appSpace.slug : ''}`)
 }
 
 function logPlayerPose(label: string) {
@@ -999,7 +1239,7 @@ function logPlayerPoseEvery(stamp: number) {
   }
 }
 
-if (activeRoom !== roomIndex(roomAt(characterPosition))) {
+if (activeRoom !== currentRoomIndex()) {
   moveToRoom(activeRoom)
 }
 else {
@@ -1017,6 +1257,7 @@ function localMoveAngle() {
 }
 
 let multiplayer: ReturnType<typeof createMultiplayer>
+let hasMultiplayer = false
 const predictedMessages = new Map<string, number>()
 const playerNicknames = new Map<number, string>()
 const beachBalls = createBeachBalls()
@@ -1031,129 +1272,582 @@ let sprayPointer = 0
 const sprayInterval = 55
 let graffitiPaintId = 0
 
-multiplayer = createMultiplayer({
-  localPosition: characterPosition,
-  localTurn: () => localCharacter.turn,
-  localMoveAngle,
-  localInput: localCharacter.input,
-  localMode: () => localCharacter.mode,
-  localIdleClipIndex: () => idleClipIndex,
-  localNickname: () => nickname,
-  localStyle: () => ({
-    topStyleIndex: styleController.topStyleIndex,
-    bottomStyleIndex: styleController.bottomStyleIndex,
-    hairIndex: hairController.index,
-    hairColorIndex: hairController.colorIndex,
-    skinColorIndex: styleController.skinColorIndex,
-    accessoryIndex: styleController.accessoryIndex,
-  }),
-  initialRoom: activeRoom,
-  onRoomState: room => {
-    activeRoom = room
-    requestedRoom = room
-    saveCurrentClubState(true, room)
-  },
-  onMessage: (id, text) => {
-    if (id === multiplayer.selfId && predictedMessages.has(text)) {
-      const count = predictedMessages.get(text)!
+function connectMultiplayer(spaceSlug?: string) {
+  if (hasMultiplayer) {
+    multiplayer.close()
+  }
 
-      if (count === 1) {
-        predictedMessages.delete(text)
+  hasMultiplayer = true
+  predictedMessages.clear()
+  playerNicknames.clear()
+  chatUi.clear()
+  chatLog.replaceChildren()
+  clearAdminIdLabels()
+  multiplayer = createMultiplayer({
+    localPosition: characterPosition,
+    localTurn: () => localCharacter.turn,
+    localMoveAngle,
+    localInput: localCharacter.input,
+    localMode: () => localCharacter.mode,
+    localIdleClipIndex: () => idleClipIndex,
+    localNickname: () => nickname,
+    localStyle: () => ({
+      topStyleIndex: styleController.topStyleIndex,
+      bottomStyleIndex: styleController.bottomStyleIndex,
+      hairIndex: hairController.index,
+      hairColorIndex: hairController.colorIndex,
+      skinColorIndex: styleController.skinColorIndex,
+      accessoryIndex: styleController.accessoryIndex,
+    }),
+    initialRoom: activeRoom,
+    spaceSlug,
+    onRoomState: room => {
+      activeRoom = room
+      requestedRoom = room
+      saveCurrentClubState(true, room)
+    },
+    onMessage: (id, text) => {
+      if (id === multiplayer.selfId && predictedMessages.has(text)) {
+        const count = predictedMessages.get(text)!
+
+        if (count === 1) {
+          predictedMessages.delete(text)
+        }
+        else {
+          predictedMessages.set(text, count - 1)
+        }
+
+        return
+      }
+
+      const position = id === multiplayer.selfId
+        ? characterPosition
+        : multiplayer.players.get(id)?.position
+
+      const color = addChatLogMessage(id, text)
+      if (position) {
+        chatUi.show(id, text, position, performance.now(), color)
+      }
+    },
+    onDeleteMessages: id => {
+      deleteChatLogMessages(id)
+      chatUi.removeMessages(id)
+    },
+    onNickname: (id, text) => {
+      if (text) {
+        playerNicknames.set(id, text)
       }
       else {
-        predictedMessages.set(text, count - 1)
+        playerNicknames.delete(id)
       }
 
-      return
-    }
+      syncRemoteNicknameLabel(id)
+    },
+    onLeave: id => chatUi.remove(id),
+    onOnlineCount: count => {
+      onlineCountValue = count
+      syncOnlineSelf()
+    },
+    onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
+    onVideoSync: entries => djVideoUi.applySync(entries),
+    onBeachBalls: balls => {
+      const stamp = performance.now()
 
-    const position = id === multiplayer.selfId
-      ? characterPosition
-      : multiplayer.players.get(id)?.position
+      for (const ball of balls) {
+        if ((beachBallAuthorityUntil.get(ball.id) ?? 0) > stamp) {
+          continue
+        }
 
-    const color = addChatLogMessage(id, text)
-    if (position) {
-      chatUi.show(id, text, position, performance.now(), color)
-    }
-  },
-  onDeleteMessages: id => {
-    deleteChatLogMessages(id)
-    chatUi.removeMessages(id)
-  },
-  onNickname: (id, text) => {
-    if (text) {
-      playerNicknames.set(id, text)
-    }
-    else {
-      playerNicknames.delete(id)
-    }
+        const target = beachBalls[ball.id]!
 
-    syncRemoteNicknameLabel(id)
-  },
-  onLeave: id => chatUi.remove(id),
-  onOnlineCount: count => {
-    onlineCountValue = count
-    syncOnlineSelf()
-  },
-  onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
-  onVideoSync: entries => djVideoUi.applySync(entries),
-  onBeachBalls: balls => {
-    const stamp = performance.now()
+        target.position[0] = ball.position[0]
+        target.position[1] = ball.position[1]
+        target.position[2] = ball.position[2]
+        target.velocity[0] = ball.velocity[0]
+        target.velocity[1] = ball.velocity[1]
+        target.velocity[2] = ball.velocity[2]
+      }
+    },
+    onGraffiti: splats => {
+      const appended: import('./types.ts').GraffitiSplat[] = []
+      const optimisticSplats = new Map(graffitiSplats
+        .map((splat, index) => [splat.id === 0 ? graffitiKey(splat) : '', index] as const)
+        .filter(([key]) => key !== ''))
+      let rebuild = false
 
-    for (const ball of balls) {
-      if ((beachBallAuthorityUntil.get(ball.id) ?? 0) > stamp) {
-        continue
+      for (const splat of splats) {
+        if (graffitiIds.has(splat.id)) {
+          continue
+        }
+
+        const optimistic = optimisticSplats.get(graffitiKey(splat)) ?? -1
+
+        if (optimistic >= 0) {
+          graffitiSplats[optimistic] = splat
+          addGraffitiId(splat)
+        }
+        else {
+          graffitiSplats.push(splat)
+          addGraffitiId(splat)
+          appended.push(splat)
+        }
       }
 
-      const target = beachBalls[ball.id]!
+      rebuild ||= enforceGraffitiCap()
 
-      target.position[0] = ball.position[0]
-      target.position[1] = ball.position[1]
-      target.position[2] = ball.position[2]
-      target.velocity[0] = ball.velocity[0]
-      target.velocity[1] = ball.velocity[1]
-      target.velocity[2] = ball.velocity[2]
-    }
-  },
-  onGraffiti: splats => {
-    const appended: import('./types.ts').GraffitiSplat[] = []
-    const optimisticSplats = new Map(graffitiSplats
-      .map((splat, index) => [splat.id === 0 ? graffitiKey(splat) : '', index] as const)
-      .filter(([key]) => key !== ''))
-    let rebuild = false
-
-    for (const splat of splats) {
-      if (graffitiIds.has(splat.id)) {
-        continue
+      if (rebuild) {
+        scheduleGraffitiTexturePaint(graffitiSplats, true)
       }
-
-      const optimistic = optimisticSplats.get(graffitiKey(splat)) ?? -1
-
-      if (optimistic >= 0) {
-        graffitiSplats[optimistic] = splat
-        addGraffitiId(splat)
+      else if (appended.length > 0) {
+        scheduleGraffitiTexturePaint(appended, false)
       }
-      else {
-        graffitiSplats.push(splat)
-        addGraffitiId(splat)
-        appended.push(splat)
-      }
-    }
+    },
+    videoProgress: () => djVideoUi.progress(),
+  })
+  sendVideoEndedNow = entry => multiplayer.sendVideoEnded(entry)
+  sendVideoPlaylistNow = (zone, ids) => multiplayer.sendVideoPlaylist([{ zone, ids }])
+  clubGlobal.clubMultiplayerClose = () => multiplayer.close()
+}
 
-    rebuild ||= enforceGraffitiCap()
+connectMultiplayer()
 
-    if (rebuild) {
-      scheduleGraffitiTexturePaint(graffitiSplats, true)
-    }
-    else if (appended.length > 0) {
-      scheduleGraffitiTexturePaint(appended, false)
-    }
-  },
-  videoProgress: () => djVideoUi.progress(),
+type LoftRoomPayload = {
+  claimed: boolean
+  displaySlug: string
+  expired: boolean
+  expiresAt: number
+  musicKind: 'playlist' | 'video'
+  musicSource: string
+  slug: string
+}
+
+type LoftRoomListEntry = {
+  displaySlug: string
+  expiresAt: number
+  musicKind: 'playlist' | 'video'
+  musicSource: string
+  players: number
+  slug: string
+}
+
+const loftSlugInputPattern = /^[A-Za-z0-9_-]+$/
+const loftExit = document.createElement('button')
+const roomsDialog = document.createElement('dialog')
+const roomsPanel = document.createElement('div')
+const roomsHeader = document.createElement('div')
+const roomsTitle = document.createElement('h2')
+const roomsClose = document.createElement('button')
+const roomsList = document.createElement('div')
+const roomsActions = document.createElement('div')
+const roomsRent = document.createElement('button')
+const rentRoomDialog = document.createElement('dialog')
+const rentRoomForm = document.createElement('form')
+const rentRoomTitle = document.createElement('h2')
+const rentRoomInput = document.createElement('input')
+const rentRoomActions = document.createElement('div')
+const rentRoomCancel = document.createElement('button')
+const rentRoomSubmit = document.createElement('button')
+const claimDialog = document.createElement('dialog')
+const claimForm = document.createElement('form')
+const claimTitle = document.createElement('h2')
+const claimText = document.createElement('p')
+const claimPassword = document.createElement('input')
+const claimNext = document.createElement('button')
+let pendingClaimSlug = ''
+
+loftExit.id = 'loft-exit'
+loftExit.type = 'button'
+loftExit.textContent = '🚪'
+loftExit.setAttribute('aria-label', 'exit loft')
+loftExit.hidden = true
+loftExit.addEventListener('click', () => enterMain(true))
+roomsDialog.id = 'rooms-dialog'
+roomsPanel.id = 'rooms-panel'
+roomsHeader.id = 'rooms-header'
+roomsTitle.textContent = 'rooms'
+roomsClose.type = 'button'
+roomsClose.textContent = '✕'
+roomsClose.setAttribute('aria-label', 'close rooms')
+roomsList.id = 'rooms-list'
+roomsActions.id = 'rooms-actions'
+roomsRent.type = 'button'
+roomsRent.textContent = '🏘️ create'
+roomsRent.setAttribute('aria-label', 'create a room')
+roomsHeader.append(roomsTitle, roomsClose)
+roomsActions.append(roomsRent)
+roomsPanel.append(roomsHeader, roomsList, roomsActions)
+roomsDialog.append(roomsPanel)
+rentRoomDialog.id = 'rent-room-dialog'
+rentRoomForm.method = 'dialog'
+rentRoomTitle.textContent = 'create a room'
+rentRoomActions.id = 'rent-room-actions'
+rentRoomInput.placeholder = 'room-name'
+rentRoomInput.maxLength = 64
+rentRoomInput.autocomplete = 'off'
+rentRoomSubmit.type = 'submit'
+rentRoomSubmit.textContent = '👉'
+rentRoomSubmit.setAttribute('aria-label', 'continue')
+rentRoomCancel.type = 'button'
+rentRoomCancel.textContent = '✕'
+rentRoomCancel.setAttribute('aria-label', 'cancel')
+rentRoomActions.append(rentRoomCancel, rentRoomSubmit)
+rentRoomForm.append(rentRoomTitle, rentRoomInput, rentRoomActions)
+rentRoomDialog.append(rentRoomForm)
+claimDialog.id = 'loft-claim-dialog'
+claimForm.method = 'dialog'
+claimTitle.textContent = 'claim room'
+claimPassword.type = 'password'
+claimPassword.autocomplete = 'new-password'
+claimPassword.value = 'admin'
+claimPassword.placeholder = 'room password'
+claimNext.type = 'submit'
+claimNext.textContent = '🔑'
+claimNext.setAttribute('aria-label', 'claim room')
+claimForm.append(claimTitle, claimText, claimPassword, claimNext)
+claimDialog.append(claimForm)
+document.body.append(loftExit, roomsDialog, rentRoomDialog, claimDialog)
+for (const input of [rentRoomInput, claimPassword]) {
+  for (const eventName of ['keydown', 'keyup', 'pointerdown']) {
+    input.addEventListener(eventName, event => event.stopPropagation())
+  }
+}
+
+roomsButton.addEventListener('click', () => {
+  void openRoomsDialog()
 })
-sendVideoEndedNow = entry => multiplayer.sendVideoEnded(entry)
-sendVideoPlaylistNow = (zone, ids) => multiplayer.sendVideoPlaylist([{ zone, ids }])
-clubGlobal.clubMultiplayerClose = () => multiplayer.close()
+
+roomsClose.addEventListener('click', () => {
+  roomsDialog.close()
+  canvas.focus()
+})
+
+roomsDialog.addEventListener('click', event => {
+  if (event.target === roomsDialog) {
+    roomsDialog.close()
+    canvas.focus()
+  }
+})
+
+roomsRent.addEventListener('click', () => {
+  roomsDialog.close()
+  rentRoomInput.value = ''
+  rentRoomDialog.showModal()
+  rentRoomInput.focus()
+})
+
+rentRoomCancel.addEventListener('click', () => {
+  rentRoomDialog.close()
+  canvas.focus()
+})
+
+rentRoomDialog.addEventListener('click', event => {
+  if (event.target === rentRoomDialog) {
+    rentRoomDialog.close()
+    canvas.focus()
+  }
+})
+
+rentRoomForm.addEventListener('submit', event => {
+  event.preventDefault()
+  const slug = rentRoomInput.value.trim()
+
+  if (!loftSlugInputPattern.test(slug)) {
+    throw new Error(`Invalid room slug ${slug}`)
+  }
+
+  rentRoomDialog.close()
+  void openLoftRoute(slug, true)
+})
+
+claimForm.addEventListener('submit', async event => {
+  event.preventDefault()
+  const room = await claimLoftRoom(pendingClaimSlug, claimPassword.value)
+
+  claimDialog.close()
+  activateLoft(room, true)
+})
+
+addEventListener('popstate', () => {
+  void openCurrentRoute(false)
+})
+
+void openCurrentRoute(false)
+
+async function openCurrentRoute(push: boolean) {
+  const slug = routeSlug()
+
+  if (slug) {
+    await openLoftRoute(slug, push)
+    return
+  }
+
+  enterMain(push)
+}
+
+async function openLoftRoute(slug: string, push: boolean) {
+  const room = await fetchLoftRoom(slug)
+
+  if (!room.claimed) {
+    if (push && location.pathname !== `/${slug}`) {
+      history.pushState(null, '', `/${slug}`)
+    }
+
+    await showClaimWizard(slug)
+    return
+  }
+
+  activateLoft(room, push)
+}
+
+async function showClaimWizard(slug: string) {
+  pendingClaimSlug = slug
+  claimPassword.value = 'admin'
+  syncClaimStep()
+  claimDialog.showModal()
+  claimPassword.focus()
+}
+
+async function openRoomsDialog() {
+  roomsDialog.showModal()
+  await refreshRoomsList()
+}
+
+async function refreshRoomsList() {
+  roomsList.textContent = 'loading...'
+  try {
+    renderLoftRooms(await fetchLoftRooms())
+  }
+  catch (e) {
+    console.error(e)
+    roomsList.textContent = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function renderLoftRooms(rooms: LoftRoomListEntry[]) {
+  roomsList.replaceChildren()
+  if (rooms.length === 0) {
+    const empty = document.createElement('p')
+
+    empty.className = 'rooms-empty'
+    empty.textContent = 'no rooms yet'
+    roomsList.append(empty)
+  }
+  else {
+    for (const room of rooms) {
+      const row = document.createElement('div')
+      const name = document.createElement('span')
+      const count = document.createElement('span')
+      const join = document.createElement('button')
+
+      row.className = 'rooms-row'
+      row.dataset.admin = String(adminView)
+      name.className = 'rooms-name'
+      count.className = 'rooms-count'
+      join.type = 'button'
+      name.textContent = `/${room.displaySlug}`
+      count.textContent = `${room.players} online`
+      join.textContent = '👉'
+      join.setAttribute('aria-label', `join ${room.displaySlug}`)
+      join.addEventListener('click', () => {
+        roomsDialog.close()
+        void openLoftRoute(room.displaySlug, true)
+      })
+      row.append(name, count, join)
+      if (adminView) {
+        const remove = document.createElement('button')
+
+        remove.type = 'button'
+        remove.textContent = '🗑️'
+        remove.setAttribute('aria-label', `delete ${room.displaySlug}`)
+        remove.addEventListener('click', async () => {
+          adminPass = adminInput.value
+          await deleteLoftRoom(room.slug, adminPass)
+          renderLoftRooms(await fetchLoftRooms())
+        })
+        row.append(remove)
+      }
+      roomsList.append(row)
+    }
+  }
+}
+
+function syncClaimStep() {
+  claimText.textContent = `Choose the admin password for /${pendingClaimSlug}.`
+}
+
+async function fetchLoftRoom(slug: string): Promise<LoftRoomPayload> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(slug)}`)
+
+  if (!response.ok) {
+    throw new Error(`Room lookup failed ${response.status}`)
+  }
+
+  return await response.json() as LoftRoomPayload
+}
+
+async function fetchLoftRooms(): Promise<LoftRoomListEntry[]> {
+  const response = await fetch('/api/rooms')
+
+  if (!response.ok) {
+    throw new Error(`Room list failed ${response.status}`)
+  }
+
+  return (await response.json() as { rooms: LoftRoomListEntry[] }).rooms
+}
+
+async function claimLoftRoom(slug: string, password: string): Promise<LoftRoomPayload> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(slug)}/claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Room claim failed ${response.status}`)
+  }
+
+  return await response.json() as LoftRoomPayload
+}
+
+async function deleteLoftRoom(slug: string, pass: string) {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(slug)}`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ pass }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Room delete failed ${response.status}`)
+  }
+}
+
+async function setLoftMusic(slug: string, pass: string, source: string): Promise<LoftRoomPayload> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(slug)}/music`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ pass, source }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Room music failed ${response.status}`)
+  }
+
+  return await response.json() as LoftRoomPayload
+}
+
+async function updateLoftMusic(pass: string, source: string) {
+  if (appSpace.kind !== 'loft') {
+    throw new Error('Room music can only be set inside a loft')
+  }
+
+  const room = await setLoftMusic(appSpace.slug, pass, source)
+
+  appSpace = {
+    displaySlug: room.displaySlug,
+    kind: 'loft',
+    musicKind: room.musicKind,
+    musicSource: room.musicSource,
+    slug: room.slug,
+  }
+  adminMusicInput.value = room.musicSource
+  loftMusicSource.value = room.musicSource
+  djVideoUi.setZoneFromPosition()
+}
+
+async function submitLoftMusicDialog() {
+  await updateLoftMusic(loftMusicPassword.value, loftMusicSource.value)
+  loftMusicDialog.close()
+  canvas.focus()
+}
+
+function openLoftMusicDialog() {
+  if (appSpace.kind !== 'loft') {
+    throw new Error('Loft music dialog can only open inside a loft')
+  }
+
+  localCharacter.stopMoving()
+  multiplayer.sendMotion()
+  loftMusicSource.value = appSpace.musicSource
+  loftMusicDialog.showModal()
+  loftMusicPassword.focus()
+}
+
+function isInLoftMusicSpot() {
+  return appSpace.kind === 'loft'
+    && Math.abs(characterPosition[0] - loftVideoWall.x) <= loftVideoWall.width * 0.5
+    && characterPosition[2] >= loftVideoWall.z + 0.35
+    && characterPosition[2] <= loftDjBooth.z - loftDjBooth.depth * 0.18
+}
+
+function isAtLoftExitDoor() {
+  return appSpace.kind === 'loft'
+    && Math.abs(characterPosition[0] - loftDoor.x) <= loftDoor.width * 0.5
+    && characterPosition[2] >= loftBounds.front - 1.05
+}
+
+function activateLoft(room: LoftRoomPayload, push: boolean) {
+  if (appSpace.kind === 'main') {
+    rememberMainPose()
+  }
+  loadLoftStatuesOnce()
+  appSpace = {
+    displaySlug: room.displaySlug,
+    kind: 'loft',
+    musicKind: room.musicKind,
+    musicSource: room.musicSource,
+    slug: room.slug,
+  }
+  if (push && location.pathname !== `/${room.displaySlug}`) {
+    history.pushState(null, '', `/${room.displaySlug}`)
+  }
+  activeRoom = 0
+  requestedRoom = 0
+  applySceneBuffers()
+  moveToLoft()
+  resetLocalSpaceState()
+  connectMultiplayer(room.slug)
+  syncSpaceUi()
+}
+
+function enterMain(push: boolean) {
+  if (appSpace.kind === 'main' && !push) {
+    return
+  }
+
+  appSpace = { kind: 'main' }
+  if (push && location.pathname !== '/') {
+    history.pushState(null, '', '/')
+  }
+  applySceneBuffers()
+  restoreMainPose()
+  resetLocalSpaceState()
+  connectMultiplayer()
+  syncSpaceUi()
+}
+
+function resetLocalSpaceState() {
+  const freshBalls = createBeachBalls()
+
+  for (const ball of freshBalls) {
+    const target = beachBalls[ball.id]!
+
+    target.position[0] = ball.position[0]
+    target.position[1] = ball.position[1]
+    target.position[2] = ball.position[2]
+    target.velocity[0] = ball.velocity[0]
+    target.velocity[1] = ball.velocity[1]
+    target.velocity[2] = ball.velocity[2]
+  }
+  beachBallAuthorityUntil.clear()
+  updateBeachBallBuffer()
+}
+
+function syncSpaceUi() {
+  loftExit.hidden = appSpace.kind !== 'loft'
+  document.documentElement.dataset.space = appSpace.kind
+  wasInLoftMusicSpot = false
+  djVideoUi.setZoneFromPosition()
+}
 
 const styleActions: Record<
   'cycleHair' | 'cycleHairColor' | 'cycleSkin' | 'cycleIdle' | 'cycleShirt' | 'cyclePants' | 'cycleAccessory',
@@ -1205,7 +1899,11 @@ function syncNickname(value = activeNicknameInput().value) {
   }
 }
 
-function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(roomAt(characterPosition))) {
+function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoomIndex()) {
+  if (appSpace.kind === 'loft') {
+    return
+  }
+
   saveClubState({
     camera: cameraController,
     characterAssetsLoaded,
@@ -1222,7 +1920,8 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = roomIndex(r
 }
 
 bindKeyboardInput({
-  activeInputs: [introNicknameInput, nicknameInput, chatInput],
+  activeInputs: [introNicknameInput, nicknameInput, chatInput, rentRoomInput, claimPassword, loftMusicPassword,
+    loftMusicSource],
   keys,
   startJumping: () => localCharacter.startJumping(),
   stopJumping: () => localCharacter.stopJumping(),
@@ -1268,6 +1967,10 @@ bindTapDestination({
 canvas.addEventListener('contextmenu', event => event.preventDefault())
 
 canvas.addEventListener('pointerdown', event => {
+  if (appSpace.kind === 'loft') {
+    return
+  }
+
   if (event.pointerType === 'mouse' && event.button !== 0) {
     return
   }
@@ -1312,6 +2015,10 @@ canvas.addEventListener('pointercancel', event => {
 }, { capture: true })
 
 function sprayAt(clientX: number, clientY: number) {
+  if (appSpace.kind === 'loft') {
+    return
+  }
+
   const stamp = performance.now()
 
   if (stamp < lastSprayAt + sprayInterval) {
@@ -1477,8 +2184,22 @@ const draw = (stamp: number) => {
   bloomScale.update(delta, stamp)
   clubGlobal.clubPixelRatio = pixelRatio.ratio()
   resize()
-  localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, occupiedSeats,
+  const inLoft = appSpace.kind === 'loft'
+
+  localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
     seat => takeNpcSeat(npcPlayers, seat, stamp * 0.001, outsideTree, occupiedSeats))
+  if (isAtLoftExitDoor()) {
+    enterMain(true)
+    frameId = requestAnimationFrame(draw)
+    clubGlobal.clubFrameId = frameId
+    return
+  }
+  const inLoftMusicSpot = isInLoftMusicSpot()
+
+  if (inLoftMusicSpot && !wasInLoftMusicSpot && !loftMusicDialog.open) {
+    openLoftMusicDialog()
+  }
+  wasInLoftMusicSpot = inLoftMusicSpot
   updateFeedbackToiletVisit(stamp)
   updateFeedbackAmount(stamp)
   const sitting = localCharacter.mode === 'manSitting' || localCharacter.mode === 'womanSitting'
@@ -1498,8 +2219,10 @@ const draw = (stamp: number) => {
     feedbackSitSeconds = 0
     feedbackSitReset = false
   }
-  updateBeachBalls(beachBalls, delta, outsideTree)
-  const hits = hitBeachBalls(beachBalls, characterPosition)
+  if (!inLoft) {
+    updateBeachBalls(beachBalls, delta, outsideTree)
+  }
+  const hits = inLoft ? [] : hitBeachBalls(beachBalls, characterPosition)
 
   for (const id of hits) {
     beachBallAuthorityUntil.set(id, stamp + beachBallAuthorityDuration)
@@ -1512,10 +2235,10 @@ const draw = (stamp: number) => {
     }
   }
   // logPlayerPoseEvery(stamp)
-  const zone = roomAt(characterPosition)
-  const room = roomIndex(zone)
+  const zone = currentVideoZone()
+  const room = currentRoomIndex()
 
-  if (room !== requestedRoom) {
+  if (!inLoft && room !== requestedRoom) {
     requestedRoom = room
     multiplayer.sendMotion()
     multiplayer.sendRoomChange(room)
@@ -1525,16 +2248,20 @@ const draw = (stamp: number) => {
     multiplayer.sendMotionIfKeysChanged()
   }
 
-  updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
+  if (!inLoft) {
+    updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
+  }
   updateRemotePlayers(multiplayer.players.values(), delta, outsideTree)
   syncNicknameLabels()
   takeRemoteSeats()
   renderPlayers.length = 0
-  renderPlayers.push(...npcPlayers, ...multiplayer.players.values())
+  renderPlayers.push(...(inLoft ? [] : npcPlayers), ...multiplayer.players.values())
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
-    || dancing, localCharacter.jumping)
-  saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
+    || dancing, localCharacter.jumping, inLoft)
+  if (!inLoft) {
+    saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
+  }
   const camera = cameraController.get()
   strobeController.updateInstances(stamp * 0.001, zone)
   const lightCount = lightPoints.length / vertexSize
@@ -1547,7 +2274,7 @@ const draw = (stamp: number) => {
   chatUi.update(projector, stamp)
   updateAdminIdLabels(projector)
 
-  const outside = isOutside(characterPosition)
+  const outside = !inLoft && isOutside(characterPosition)
   const moving = lengthSq(localCharacter.input) > 0
 
   if (outside && !wasOutside && moving) {
@@ -1561,7 +2288,7 @@ const draw = (stamp: number) => {
   }
 
   wasOutside = outside
-  const sky = zone === 'outside' && usesSkyBackground(camera)
+  const sky = !inLoft && zone === 'outside' && usesSkyBackground(camera)
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateBeachBallBuffer()
@@ -1609,7 +2336,7 @@ const draw = (stamp: number) => {
     renderZone: renderZoneIndex(zone),
     points,
     beachBallPoints,
-    graffitiPoints,
+    graffitiPoints: inLoft ? emptyPoints : graffitiPoints,
     graffitiTexture,
     post: {
       bloom: postBloom,
@@ -1633,6 +2360,7 @@ const draw = (stamp: number) => {
       treeShadowSampler,
       viewProjection,
     },
+    skyline: inLoft,
     sky,
     smoke: {
       map: smokeMap,
@@ -1659,6 +2387,13 @@ const draw = (stamp: number) => {
 }
 
 function updateBeachBallBuffer() {
+  if (appSpace.kind === 'loft') {
+    beachBallPoints = emptyPoints
+    gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
+    return
+  }
+
   const points: Vertex[] = []
 
   addBeachBallGeometry(points, beachBalls)
@@ -1669,6 +2404,7 @@ function updateBeachBallBuffer() {
 
 function repaintGraffitiTexture() {
   graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
+  paintLoftPaintingTextures(graffitiContext)
   paintGraffitiTexture(graffitiSplats)
 }
 
@@ -1679,6 +2415,7 @@ function scheduleGraffitiTexturePaint(splats: import('./types.ts').GraffitiSplat
 
   if (clear) {
     graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
+    paintLoftPaintingTextures(graffitiContext)
   }
 
   function paintNext() {
@@ -1703,6 +2440,7 @@ function scheduleGraffitiTexturePaint(splats: import('./types.ts').GraffitiSplat
 
 function paintGraffitiTexture(splats: import('./types.ts').GraffitiSplat[]) {
   graffitiPaintId++
+  paintLoftPaintingTextures(graffitiContext)
   paintGraffitiSplats(graffitiContext, splats)
   gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
@@ -1865,6 +2603,105 @@ loadStaticFbxObjects(vertices, '/rocks.fbx', rockPlacements().map(rock => ({
 })), addSunLitTriangle)
   .then(() => {
     rocksLoaded = true
+    refreshRoomBuffer()
+  })
+  .catch((error: unknown) => {
+    console.error(error)
+  })
+
+function loftPlantMeshColor(meshIndex: number): Vec3 {
+  const colors: Vec3[] = [
+    [0.018, 0.015, 0.012],
+    [0.055, 0.055, 0.05],
+    [0.025, 0.018, 0.012],
+    [0.05, 0.22, 0.08],
+    [0.14, 0.56, 0.18],
+  ]
+
+  return colors[meshIndex] ?? [0.14, 0.56, 0.18]
+}
+
+function addLoftPlantTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
+  addLoftNeutralTriangle(target, a, b, c, color, 0.18)
+}
+
+function addLoftNeutralTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, greenBoost = 0) {
+  addLoftShadedTriangle(target, a, b, c, color, 0.44, 0.42, greenBoost)
+}
+
+function addLoftShadedTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3, base: number, range: number,
+  greenBoost = 0)
+{
+  const ux = c[0] - a[0]
+  const uy = c[1] - a[1]
+  const uz = c[2] - a[2]
+  const vx = b[0] - a[0]
+  const vy = b[1] - a[1]
+  const vz = b[2] - a[2]
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  const normalLength = Math.sqrt(nx * nx + ny * ny + nz * nz)
+
+  if (normalLength === 0) {
+    throw new Error('Cannot shade zero-area plant triangle')
+  }
+
+  const lift = Math.max(0, ny / normalLength)
+  const light = base + lift * range
+  const shade: Vec3 = [
+    Math.min(color[0] * light, 1),
+    Math.min(color[1] * (light + greenBoost), 1),
+    Math.min(color[2] * light, 1),
+  ]
+
+  target.push(
+    [a[0], a[1], a[2], shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+    [b[0], b[1], b[2], shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+    [c[0], c[1], c[2], shade[0], shade[1], shade[2], 0, 0, 0, 0, 0],
+  )
+}
+
+function addLoftStatueTriangle(target: Vertex[], a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
+  addLoftShadedTriangle(target, a, b, c, color, 0.34, 1.18)
+}
+
+let loftStatuesLoad: Promise<void> | undefined
+
+function loadLoftStatuesOnce() {
+  loftStatuesLoad ??= Promise.all(loftCornerFigures.map((figure, index) =>
+    loadStaticFbxObjectWithPose(loftVertices, {
+      animationPath: '/idle.fbx',
+      animationTime: 0,
+      color: [0.82, 0.82, 0.78],
+      height: 2.55,
+      lightBounds: figure,
+      nodeTransforms: true,
+      path: index === 0 ? '/arissa.fbx' : '/medea.fbx',
+      position: [figure.x, characterFloor + 0.43, figure.z],
+      sourceUp: 'y',
+      turn: Math.PI,
+    }, addLoftStatueTriangle)
+  ))
+    .then(() => {
+      refreshRoomBuffer()
+    })
+    .catch((error: unknown) => {
+      console.error(error)
+    })
+}
+
+loadStaticFbxObjects(loftVertices, '/plant.fbx', loftPlants.map((plant, index) => ({
+  color: loftPlantMeshColor,
+  height: 1.75,
+  lightBounds: plant,
+  nodeTransforms: true,
+  path: '/plant.fbx',
+  position: [plant.x, characterFloor, plant.z],
+  sourceUp: 'y',
+  turn: index === 0 ? 0.35 : -0.35,
+})), addLoftPlantTriangle)
+  .then(() => {
     refreshRoomBuffer()
   })
   .catch((error: unknown) => {
