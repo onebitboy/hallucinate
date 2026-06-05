@@ -68,6 +68,7 @@ import { loadOutsideTree } from './tree-world.ts'
 import type {
   CircleBounds,
   ClubGlobal,
+  GraffitiSplat,
   Player,
   Vec3,
   Vertex,
@@ -1487,14 +1488,19 @@ let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
-const graffitiSplats: import('./types.ts').GraffitiSplat[] = []
+const graffitiSplats: GraffitiSplat[] = []
 const graffitiIds = new Set<number>()
 let nextRemoteSeatSyncAt = 0
 let graffitiSeed = Math.floor(Math.random() * 65536)
 let lastSprayAt = 0
 let sprayPointer = 0
 const sprayInterval = 55
-let graffitiPaintId = 0
+const graffitiPaintChunk = 1400
+const graffitiAppendQueue: GraffitiSplat[] = []
+let graffitiAppendIndex = 0
+let graffitiPaintFrame = 0
+let graffitiPaintRebuild = false
+let graffitiPaintRebuildIndex = 0
 
 function connectMultiplayer(spaceSlug?: string) {
   if (hasMultiplayer) {
@@ -1598,11 +1604,10 @@ function connectMultiplayer(spaceSlug?: string) {
       }
     },
     onGraffiti: splats => {
-      const appended: import('./types.ts').GraffitiSplat[] = []
+      const appended: GraffitiSplat[] = []
       const optimisticSplats = new Map(graffitiSplats
         .map((splat, index) => [splat.id === 0 ? graffitiKey(splat) : '', index] as const)
         .filter(([key]) => key !== ''))
-      let rebuild = false
 
       for (const splat of splats) {
         if (graffitiIds.has(splat.id)) {
@@ -1622,13 +1627,11 @@ function connectMultiplayer(spaceSlug?: string) {
         }
       }
 
-      rebuild ||= enforceGraffitiCap()
-
-      if (rebuild) {
-        scheduleGraffitiTexturePaint(graffitiSplats, true)
+      if (enforceGraffitiCap()) {
+        repaintGraffitiTexture()
       }
       else if (appended.length > 0) {
-        scheduleGraffitiTexturePaint(appended, false)
+        scheduleGraffitiTexturePaint(appended)
       }
     },
     videoProgress: () => djVideoUi.progress(),
@@ -2290,18 +2293,18 @@ function sprayAt(clientX: number, clientY: number) {
     repaintGraffitiTexture()
   }
   else {
-    paintGraffitiTexture([splat])
+    scheduleGraffitiTexturePaint([splat])
   }
   multiplayer.sendGraffiti([splat])
 }
 
-function addGraffitiId(splat: import('./types.ts').GraffitiSplat) {
+function addGraffitiId(splat: GraffitiSplat) {
   if (splat.id !== 0) {
     graffitiIds.add(splat.id)
   }
 }
 
-function deleteGraffitiId(splat: import('./types.ts').GraffitiSplat) {
+function deleteGraffitiId(splat: GraffitiSplat) {
   if (splat.id !== 0) {
     graffitiIds.delete(splat.id)
   }
@@ -2321,7 +2324,7 @@ function enforceGraffitiCap() {
   return true
 }
 
-function graffitiKey(splat: import('./types.ts').GraffitiSplat) {
+function graffitiKey(splat: GraffitiSplat) {
   return `${splat.wall}:${splat.x}:${splat.y}:${splat.seed}:${splat.colorIndex}:${splat.radius}`
 }
 
@@ -2743,45 +2746,83 @@ function updateBeachBallBuffer() {
 }
 
 function repaintGraffitiTexture() {
-  graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
-  paintLoftPaintingTextures(graffitiContext)
-  paintGraffitiTexture(graffitiSplats)
+  graffitiPaintRebuild = true
+  graffitiPaintRebuildIndex = 0
+  graffitiAppendQueue.length = 0
+  graffitiAppendIndex = 0
+  scheduleGraffitiTextureFrame()
 }
 
-function scheduleGraffitiTexturePaint(splats: import('./types.ts').GraffitiSplat[], clear: boolean) {
-  const paintId = ++graffitiPaintId
-  const chunk = 1400
-  let index = 0
+function scheduleGraffitiTexturePaint(splats: GraffitiSplat[]) {
+  if (!graffitiPaintRebuild) {
+    graffitiAppendQueue.push(...splats)
+  }
 
-  if (clear) {
+  scheduleGraffitiTextureFrame()
+}
+
+function scheduleGraffitiTextureFrame() {
+  if (graffitiPaintFrame === 0) {
+    graffitiPaintFrame = requestAnimationFrame(paintGraffitiTextureFrame)
+  }
+}
+
+function paintGraffitiTextureFrame() {
+  graffitiPaintFrame = 0
+
+  if (graffitiPaintRebuild) {
+    paintGraffitiTextureRebuildFrame()
+    return
+  }
+
+  paintGraffitiTextureAppendFrame()
+}
+
+function paintGraffitiTextureRebuildFrame() {
+  if (graffitiPaintRebuildIndex === 0) {
     graffitiContext.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height)
     paintLoftPaintingTextures(graffitiContext)
   }
 
-  function paintNext() {
-    if (paintId !== graffitiPaintId) {
-      return
-    }
+  const end = Math.min(graffitiPaintRebuildIndex + graffitiPaintChunk, graffitiSplats.length)
 
-    paintGraffitiSplats(graffitiContext, splats.slice(index, index + chunk))
-    index += chunk
+  paintGraffitiSplats(graffitiContext, graffitiSplats.slice(graffitiPaintRebuildIndex, end))
+  graffitiPaintRebuildIndex = end
+  uploadGraffitiTexture()
 
-    if (index < splats.length) {
-      requestAnimationFrame(paintNext)
-      return
-    }
-
-    gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
+  if (graffitiPaintRebuildIndex < graffitiSplats.length) {
+    scheduleGraffitiTextureFrame()
+    return
   }
 
-  requestAnimationFrame(paintNext)
+  graffitiPaintRebuild = false
+  graffitiPaintRebuildIndex = 0
+  paintGraffitiTextureAppendFrame()
 }
 
-function paintGraffitiTexture(splats: import('./types.ts').GraffitiSplat[]) {
-  graffitiPaintId++
-  paintLoftPaintingTextures(graffitiContext)
-  paintGraffitiSplats(graffitiContext, splats)
+function paintGraffitiTextureAppendFrame() {
+  if (graffitiAppendIndex >= graffitiAppendQueue.length) {
+    graffitiAppendQueue.length = 0
+    graffitiAppendIndex = 0
+    return
+  }
+
+  const end = Math.min(graffitiAppendIndex + graffitiPaintChunk, graffitiAppendQueue.length)
+
+  paintGraffitiSplats(graffitiContext, graffitiAppendQueue.slice(graffitiAppendIndex, end))
+  graffitiAppendIndex = end
+  uploadGraffitiTexture()
+
+  if (graffitiAppendIndex < graffitiAppendQueue.length) {
+    scheduleGraffitiTextureFrame()
+    return
+  }
+
+  graffitiAppendQueue.length = 0
+  graffitiAppendIndex = 0
+}
+
+function uploadGraffitiTexture() {
   gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, graffitiCanvas)
 }

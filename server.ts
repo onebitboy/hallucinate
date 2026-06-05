@@ -381,7 +381,7 @@ const server = Bun.serve<SocketData>({
             }
           }
           catch (e) {
-            void e
+            console.error(e)
           }
 
           return
@@ -2093,7 +2093,9 @@ function banClients(space: SpaceState, id: number, banned: Client[], globalAdmin
 
 function broadcastGraffiti(splats: GraffitiSplat[]) {
   for (const client of clients.values()) {
-    sendGraffitiSplats(client.socket, splats)
+    if (client.spaceKey === mainSpace.key) {
+      sendGraffitiSplats(client.socket, splats)
+    }
   }
 }
 
