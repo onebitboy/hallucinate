@@ -197,6 +197,23 @@ canvas {
   display: none;
 }
 
+#intro-github {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + var(--app-bottom));
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  transform: translateX(-50%);
+}
+
+#intro-github-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
 #intro-track {
   height: 8px;
   overflow: hidden;

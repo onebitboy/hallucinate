@@ -21,6 +21,8 @@ export function getDomElements() {
   const introLogoSubtext = document.createElement('div')
   const introNicknameInput = document.createElement('input')
   const introStart = document.createElement('button')
+  const introGithub = document.createElement('a')
+  const introGithubIcon = document.createElement('img')
   const introTrack = document.createElement('div')
   const introBar = document.createElement('div')
   const introProgress = document.createElement('div')
@@ -77,6 +79,8 @@ export function getDomElements() {
   introLogoSubtext.id = 'intro-logo-subtext'
   introNicknameInput.id = 'intro-nickname-input'
   introStart.id = 'intro-start'
+  introGithub.id = 'intro-github'
+  introGithubIcon.id = 'intro-github-icon'
   introTrack.id = 'intro-track'
   introBar.id = 'intro-bar'
   introProgress.id = 'intro-progress'
@@ -88,6 +92,12 @@ export function getDomElements() {
   introNicknameInput.setAttribute('enterkeyhint', 'done')
   introStart.type = 'button'
   introStart.textContent = 'enter'
+  introGithub.href = 'https://github.com/stagas/hallucinate'
+  introGithub.target = '_blank'
+  introGithub.rel = 'noopener noreferrer'
+  introGithub.setAttribute('aria-label', 'GitHub')
+  introGithubIcon.src = '/github.svg'
+  introGithubIcon.alt = ''
   introProgress.textContent = '0%'
 
   chatForm.append(nicknameInput, chatInput, chatSubmit)
@@ -96,7 +106,8 @@ export function getDomElements() {
   introLogo.append(introLogoTitle, introLogoSubtext)
   introTrack.append(introBar)
   introPanel.append(introLogo, introTrack, introProgress, introNicknameInput, introStart)
-  intro.append(introPanel)
+  introGithub.append(introGithubIcon)
+  intro.append(introPanel, introGithub)
   document.body.prepend(canvas, djVideo, chatForm, chatBubble, onlineIndicator, reactionButtons, roomsButton,
     supportLink, intro)
 
