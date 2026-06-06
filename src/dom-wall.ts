@@ -19,11 +19,18 @@ type Camera = {
 }
 
 type StyleName = 'height' | 'opacity' | 'pointerEvents' | 'transform' | 'width'
+type HiddenStyle = {
+  height?: string
+  opacity?: string
+  transform?: string
+  width?: string
+}
 
 const defaultMinDepth = 0.05
 const defaultScale = 120
 
 export function createDomWallProjection(element: HTMLElement, options: {
+  hidden?: HiddenStyle
   hiddenOpacity?: string
   minDepth?: number
   opacity?: string
@@ -31,7 +38,8 @@ export function createDomWallProjection(element: HTMLElement, options: {
   scale?: number
 } = {}) {
   const setStyle = createStyleSetter<StyleName>(element.style)
-  const hiddenOpacity = options.hiddenOpacity ?? '0'
+  const hidden = options.hidden
+  const hiddenOpacity = hidden?.opacity ?? options.hiddenOpacity ?? '0'
   const minDepth = options.minDepth ?? defaultMinDepth
   const opacity = options.opacity ?? '1'
   const pointerEvents = options.pointerEvents
@@ -52,14 +60,14 @@ export function createDomWallProjection(element: HTMLElement, options: {
 
   return {
     hide() {
-      setStyle('opacity', hiddenOpacity)
+      applyHiddenStyle()
       if (pointerEvents) {
         setStyle('pointerEvents', 'none')
       }
     },
     update(camera: Camera, projector: WallProjector, wall: DomWall) {
       if (!domWallFacesCamera(camera, wall)) {
-        setStyle('opacity', hiddenOpacity)
+        applyHiddenStyle()
         if (pointerEvents) {
           setStyle('pointerEvents', 'none')
         }
@@ -94,6 +102,19 @@ export function createDomWallProjection(element: HTMLElement, options: {
 
       return true
     },
+  }
+
+  function applyHiddenStyle() {
+    setStyle('opacity', hiddenOpacity)
+    if (hidden?.width) {
+      setStyle('width', hidden.width)
+    }
+    if (hidden?.height) {
+      setStyle('height', hidden.height)
+    }
+    if (hidden?.transform) {
+      setStyle('transform', hidden.transform)
+    }
   }
 }
 

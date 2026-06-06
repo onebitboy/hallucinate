@@ -22,13 +22,20 @@ type PhotoPage = {
 }
 
 type PhotoElement = {
+  decodeId: number
   image: HTMLImageElement
   item: HTMLDivElement
+  photo?: Photo
   url: string
 }
 
 const refreshInterval = 30_000
-const hiddenPhotoWallOpacity = '0.001'
+const hiddenPhotoWallOpacity = '0.01'
+const parkedPhotoWallSize = 12
+const photoWallColumns = 3
+const photoWallRows = 3
+const visiblePhotoSlots = photoWallColumns * photoWallRows
+const photoLoadAheadSlots = visiblePhotoSlots
 const viewerMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const viewerMotionDuration = 560
 const viewerSlideDuration = 420
@@ -38,7 +45,16 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   alternativeInput: () => boolean
   recoverFocus?: () => void
 }) {
-  const projection = createDomWallProjection(element, { hiddenOpacity: hiddenPhotoWallOpacity, opacity: '0.92' })
+  const parkedPhotoWallSizePx = `${parkedPhotoWallSize}px`
+  const projection = createDomWallProjection(element, {
+    hidden: {
+      height: parkedPhotoWallSizePx,
+      opacity: hiddenPhotoWallOpacity,
+      transform: `translate3d(calc(100dvw - ${parkedPhotoWallSizePx}), calc(100dvh - ${parkedPhotoWallSizePx}), 0)`,
+      width: parkedPhotoWallSizePx,
+    },
+    opacity: '0.92',
+  })
   const panel = document.createElement('div')
   const grid = document.createElement('div')
   const viewer = document.createElement('dialog')
@@ -48,7 +64,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const viewerPrevious = document.createElement('button')
   const viewerNext = document.createElement('button')
   const viewerClose = document.createElement('button')
-  const photoElements = new Map<number, PhotoElement>()
+  const photoElements: PhotoElement[] = []
+  let activePhotoIndexes = new Set<number>()
   let viewerAnimation: Animation | undefined
   let viewerClosing = false
   let viewerSlideBusy = false
@@ -92,9 +109,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   element.append(panel)
   document.body.append(viewer)
 
-  grid.addEventListener('scroll', () => {
-    checkPhotoWallScroll()
-  })
+  grid.addEventListener('scroll', handlePhotoWallScroll)
   viewerClose.addEventListener('click', () => {
     closeViewer()
   })
@@ -241,38 +256,28 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       grid.scrollTop = 0
     }
 
-    const visiblePhotos = new Set<number>()
+    const count = Math.max(page.photos.length, page.total)
 
-    for (let i = 0; i < page.photos.length; i++) {
-      const photo = page.photos[i]!
-      const element = photoElements.get(photo.timestamp) ?? createPhotoElement()
+    for (let i = 0; i < count; i++) {
+      const photo = page.photos[i]
+      const element = photoElements[i] ?? createPhotoElement()
 
-      visiblePhotos.add(photo.timestamp)
-      photoElements.set(photo.timestamp, element)
-      syncPhotoElement(element, photo, i)
-      element.item.onclick = () => {
-        openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
-      }
-      element.item.onkeydown = event => {
-        if (event.key !== 'Enter' && event.key !== ' ') {
-          return
-        }
-
-        event.preventDefault()
-        openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
-      }
+      photoElements[i] = element
+      syncPhotoElement(element, photo)
 
       if (grid.children[i] !== element.item) {
         grid.insertBefore(element.item, grid.children[i] ?? null)
       }
     }
 
-    for (const [timestamp, element] of photoElements) {
-      if (!visiblePhotos.has(timestamp)) {
-        element.item.remove()
-        photoElements.delete(timestamp)
-      }
+    for (let i = count; i < photoElements.length; i++) {
+      const element = photoElements[i]!
+
+      unloadPhotoElement(element)
+      element.item.remove()
     }
+    photoElements.length = count
+    activePhotoIndexes = new Set([...activePhotoIndexes].filter(index => index < count))
 
     if (scrollTop !== undefined) {
       grid.scrollTop = scrollTop
@@ -286,7 +291,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
         grid.scrollTop = scrollTop
       }
 
-      checkPhotoWallScroll()
+      handlePhotoWallScroll()
     })
   }
 
@@ -299,9 +304,64 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function checkPhotoWallScroll() {
-    if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192) {
+    const range = visiblePhotoRange()
+
+    if (range.end + photoLoadAheadSlots >= page.photos.length || grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192) {
       void loadMorePhotos()
     }
+  }
+
+  function handlePhotoWallScroll() {
+    syncVisiblePhotos()
+    checkPhotoWallScroll()
+  }
+
+  function syncVisiblePhotos() {
+    const range = visiblePhotoRange()
+    const nextIndexes = new Set<number>()
+
+    for (let i = range.start; i < range.end; i++) {
+      nextIndexes.add(i)
+    }
+
+    for (const index of activePhotoIndexes) {
+      if (!nextIndexes.has(index)) {
+        syncPhotoVisibility(index, false)
+      }
+    }
+    for (const index of nextIndexes) {
+      syncPhotoVisibility(index, true)
+    }
+
+    activePhotoIndexes = nextIndexes
+  }
+
+  function visiblePhotoRange() {
+    const rowHeight = grid.clientHeight / photoWallRows
+    const row = rowHeight > 0 ? Math.floor(grid.scrollTop / rowHeight) : 0
+    const start = Math.max(0, row * photoWallColumns)
+
+    return {
+      end: Math.min(start + visiblePhotoSlots, photoElements.length),
+      start,
+    }
+  }
+
+  function syncPhotoVisibility(index: number, active: boolean) {
+    const element = photoElements[index]
+    const photo = element?.photo
+
+    if (!element) {
+      throw new Error(`Missing photo wall element ${index}`)
+    }
+
+    element.item.tabIndex = active && photo ? 0 : -1
+    if (active && photo) {
+      loadPhotoElement(element, photo)
+      return
+    }
+
+    unloadPhotoElement(element)
   }
 
   function createPhotoElement(): PhotoElement {
@@ -309,27 +369,75 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     const image = document.createElement('img')
 
     item.className = 'photo-wall-item'
-    item.tabIndex = 0
+    item.dataset.ready = 'false'
+    item.tabIndex = -1
     image.decoding = 'async'
+    image.loading = 'eager'
     item.append(image)
 
-    return { image, item, url: '' }
+    return { decodeId: 0, image, item, url: '' }
   }
 
-  function syncPhotoElement(element: PhotoElement, photo: Photo, index: number) {
-    const alt = new Date(photo.createdAt).toLocaleString()
-    const loading = index < 9 ? 'eager' : 'lazy'
+  function syncPhotoElement(element: PhotoElement, photo: Photo | undefined) {
+    element.photo = photo
 
+    if (!photo) {
+      delete element.item.dataset.photo
+      element.item.onclick = null
+      element.item.onkeydown = null
+      element.image.alt = ''
+      element.item.tabIndex = -1
+      unloadPhotoElement(element)
+      return
+    }
+
+    const alt = new Date(photo.createdAt).toLocaleString()
+
+    element.item.dataset.photo = 'true'
     if (element.image.alt !== alt) {
       element.image.alt = alt
     }
-
-    if (element.url !== photo.url) {
-      element.url = photo.url
-      element.image.loading = loading
-      element.image.src = photo.url
-      void element.image.decode().catch(e => console.error(e))
+    element.item.onclick = () => {
+      openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
     }
+    element.item.onkeydown = event => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return
+      }
+
+      event.preventDefault()
+      openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
+    }
+  }
+
+  function loadPhotoElement(element: PhotoElement, photo: Photo) {
+    if (element.url === photo.url) {
+      return
+    }
+
+    element.url = photo.url
+    element.decodeId++
+    element.item.dataset.ready = 'false'
+    const decodeId = element.decodeId
+
+    element.image.onload = () => {
+      if (element.decodeId === decodeId && element.url === photo.url) {
+        element.item.dataset.ready = 'true'
+      }
+    }
+    element.image.onerror = () => {
+      console.error(new Error(`Photo wall image failed ${photo.url}`))
+    }
+    element.image.src = photo.url
+  }
+
+  function unloadPhotoElement(element: PhotoElement) {
+    if (element.url) {
+      element.decodeId++
+      element.url = ''
+      element.image.removeAttribute('src')
+    }
+    element.item.dataset.ready = 'false'
   }
 
   function openViewer(
@@ -345,7 +453,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     if (!viewer.open) {
       viewer.showModal()
     }
-    const targetSourceRect = sourceRect ?? photoElements.get(photo.timestamp)?.image.getBoundingClientRect()
+    const targetSourceRect = sourceRect ?? photoElement(photo)?.image.getBoundingClientRect()
 
     viewerSourceRect = targetSourceRect
     if (animate && targetSourceRect) {
@@ -433,11 +541,15 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     viewerPolaroid.style.setProperty('--photo-viewer-tilt', `${tilt}deg`)
     syncViewerNav(index)
 
-    const source = photoElements.get(photo.timestamp)?.image
+    const source = photoElement(photo)?.image
 
     viewerSourceRect = source?.getBoundingClientRect()
 
     return tilt
+  }
+
+  function photoElement(photo: Photo) {
+    return photoElements.find(element => element.photo?.timestamp === photo.timestamp)
   }
 
   function syncViewerNav(index: number) {

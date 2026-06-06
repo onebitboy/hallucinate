@@ -339,6 +339,10 @@ canvas {
   cursor: pointer;
 }
 
+.photo-wall-item:not([data-photo="true"]) {
+  cursor: default;
+}
+
 .photo-wall-item img {
   display: block;
   width: 100%;
@@ -346,6 +350,11 @@ canvas {
   image-rendering: crisp-edges;
   image-rendering: pixelated;
   object-fit: cover;
+  opacity: 0;
+}
+
+.photo-wall-item[data-ready="true"] img {
+  opacity: 1;
 }
 
 #intro {
