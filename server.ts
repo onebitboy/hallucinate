@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createBeachBalls } from './src/beach-balls.ts'
@@ -150,6 +151,9 @@ const memoryAssetMaxSize = 3 * 1024 * 1024
 const memoryAssets = new Map<string, MemoryAsset>()
 const dbPath = process.env.CLUB_DB ?? join(import.meta.dir, 'data', 'club.sqlite')
 const photoDir = join(import.meta.dir, 'data', 'photos')
+const photoExtension = '.webp'
+const photoExtensions = [photoExtension, '.jpg'] as const
+const photoContentType = 'image/webp'
 const photoPageLimit = 30
 const photoRateLimit = 5
 const photoRateWindowMs = 60 * 60 * 1000
@@ -181,6 +185,12 @@ type MemoryAsset = {
   type: string
   gzip?: ArrayBuffer
   br?: ArrayBuffer
+}
+
+type PhotoExtension = typeof photoExtensions[number]
+type PhotoFile = {
+  extension: PhotoExtension
+  timestamp: number
 }
 
 const server = Bun.serve<SocketData>({
@@ -670,9 +680,9 @@ async function handlePhotoApi(request: Request, url: URL, ip: string) {
     return jsonResponse(listPhotos(photoListOffset(url)))
   }
 
-  const photoFile = apiPhotoFileTimestamp(url.pathname)
+  const photoFile = photoFileRequest(url.pathname)
 
-  if (request.method === 'GET' && photoFile !== undefined) {
+  if (request.method === 'GET' && photoFile) {
     return servePhotoFile(request, photoFile)
   }
 
@@ -710,7 +720,7 @@ async function handlePhotoApi(request: Request, url: URL, ip: string) {
       return new Response('Not Found', { status: 404 })
     }
 
-    await unlink(photoPath(timestamp))
+    await unlink(photoPath(timestamp, existingPhotoExtension(timestamp)))
     db.query('DELETE FROM photos WHERE timestamp = $timestamp').run({ timestamp })
 
     return jsonResponse({ ok: true })
@@ -730,17 +740,19 @@ async function servePhoto(request: Request, url: URL) {
     })
   }
 
-  const timestamp = photoFileTimestamp(url.pathname)
+  const photoFile = photoFileRequest(url.pathname)
 
-  if (timestamp === undefined) {
+  if (!photoFile) {
     return new Response('Not Found', { status: 404 })
   }
 
-  return servePhotoFile(request, timestamp)
+  return servePhotoFile(request, photoFile)
 }
 
-async function servePhotoFile(request: Request, timestamp: number) {
-  return await fileResponse(photoPath(timestamp), request) ?? new Response('Not Found', { status: 404 })
+async function servePhotoFile(request: Request, photoFile: PhotoFile) {
+  return await fileResponse(photoPath(photoFile.timestamp, photoFile.extension), request) ?? new Response('Not Found', {
+    status: 404,
+  })
 }
 
 function listPhotos(offset: number) {
@@ -774,7 +786,7 @@ function photoListOffset(url: URL) {
 }
 
 function photoUploadContentType(request: Request) {
-  return (request.headers.get('content-type') ?? '').toLowerCase().split(';')[0]?.trim() === 'image/jpeg'
+  return (request.headers.get('content-type') ?? '').toLowerCase().split(';')[0]?.trim() === photoContentType
 }
 
 function photoUploadCount(ip: string, since: number) {
@@ -805,24 +817,28 @@ function photoApiTimestamp(path: string) {
   return match ? Number(match[1]) : undefined
 }
 
-function photoFileTimestamp(path: string) {
-  const match = /^\/photos\/(\d+)\.jpg$/.exec(path)
+function photoFileRequest(path: string): PhotoFile | undefined {
+  const match = /^\/(?:api\/)?photos\/(\d+)\.(webp|jpg)$/.exec(path)
 
-  return match ? Number(match[1]) : undefined
+  return match ? { timestamp: Number(match[1]), extension: `.${match[2]}` as PhotoExtension } : undefined
 }
 
-function apiPhotoFileTimestamp(path: string) {
-  const match = /^\/api\/photos\/(\d+)\.jpg$/.exec(path)
+function existingPhotoExtension(timestamp: number) {
+  const extension = photoExtensions.find(extension => existsSync(photoPath(timestamp, extension)))
 
-  return match ? Number(match[1]) : undefined
+  if (!extension) {
+    throw new Error(`Missing photo file ${timestamp}`)
+  }
+
+  return extension
 }
 
-function photoPath(timestamp: number) {
-  return join(photoDir, `${timestamp}.jpg`)
+function photoPath(timestamp: number, extension: PhotoExtension = photoExtension) {
+  return join(photoDir, `${timestamp}${extension}`)
 }
 
 function photoUrl(timestamp: number) {
-  return `/api/photos/${timestamp}.jpg`
+  return `/api/photos/${timestamp}${existingPhotoExtension(timestamp)}`
 }
 
 function jsonResponse(value: unknown, status = 200) {

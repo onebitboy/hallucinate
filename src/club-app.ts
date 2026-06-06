@@ -2653,7 +2653,7 @@ async function capturePhoto() {
     forcedBloomScale = 1
     resize()
     renderPhotoFrame(lastStamp || performance.now(), videoPreview, photoWallPreviewUrls.length > 0)
-    return await canvasJpegBlob(canvas, 0.98)
+    return await canvasWebpBlob(canvas, 0.94)
   }
   finally {
     forcedPixelRatio = previousPixelRatio
@@ -2719,7 +2719,7 @@ async function savePhotoPreview() {
 async function uploadPhoto(photo: Blob) {
   const response = await fetch('/api/photos', {
     method: 'POST',
-    headers: { 'content-type': 'image/jpeg' },
+    headers: { 'content-type': 'image/webp' },
     body: photo,
   })
 
@@ -2766,7 +2766,7 @@ function renderPhotoFrame(stamp: number, videoPreview: VideoPreview | undefined,
   })
 }
 
-function canvasJpegBlob(target: HTMLCanvasElement, quality: number) {
+function canvasWebpBlob(target: HTMLCanvasElement, quality: number) {
   return new Promise<Blob>((resolve, reject) => {
     target.toBlob(blob => {
       if (!blob) {
@@ -2775,7 +2775,7 @@ function canvasJpegBlob(target: HTMLCanvasElement, quality: number) {
       }
 
       resolve(blob)
-    }, 'image/jpeg', quality)
+    }, 'image/webp', quality)
   })
 }
 
