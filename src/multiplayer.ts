@@ -437,7 +437,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     turn: protocolToAngle(packet.angle),
     motionBlend: packet.keys === 0 ? 0 : 1,
     mode: protocolToMode(packet.mode),
-    modeTime: oneShotMode(protocolToMode(packet.mode)) ? 0 : undefined,
+    modeTime: timedMode(protocolToMode(packet.mode)) ? 0 : undefined,
     idleClipIndex: packet.idleClipIndex,
     input: decodeKeys(packet.keys, packet.angle),
     nextDecision: 0,
@@ -462,9 +462,9 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
   player.input = decodeKeys(packet.keys, packet.angle)
   const mode = protocolToMode(packet.mode)
 
-  player.modeTime = oneShotMode(mode)
+  player.modeTime = timedMode(mode)
     ? player.mode === mode
-      ? player.modeTime
+      ? player.modeTime ?? 0
       : 0
     : undefined
   player.mode = mode
@@ -485,7 +485,7 @@ function seatedMode(mode: CharacterMode | undefined) {
   return mode === 'manSitting' || mode === 'womanSitting'
 }
 
-function oneShotMode(mode: CharacterMode | undefined) {
+function timedMode(mode: CharacterMode | undefined) {
   return mode === 'jump' || mode === 'wave' || mode === 'waveOut' || mode === 'breakdance'
 }
 

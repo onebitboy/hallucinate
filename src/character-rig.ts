@@ -181,10 +181,11 @@ export function sampleCharacterPose(
       characterScale, placedPose)
   }
 
+  const waveMode = player.mode === 'wave' || player.mode === 'waveOut'
   const motionBlendKey = blendCache ? Math.round(player.motionBlend * 60) : 0
   const blendKey = cacheFrame * 100 + motionBlendKey
   const blend = blendCache ? motionBlendKey / 60 : player.motionBlend
-  const cached = blendCache?.get(blendKey)
+  const cached = waveMode ? undefined : blendCache?.get(blendKey)
 
   if (cached) {
     return placeCharacterPose(cached, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
@@ -196,7 +197,7 @@ export function sampleCharacterPose(
       player.motionBlend > 0 || player.mode === 'wave' || player.mode === 'waveOut')
   const { stand } = base
 
-  if (player.mode === 'wave' || player.mode === 'waveOut') {
+  if (waveMode) {
     const run = base.run ?? sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet)
     const pose = blendCharacterPose(stand, run, player.motionBlend, characterPoseJoints)
     const wave = sampleClipPose(rig, rig.clips.wave, waveClipTime(player.mode, player.modeTime ?? time),

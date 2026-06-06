@@ -138,6 +138,7 @@ const {
   onlineText,
   reactionButtons,
   breakdanceButton,
+  waveButton,
   photoButton,
   roomsButton,
   supportLink,
@@ -368,6 +369,7 @@ function syncOnlineIndicator() {
   onlineIndicator.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   photoButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   roomsButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   supportLink.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -2657,6 +2659,21 @@ breakdanceButton.addEventListener('click', () => {
   multiplayer.sendMotion()
   canvas.focus()
 })
+
+waveButton.addEventListener('pointerdown', event => {
+  event.preventDefault()
+  waveButton.setPointerCapture(event.pointerId)
+  localCharacter.startWave()
+  multiplayer.sendMotion()
+  canvas.focus()
+})
+
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  waveButton.addEventListener(eventName, () => {
+    localCharacter.stopWave()
+    multiplayer.sendMotion()
+  })
+}
 
 window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && chatUi.isOpen()) {

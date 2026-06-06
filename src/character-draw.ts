@@ -162,6 +162,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
       const sampleKey = playerIdleClipIndex * 1000000 + Math.round(sampledTime * 60)
       const blendKey = sampleKey * 100 + Math.round(player.motionBlend * 60)
       const directClip = usesDirectClip(player)
+      const cachedPose = directClip || usesBlendedPoseCache(player)
       const poseKey = directClip ? directClipPoseKey(player, sampledTime) : sampleKey
       const includeRun = player.motionBlend > 0 || player.mode === 'wave' || player.mode === 'waveOut'
       let sampledBasePose = directClip
@@ -177,10 +178,13 @@ export function buildCharacterDrawData(options: BuildOptions) {
       if (!directClip) {
         usedBasePoseKeys.add(sampleKey)
       }
-      usedNpcBlendKeys.add(directClip ? poseKey : blendKey)
+      if (cachedPose) {
+        usedNpcBlendKeys.add(directClip ? poseKey : blendKey)
+      }
 
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
-        npcBlendCache, poseCache(poses, poseIndex), sampledTime, poseKey, visibility.distanceSq <= farHairDistanceSq)
+        cachedPose ? npcBlendCache : undefined, poseCache(poses, poseIndex), sampledTime, poseKey,
+        visibility.distanceSq <= farHairDistanceSq)
       poseIndex++
     }
   }
@@ -221,6 +225,10 @@ function poseCache(poses: Vec3[][], index: number) {
 function usesDirectClip(character: CharacterInput) {
   return character.mode === 'jump' || character.mode === 'breakdance' || character.mode === 'manSitting'
     || character.mode === 'womanSitting'
+}
+
+function usesBlendedPoseCache(character: CharacterInput) {
+  return character.mode !== 'wave' && character.mode !== 'waveOut'
 }
 
 function directClipPoseKey(character: CharacterInput, time: number) {
