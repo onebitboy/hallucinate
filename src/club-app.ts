@@ -42,9 +42,9 @@ import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, Viewport } from './projection.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
-import { loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall, outsideBounds, outsideBuddha,
-  outsideFoodTruck, outsideFoodTruckFoodWall, outsideFoodTruckTurn, outsidePalmTree, outsideToilets, roomBounds, tent,
-  tentDoorAngle } from './scene-data.ts'
+import { bartenderDrinkWall, loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall,
+  outsideBounds, outsideBuddha, outsideFoodTruck, outsideFoodTruckFoodWall, outsideFoodTruckTurn, outsideHutDrinkWall,
+  outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import {
   isOutside,
@@ -286,8 +286,25 @@ const foodTruckEmojis = [
   '🍩', '🍪', '🧁', '🍰', '🍦', '🍧',
   '🍉', '🍌', '🍓', '🥝', '🍍', '🥤',
 ] as const
-const foodTruckWall = createFoodTruckWall()
+const drinkWallEmojis = [
+  '🍺', '🍻', '🥂', '🍷', '🍸', '🍹',
+  '🍾', '🥃', '🧉', '🍶', '☕', '🧃',
+  '🥤', '🧋', '🍵', '🫖', '🥛', '💧',
+] as const
+const foodTruckWall = createEmojiDomWall('food-truck-wall', 'food-truck-emoji', foodTruckEmojis)
 const foodTruckWallProjection = createDomWallProjection(foodTruckWall, {
+  opacity: '0.94',
+  pointerEvents: 'auto',
+  scale: 112,
+})
+const bartenderDrinkWallElement = createEmojiDomWall('bartender-drink-wall', 'drink-wall-emoji', drinkWallEmojis)
+const bartenderDrinkWallProjection = createDomWallProjection(bartenderDrinkWallElement, {
+  opacity: '0.94',
+  pointerEvents: 'auto',
+  scale: 112,
+})
+const outsideHutDrinkWallElement = createEmojiDomWall('outside-hut-drink-wall', 'drink-wall-emoji', drinkWallEmojis)
+const outsideHutDrinkWallProjection = createDomWallProjection(outsideHutDrinkWallElement, {
   opacity: '0.94',
   pointerEvents: 'auto',
   scale: 112,
@@ -338,15 +355,16 @@ function setupReactionButtons() {
   })
 }
 
-function createFoodTruckWall() {
+function createEmojiDomWall(id: string, buttonClass: string, emojis: readonly string[]) {
   const wall = document.createElement('div')
 
-  wall.id = 'food-truck-wall'
-  for (const emoji of foodTruckEmojis) {
+  wall.id = id
+  wall.className = 'emoji-dom-wall'
+  for (const emoji of emojis) {
     const button = document.createElement('button')
 
     button.type = 'button'
-    button.className = 'food-truck-emoji'
+    button.className = buttonClass
     button.textContent = emoji
     button.setAttribute('aria-label', emoji)
     button.addEventListener('pointerdown', event => event.stopPropagation())
@@ -3075,14 +3093,24 @@ const draw = (stamp: number) => {
   strobeController.updateInstances(stamp * 0.001, zone)
 
   const projector = createWallProjector(camera, projectorViewport, wallProjector)
+  const outside = !inLoft && isOutside(characterPosition)
 
   if (introHidden) {
     djVideoUi.update(camera, projector)
-    if (!inLoft && isOutside(characterPosition)) {
+
+    if (outside) {
       foodTruckWallProjection.update(camera, projector, outsideFoodTruckFoodWall)
+      outsideHutDrinkWallProjection.update(camera, projector, outsideHutDrinkWall)
     }
     else {
       foodTruckWallProjection.hide()
+      outsideHutDrinkWallProjection.hide()
+    }
+    if (!inLoft && !outside) {
+      bartenderDrinkWallProjection.update(camera, projector, bartenderDrinkWall)
+    }
+    else {
+      bartenderDrinkWallProjection.hide()
     }
     if (inLoft) {
       photoWallUi.hide()
@@ -3094,11 +3122,12 @@ const draw = (stamp: number) => {
   else {
     photoWallUi.hide()
     foodTruckWallProjection.hide()
+    bartenderDrinkWallProjection.hide()
+    outsideHutDrinkWallProjection.hide()
   }
   chatUi.update(projector, stamp)
   updateAdminIdLabels(projector)
 
-  const outside = !inLoft && isOutside(characterPosition)
   const moving = lengthSq(localCharacter.input) > 0
 
   if (outside && !wasOutside && moving) {

@@ -7,6 +7,14 @@ export const djSpeakers: Bounds[] = [
   { x: 4.16, z: -21.63, width: 0.71, depth: 0.79 },
 ]
 export const bartenderBar: Bounds = { x: 2.25, z: 2.42, width: 5.2, depth: 0.7 }
+export const bartenderDrinkWall = {
+  x: bartenderBar.x,
+  y: characterFloor + 1.55,
+  z: 3.7,
+  width: bartenderBar.width * 0.84,
+  height: 0.84,
+  normal: [0, 0, -1] as Vec3,
+}
 export const bartenderStools: Bounds[] = [-2.05, -1.15, -0.25, 0.65, 1.55, 2.25].map(offset => ({
   x: bartenderBar.x + offset,
   z: bartenderBar.z - 1.15,
@@ -28,6 +36,14 @@ export const outsideHutBar: Bounds = {
   z: outsideHut.z,
   width: 0.72,
   depth: outsideHut.depth - 1.25,
+}
+export const outsideHutDrinkWall = {
+  x: outsideHut.x - outsideHut.width / 2 + 0.26,
+  y: characterFloor + outsideHutDeckHeight + 1.55,
+  z: outsideHutBar.z,
+  width: outsideHutBar.depth * 0.84,
+  height: 0.84,
+  normal: [1, 0, 0] as Vec3,
 }
 export const outsideHutBarStools: Bounds[] = [-1.35, 0, 1.35].map(offset => ({
   x: outsideHutBar.x + 0.95,

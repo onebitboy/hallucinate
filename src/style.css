@@ -82,13 +82,12 @@ canvas {
   will-change: transform;
 }
 
-#food-truck-wall {
+.emoji-dom-wall {
   position: fixed;
   left: 0;
   top: 0;
   z-index: 64;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
   box-sizing: border-box;
   padding: 8px;
@@ -97,7 +96,17 @@ canvas {
   pointer-events: none;
 }
 
-.food-truck-emoji {
+#food-truck-wall {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+#bartender-drink-wall,
+#outside-hut-drink-wall {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.food-truck-emoji,
+.drink-wall-emoji {
   display: grid;
   place-items: center;
   min-width: 0;
