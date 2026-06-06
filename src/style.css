@@ -270,18 +270,10 @@ canvas {
   display: grid;
   min-height: 0;
   gap: 0;
-  grid-auto-rows: calc(100% / 3);
+  grid-auto-rows: minmax(0, 1fr);
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  overflow-x: hidden;
-  overflow-y: auto;
-  overflow-anchor: none;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-#photo-wall-grid::-webkit-scrollbar {
-  display: none;
+  grid-template-rows: repeat(var(--photo-wall-rows, 3), minmax(0, 1fr));
+  overflow: hidden;
 }
 
 .photo-wall-item {

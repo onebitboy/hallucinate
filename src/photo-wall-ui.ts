@@ -53,7 +53,6 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   let loadingPage: Promise<void> | undefined
   let loaded = false
   let refreshedAt = 0
-  let resetGridScroll = false
 
   panel.id = 'photo-wall-panel'
   grid.id = 'photo-wall-grid'
@@ -85,9 +84,6 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   element.append(panel)
   document.body.append(viewer)
 
-  grid.addEventListener('scroll', () => {
-    checkPhotoWallScroll()
-  })
   viewerClose.addEventListener('click', () => {
     closeViewer()
   })
@@ -138,7 +134,6 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     },
     refresh,
     async refreshLatest() {
-      resetGridScroll = true
       await refresh()
     },
     async previewUrls() {
@@ -152,14 +147,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       render()
     },
     update(camera: Camera, projector: WallProjector) {
-      const wasVisible = visible
-
       visible = projection.update(camera, projector, outsidePhotoWall)
       element.style.pointerEvents = visible ? 'auto' : 'none'
-
-      if (visible && !wasVisible) {
-        resetPhotoWallScroll()
-      }
 
       if (visible && (!loaded || performance.now() - refreshedAt >= refreshInterval)) {
         void refresh()
@@ -207,7 +196,6 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
   async function refreshFirstPage() {
     try {
-      const shouldResetScroll = resetGridScroll || !loaded
       const next = normalizePhotoPage(await fetchPhotoPage(0))
 
       page = loaded
@@ -215,7 +203,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
         : next
       loaded = true
       refreshedAt = performance.now()
-      render(shouldResetScroll)
+      render()
     }
     catch (e) {
       console.error(e)
@@ -223,15 +211,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     finally {
       loading = false
       loadingPage = undefined
-      resetGridScroll = false
     }
   }
 
-  function render(resetScroll = false) {
-    if (resetScroll) {
-      grid.scrollTop = 0
-    }
-
+  function render() {
     grid.replaceChildren()
     photoElements.clear()
 
@@ -262,27 +245,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       grid.append(item)
     }
 
-    requestAnimationFrame(() => {
-      if (resetScroll) {
-        resetPhotoWallScroll()
-      }
-
-      checkPhotoWallScroll()
-    })
-  }
-
-  function resetPhotoWallScroll() {
-    grid.scrollTop = 0
-    requestAnimationFrame(() => {
-      grid.scrollTop = 0
-      requestAnimationFrame(() => grid.scrollTop = 0)
-    })
-  }
-
-  function checkPhotoWallScroll() {
-    if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 192) {
-      void loadMorePhotos()
-    }
+    grid.style.setProperty('--photo-wall-rows', String(Math.max(3, Math.ceil(page.photos.length / 3))))
   }
 
   function openViewer(
