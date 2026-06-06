@@ -152,8 +152,14 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       render()
     },
     update(camera: Camera, projector: WallProjector) {
+      const wasVisible = visible
+
       visible = projection.update(camera, projector, outsidePhotoWall)
       element.style.pointerEvents = visible ? 'auto' : 'none'
+
+      if (visible && !wasVisible) {
+        resetPhotoWallScroll()
+      }
 
       if (visible && (!loaded || performance.now() - refreshedAt >= refreshInterval)) {
         void refresh()
@@ -202,8 +208,11 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   async function refreshFirstPage() {
     try {
       const shouldResetScroll = resetGridScroll || !loaded
+      const next = normalizePhotoPage(await fetchPhotoPage(0))
 
-      page = normalizePhotoPage(await fetchPhotoPage(0))
+      page = loaded
+        ? { ...next, photos: sortedPhotos([...next.photos, ...page.photos]).slice(0, next.total) }
+        : next
       loaded = true
       refreshedAt = performance.now()
       render(shouldResetScroll)
@@ -219,10 +228,15 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function render(resetScroll = false) {
+    if (resetScroll) {
+      grid.scrollTop = 0
+    }
+
     grid.replaceChildren()
     photoElements.clear()
 
-    for (const photo of page.photos) {
+    for (let i = 0; i < page.photos.length; i++) {
+      const photo = page.photos[i]!
       const item = document.createElement('div')
       const image = document.createElement('img')
 
@@ -230,7 +244,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       item.tabIndex = 0
       image.src = photo.url
       image.alt = new Date(photo.createdAt).toLocaleString()
-      image.loading = 'lazy'
+      image.loading = i < 9 ? 'eager' : 'lazy'
       photoElements.set(photo.timestamp, image)
       item.append(image)
       item.addEventListener('click', () => {
@@ -250,11 +264,18 @@ export function createPhotoWallUi(element: HTMLElement, options: {
 
     requestAnimationFrame(() => {
       if (resetScroll) {
-        grid.scrollTop = 0
-        requestAnimationFrame(() => grid.scrollTop = 0)
+        resetPhotoWallScroll()
       }
 
       checkPhotoWallScroll()
+    })
+  }
+
+  function resetPhotoWallScroll() {
+    grid.scrollTop = 0
+    requestAnimationFrame(() => {
+      grid.scrollTop = 0
+      requestAnimationFrame(() => grid.scrollTop = 0)
     })
   }
 

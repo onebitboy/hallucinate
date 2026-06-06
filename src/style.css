@@ -275,6 +275,7 @@ canvas {
   grid-template-rows: repeat(3, minmax(0, 1fr));
   overflow-x: hidden;
   overflow-y: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-width: none;
 }
