@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, unlink } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
@@ -157,8 +157,12 @@ const photoContentType = 'image/webp'
 const photoPageLimit = 30
 const photoRateLimit = 5
 const photoRateWindowMs = 60 * 60 * 1000
+const photoWebpMigrationKey = 'photos:webp-migration:1'
+const photoWebpMigrationLog = '[photos:webp-migration]'
+const photoWebpQuality = 94
 const db = new Database(dbPath, { create: true, strict: true })
 setupDb()
+await migratePhotosToWebp()
 const videoPlaylistRequestInterval = 3000
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
@@ -191,6 +195,10 @@ type PhotoExtension = typeof photoExtensions[number]
 type PhotoFile = {
   extension: PhotoExtension
   timestamp: number
+}
+type PhotoWebpMigration = {
+  completedAt: number
+  count: number
 }
 
 const server = Bun.serve<SocketData>({
@@ -821,6 +829,76 @@ function photoFileRequest(path: string): PhotoFile | undefined {
   const match = /^\/(?:api\/)?photos\/(\d+)\.(webp|jpg)$/.exec(path)
 
   return match ? { timestamp: Number(match[1]), extension: `.${match[2]}` as PhotoExtension } : undefined
+}
+
+async function migratePhotosToWebp() {
+  if (loadJson<PhotoWebpMigration>(photoWebpMigrationKey)) {
+    return
+  }
+
+  await mkdir(photoDir, { recursive: true })
+  const files = await readdir(photoDir)
+  const photos = files
+    .map(file => /^(\d+)\.jpg$/.exec(file))
+    .filter((match): match is RegExpExecArray => !!match)
+    .map(match => Number(match[1]))
+
+  console.log(`${photoWebpMigrationLog} found ${photos.length} legacy jpg photos`)
+
+  for (let i = 0; i < photos.length; i++) {
+    const timestamp = photos[i]!
+
+    console.log(`${photoWebpMigrationLog} ${i + 1}/${photos.length} converting ${timestamp}.jpg`)
+    await migratePhotoToWebp(timestamp)
+    console.log(`${photoWebpMigrationLog} ${i + 1}/${photos.length} wrote ${timestamp}.webp`)
+  }
+
+  saveJson(photoWebpMigrationKey, { completedAt: Date.now(), count: photos.length } satisfies PhotoWebpMigration)
+  console.log(`${photoWebpMigrationLog} completed ${photos.length} photos`)
+}
+
+async function migratePhotoToWebp(timestamp: number) {
+  const source = photoPath(timestamp, '.jpg')
+  const target = photoPath(timestamp, photoExtension)
+  const temporary = join(photoDir, `${timestamp}.tmp.webp`)
+
+  await runFfmpeg([
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-i',
+    source,
+    '-frames:v',
+    '1',
+    '-c:v',
+    'libwebp',
+    '-quality',
+    String(photoWebpQuality),
+    '-compression_level',
+    '6',
+    '-preset',
+    'picture',
+    temporary,
+  ])
+  await rename(temporary, target)
+  await unlink(source)
+}
+
+async function runFfmpeg(args: string[]) {
+  const ffmpeg = Bun.spawn(['ffmpeg', ...args], {
+    stderr: 'pipe',
+    stdout: 'pipe',
+  })
+  const [code, stdout, stderr] = await Promise.all([
+    ffmpeg.exited,
+    new Response(ffmpeg.stdout).text(),
+    new Response(ffmpeg.stderr).text(),
+  ])
+
+  if (code !== 0) {
+    throw new Error(`ffmpeg failed ${code}: ${stderr || stdout}`)
+  }
 }
 
 function existingPhotoExtension(timestamp: number) {

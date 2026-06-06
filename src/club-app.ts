@@ -1,20 +1,10 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
-import { createCameraController } from './camera-controller.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
-import { characterFloor } from './character-data.ts'
 import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
-import type { VertexWriter } from './character-geometry.ts'
-import { createCharacterHairController } from './character-hair-control.ts'
-import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createCharacterStyleController, glowstickColors } from './character-style.ts'
-import { createChatUi } from './chat-ui.ts'
 import { restoreClubState, saveClubState } from './club-persistence.ts'
-import { renderClubFrame } from './club-renderer.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
-import { createDjVideoUi } from './dj-video-ui.ts'
-import { getDomElements } from './dom-elements.ts'
-import { createDomWallProjection } from './dom-wall.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import {
   addGraffitiWallGeometry,
@@ -27,25 +17,35 @@ import {
   paintLoftPaintingTextures,
   sprayWallPoint,
 } from './graffiti.ts'
-import { createHelpUi } from './help-ui.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
-import { createIntroEffect } from './intro-effect.ts'
-import { createLocalCharacter } from './local-character.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
-import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
-import { createPhotoWallUi } from './photo-wall-ui.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
-import { createWallProjector, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, Viewport } from './projection.ts'
-import type { VideoEndedEntry } from './protocol.ts'
+import { createWallProjector, projectWallPointInto } from './projection.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
-import { bartenderDrinkWall, loftBounds, loftCornerFigures, loftDjBooth, loftDoor, loftPlants, loftVideoWall,
-  outsideBounds, outsideBuddha, outsideFoodTruck, outsideFoodTruckFoodWall, outsideFoodTruckTurn, outsideHutDrinkWall,
-  outsidePalmTree, outsideToilets, roomBounds, tent, tentDoorAngle } from './scene-data.ts'
-import { createSceneLighting } from './scene-lighting.ts'
+import {
+  bartenderDrinkWall,
+  loftBounds,
+  loftCornerFigures,
+  loftDjBooth,
+  loftDoor,
+  loftPlants,
+  loftVideoWall,
+  outsideBounds,
+  outsideBuddha,
+  outsideFoodTruck,
+  outsideFoodTruckFoodWall,
+  outsideFoodTruckTurn,
+  outsideHutDrinkWall,
+  outsidePalmTree,
+  outsideToilets,
+  roomBounds,
+  tent,
+  tentDoorAngle,
+} from './scene-data.ts'
 import {
   isOutside,
   roomAt,
@@ -67,9 +67,6 @@ import {
   vertex,
 } from './shaders.ts'
 import { loadStaticFbxObject, loadStaticFbxObjects, loadStaticFbxObjectWithPose } from './static-fbx-object.ts'
-import { createStrobeDrawController } from './strobe-draw.ts'
-import { createStrobeLights } from './strobe-object.ts'
-import { loadOutsideTree } from './tree-world.ts'
 import type {
   CircleBounds,
   ClubGlobal,
@@ -86,7 +83,6 @@ import {
   setupStrobeArray,
   setupVertexArray,
 } from './vertex-array-setup.ts'
-import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 import {
   createCharacterBoxGeometry,
   createProgram,
@@ -96,6 +92,28 @@ import {
   createTreeShadowMap,
   resizeTarget,
 } from './webgl.ts'
+
+import { createCameraController } from './camera-controller.ts'
+import { characterFloor } from './character-data.ts'
+import type { VertexWriter } from './character-geometry.ts'
+import { createCharacterHairController } from './character-hair-control.ts'
+import { createCharacterRenderSystem } from './character-render-system.ts'
+import { createChatUi } from './chat-ui.ts'
+import { renderClubFrame } from './club-renderer.ts'
+import { createDjVideoUi } from './dj-video-ui.ts'
+import { getDomElements } from './dom-elements.ts'
+import { createDomWallProjection } from './dom-wall.ts'
+import { createHelpUi } from './help-ui.ts'
+import { createIntroEffect } from './intro-effect.ts'
+import { createLocalCharacter } from './local-character.ts'
+import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
+import { createPhotoWallUi } from './photo-wall-ui.ts'
+import type { VideoEndedEntry } from './protocol.ts'
+import { createSceneLighting } from './scene-lighting.ts'
+import { createStrobeDrawController } from './strobe-draw.ts'
+import { createStrobeLights } from './strobe-object.ts'
+import { loadOutsideTree } from './tree-world.ts'
+import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
 
@@ -357,7 +375,7 @@ function setupReactionButtons() {
 
   reactionSlotEmojis.forEach((emoji, index) => {
     const button = document.createElement('button')
-    let longPress = 0
+    let longPress: ReturnType<typeof setTimeout> | undefined
     let pickerOpened = false
 
     button.type = 'button'
@@ -2398,7 +2416,7 @@ bindKeyboardInput({
   ...styleActions,
 })
 
-addEventListener('keydown', event => {
+window.addEventListener('keydown', event => {
   if (event.key !== '`' || adminDialog.open || document.activeElement instanceof HTMLInputElement) {
     return
   }
@@ -2593,7 +2611,7 @@ photoButton.addEventListener('click', () => {
   void takePhoto()
 })
 
-addEventListener('keydown', event => {
+window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && chatUi.isOpen()) {
     event.preventDefault()
     chatUi.close()

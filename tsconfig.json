@@ -16,10 +16,12 @@
     "noEmit": true,
     "strict": true,
     "types": [
-      "vite/client"
+      "vite/client",
+      "@types/bun"
     ]
   },
   "include": [
-    "src"
+    "src",
+    "server.ts"
   ]
 }
