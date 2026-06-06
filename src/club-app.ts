@@ -926,6 +926,17 @@ function chatMessageNickname(text: string) {
   return /^<([^>\n]+)>(?: |$)/.exec(text)?.[1]
 }
 
+function mentionsNickname(text: string) {
+  const name = nickname.trim()
+
+  return Boolean(name) && text.toLocaleLowerCase().includes(name.toLocaleLowerCase())
+}
+
+function playMentionDing() {
+  mentionDing.currentTime = 0
+  mentionDing.play().catch((e: unknown) => console.error(e))
+}
+
 function chatNicknameHash(name: string) {
   let hash = 2166136261
 
@@ -1206,6 +1217,7 @@ const wallProjector = createWallProjector({ eye: [0, 0, 1], center: [0, 0, 0] },
 const pixelRatio = createAdaptivePixelRatio()
 const bloomScale = createAdaptiveBloomScale()
 const introEffectRenderer = createIntroEffect(introEffect)
+const mentionDing = new Audio('/ding.mp3')
 const feedbackMaxAmount = 0.91
 const feedbackToiletRampSeconds = 60
 const feedbackSitResetSeconds = 3
@@ -1740,6 +1752,10 @@ function connectMultiplayer(spaceSlug?: string) {
       const position = id === multiplayer.selfId
         ? characterPosition
         : multiplayer.players.get(id)?.position
+
+      if (id !== multiplayer.selfId && graphicsPaused && mentionsNickname(text)) {
+        playMentionDing()
+      }
 
       const color = addChatLogMessage(id, text)
       if (position) {
