@@ -1,6 +1,6 @@
 import { createDomWallProjection } from './dom-wall.ts'
 import { photoWallColumns, photoWallPaintedSlots, photoWallRows } from './photo-wall-data.ts'
-import type { WallProjector } from './projection.ts'
+import { projectedQuadTransform, type WallProjector } from './projection.ts'
 import { outsidePhotoWall } from './scene-data.ts'
 import type { Vec3 } from './types.ts'
 
@@ -66,9 +66,11 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const photoElements: PhotoElement[] = []
   const fullPhotoPreloads = new Map<string, Promise<void>>()
   let activePhotoIndexes = new Set<number>()
+  let viewerOpenId = 0
   let viewerAnimation: Animation | undefined
   let viewerClosing = false
   let viewerSlideBusy = false
+  let viewerSourceImage: HTMLImageElement | undefined
   let viewerSourceRect: DOMRect | undefined
   let viewedPhoto: Photo | undefined
   let page: PhotoPage = { limit: 30, offset: 0, photos: [], total: 0 }
@@ -398,7 +400,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       element.image.alt = alt
     }
     element.item.onclick = () => {
-      openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
+      void openViewer(photo, page.photos.indexOf(photo), element.image)
     }
     element.item.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') {
@@ -406,7 +408,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       }
 
       event.preventDefault()
-      openViewer(photo, page.photos.indexOf(photo), element.image.getBoundingClientRect())
+      void openViewer(photo, page.photos.indexOf(photo), element.image)
     }
   }
 
@@ -440,12 +442,27 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     element.item.dataset.ready = 'false'
   }
 
-  function openViewer(
+  async function openViewer(
     photo: Photo,
     index = page.photos.findIndex(item => item.timestamp === photo.timestamp),
-    sourceRect?: DOMRect,
+    sourceImage?: HTMLImageElement,
     animate = true,
   ) {
+    const openId = ++viewerOpenId
+    const targetSourceImage = sourceImage ?? photoElement(photo)?.image
+    const targetSourceRect = targetSourceImage?.getBoundingClientRect()
+
+    try {
+      await preloadFullPhoto(photo)
+    }
+    catch (e) {
+      console.error(e)
+      return
+    }
+    if (openId !== viewerOpenId) {
+      return
+    }
+
     viewerAnimation?.cancel()
     viewerClosing = false
     delete viewer.dataset.closing
@@ -453,11 +470,20 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     if (!viewer.open) {
       viewer.showModal()
     }
-    const targetSourceRect = sourceRect ?? photoElement(photo)?.image.getBoundingClientRect()
 
     viewerSourceRect = targetSourceRect
-    if (animate && targetSourceRect) {
-      animateViewerFrom(targetSourceRect, tilt)
+    viewerSourceImage = targetSourceImage
+    if (animate && targetSourceImage) {
+      const targetTransform = viewerTargetTransform(tilt)
+      const sourceTransform = prepareViewerAtSource(targetSourceImage)
+
+      requestAnimationFrame(() => {
+        if (openId !== viewerOpenId || !viewer.open || viewerClosing) {
+          return
+        }
+
+        animateViewerFrom(sourceTransform, targetTransform)
+      })
     }
     viewerClose.focus()
   }
@@ -467,16 +493,32 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       return
     }
 
-    const sourceRect = viewerSourceRect
+    const sourceImage = viewerSourceImage
 
-    if (sourceRect && !viewerMotion.matches) {
+    if (sourceImage && !viewerMotion.matches) {
+      const tilt = viewedPhoto ? photoTilt(viewedPhoto) : 0
+      const targetTransform = viewerTargetTransform(tilt)
+      let sourceTransform = ''
+
+      try {
+        sourceTransform = viewerSourceTransform(sourceImage)
+      }
+      catch (e) {
+        console.error(e)
+        closeViewerNow()
+        return
+      }
+
       viewerAnimation?.cancel()
       viewerAnimation = undefined
+      viewerPolaroid.style.opacity = ''
+      viewerPolaroid.style.transform = ''
+      viewerPolaroid.style.transformOrigin = ''
       viewerClosing = true
       viewer.dataset.closing = 'true'
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          animateViewerClose(sourceRect)
+          animateViewerClose(sourceTransform, targetTransform)
         })
       })
       return
@@ -486,14 +528,19 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   }
 
   function closeViewerNow() {
+    viewerOpenId++
     viewedPhoto = undefined
     viewerAnimation?.cancel()
     viewerAnimation = undefined
     viewerClosing = false
     viewerSlideBusy = false
+    viewerSourceImage = undefined
     viewerSourceRect = undefined
     delete viewer.dataset.closing
     viewerPolaroid.style.visibility = ''
+    viewerPolaroid.style.opacity = ''
+    viewerPolaroid.style.transform = ''
+    viewerPolaroid.style.transformOrigin = ''
     viewerImage.removeAttribute('src')
     if (viewer.open) {
       viewer.close()
@@ -541,10 +588,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     viewerPolaroid.style.setProperty('--photo-viewer-tilt', `${tilt}deg`)
     syncViewerNav(index)
     preloadNeighborPhotos(index)
-
-    const source = photoElement(photo)?.image
-
-    viewerSourceRect = source?.getBoundingClientRect()
+    syncViewerSource(photo)
 
     return tilt
   }
@@ -592,40 +636,101 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       return
     }
 
+    syncViewerSource(viewedPhoto)
     syncViewerNav(page.photos.findIndex(photo => photo.timestamp === viewedPhoto!.timestamp))
   }
 
-  function animateViewerFrom(sourceRect: DOMRect, tilt: number) {
+  function syncViewerSource(photo: Photo) {
+    const source = photoElement(photo)?.image
+
+    viewerSourceImage = source
+    viewerSourceRect = source?.getBoundingClientRect()
+  }
+
+  function animateViewerFrom(sourceTransform: string, targetTransform: string) {
     if (viewerMotion.matches) {
       return
     }
 
-    const targetRect = viewerPolaroid.getBoundingClientRect()
-    const sourceCenterX = sourceRect.left + sourceRect.width * 0.5
-    const sourceCenterY = sourceRect.top + sourceRect.height * 0.5
-    const targetCenterX = targetRect.left + targetRect.width * 0.5
-    const targetCenterY = targetRect.top + targetRect.height * 0.5
-    const dx = sourceCenterX - targetCenterX
-    const dy = sourceCenterY - targetCenterY
-    const sx = sourceRect.width / targetRect.width
-    const sy = sourceRect.height / targetRect.height
-
     viewerAnimation = viewerPolaroid.animate([
       {
         opacity: 0.72,
-        transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy}) rotate(${tilt}deg)`,
+        transform: sourceTransform,
       },
       {
         opacity: 1,
-        transform: `translate(0, 0) scale(1, 1) rotate(${tilt}deg)`,
+        transform: targetTransform,
       },
     ], {
       duration: viewerMotionDuration,
       easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
     })
+    viewerPolaroid.style.opacity = ''
+    viewerPolaroid.style.transform = ''
     viewerAnimation.addEventListener('finish', () => {
+      viewerPolaroid.style.transformOrigin = ''
       viewerAnimation = undefined
     }, { once: true })
+  }
+
+  function prepareViewerAtSource(sourceImage: HTMLImageElement) {
+    if (viewerMotion.matches) {
+      return ''
+    }
+
+    const transform = viewerSourceTransform(sourceImage)
+
+    viewerPolaroid.style.opacity = '0.72'
+    viewerPolaroid.style.transformOrigin = '0 0'
+    viewerPolaroid.style.transform = transform
+
+    return transform
+  }
+
+  function viewerSourceTransform(sourceImage: HTMLImageElement) {
+    const targetRect = viewerImage.getBoundingClientRect()
+    const sourceQuad = sourceImageQuad(sourceImage)
+    const imageTransform = new DOMMatrix(projectedQuadTransform(targetRect.width, targetRect.height, sourceQuad))
+    const polaroidRect = viewerPolaroid.getBoundingClientRect()
+    const imageOffsetX = targetRect.left - polaroidRect.left
+    const imageOffsetY = targetRect.top - polaroidRect.top
+
+    imageTransform.translateSelf(-imageOffsetX, -imageOffsetY)
+
+    return imageTransform.toString()
+  }
+
+  function viewerTargetTransform(tilt: number) {
+    const rect = viewerPolaroid.getBoundingClientRect()
+    const centerX = rect.width * 0.5
+    const centerY = rect.height * 0.5
+
+    return `translate(${centerX}px, ${centerY}px) rotate(${tilt}deg) translate(${-centerX}px, ${-centerY}px)`
+  }
+
+  function sourceImageQuad(sourceImage: HTMLImageElement) {
+    const wallTransform = new DOMMatrix(getComputedStyle(element).transform)
+    const x = sourceImage.offsetLeft + sourceImage.parentElement!.offsetLeft + grid.offsetLeft + panel.offsetLeft
+    const y = sourceImage.offsetTop + sourceImage.parentElement!.offsetTop + grid.offsetTop + panel.offsetTop - grid.scrollTop
+    const width = sourceImage.offsetWidth
+    const height = sourceImage.offsetHeight
+
+    return [
+      matrixPoint(wallTransform, x, y + height),
+      matrixPoint(wallTransform, x + width, y + height),
+      matrixPoint(wallTransform, x + width, y),
+      matrixPoint(wallTransform, x, y),
+    ]
+  }
+
+  function matrixPoint(matrix: DOMMatrix, x: number, y: number) {
+    const point = matrix.transformPoint({ x, y })
+    const scale = point.w || 1
+
+    return {
+      x: point.x / scale,
+      y: point.y / scale,
+    }
   }
 
   function animateViewerSwap(photo: Photo, index: number, direction: -1 | 1) {
@@ -686,27 +791,17 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     slide.style.pointerEvents = 'none'
   }
 
-  function animateViewerClose(sourceRect: DOMRect) {
-    const targetRect = viewerPolaroid.getBoundingClientRect()
-    const sourceCenterX = sourceRect.left + sourceRect.width * 0.5
-    const sourceCenterY = sourceRect.top + sourceRect.height * 0.5
-    const targetCenterX = targetRect.left + targetRect.width * 0.5
-    const targetCenterY = targetRect.top + targetRect.height * 0.5
-    const dx = sourceCenterX - targetCenterX
-    const dy = sourceCenterY - targetCenterY
-    const sx = sourceRect.width / targetRect.width
-    const sy = sourceRect.height / targetRect.height
-    const tilt = viewedPhoto ? photoTilt(viewedPhoto) : 0
-
+  function animateViewerClose(sourceTransform: string, targetTransform: string) {
     viewerAnimation?.cancel()
+    viewerPolaroid.style.transformOrigin = '0 0'
     viewerAnimation = viewerPolaroid.animate([
       {
         opacity: 1,
-        transform: `translate(0, 0) scale(1, 1) rotate(${tilt}deg)`,
+        transform: targetTransform,
       },
       {
         opacity: 0,
-        transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy}) rotate(${tilt}deg)`,
+        transform: sourceTransform,
       },
     ], {
       duration: viewerMotionDuration,

@@ -2458,11 +2458,14 @@ canvas.addEventListener('pointerdown', event => {
     return
   }
 
+  if (!sprayAt(event.clientX, event.clientY)) {
+    return
+  }
+
   event.preventDefault()
   event.stopImmediatePropagation()
   sprayPointer = event.pointerId
   canvas.setPointerCapture(event.pointerId)
-  sprayAt(event.clientX, event.clientY)
 }, { capture: true })
 
 canvas.addEventListener('pointermove', event => {
@@ -2495,19 +2498,19 @@ canvas.addEventListener('pointercancel', event => {
 
 function sprayAt(clientX: number, clientY: number) {
   if (appSpace.kind === 'loft') {
-    return
+    return false
   }
 
   const stamp = performance.now()
 
   if (stamp < lastSprayAt + sprayInterval) {
-    return
+    return false
   }
 
   const hit = sprayWallPoint(clientX, clientY, wallProjector)
 
   if (!hit) {
-    return
+    return false
   }
 
   lastSprayAt = stamp
@@ -2531,6 +2534,8 @@ function sprayAt(clientX: number, clientY: number) {
     scheduleGraffitiTexturePaint([splat])
   }
   multiplayer.sendGraffiti([splat])
+
+  return true
 }
 
 function addGraffitiId(splat: GraffitiSplat) {
