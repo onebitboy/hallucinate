@@ -3257,8 +3257,8 @@ const draw = (stamp: number) => {
   }
   emitPlayerParticles(localParticleSource, characterPosition, localCharacter.turn, stamp, bubbling, foaming,
     introHidden && resolveAccessoryKind(styleController.accessoryIndex) === 'cigarette')
-  for (const player of multiplayer.players.values()) {
-    emitPlayerParticles(player.id, player.position, player.turn, stamp, player.bubbling ?? false,
+  for (const [id, player] of multiplayer.players) {
+    emitPlayerParticles(id, player.position, player.turn, stamp, player.bubbling ?? false,
       player.foaming ?? false, resolveAccessoryKind(player.style.accessoryIndex) === 'cigarette')
   }
   bubbleSystem.update(delta)
