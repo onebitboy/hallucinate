@@ -6,7 +6,7 @@ import {
   loadCharacterDetails,
   loadCharacterHair,
 } from './character-assets.ts'
-import { buildCharacterDrawData } from './character-draw.ts'
+import { buildCharacterDrawData, headPoseIndex } from './character-draw.ts'
 import type { CharacterDrawCache } from './character-draw.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { uploadFloatBuffer } from './character-gpu.ts'
@@ -46,6 +46,7 @@ export function createCharacterRenderSystem(options: {
   let remainingDanceLoad: Promise<void> | undefined
   const danceLoads = new Map<number, Promise<void>>()
   let boxInstanceCount = 0
+  let headHeight = 1.1
   let assetsLoaded = false
   let coreLoadedChunks = 0
   let detailsLoaded = false
@@ -180,6 +181,11 @@ export function createCharacterRenderSystem(options: {
       width: options.canvas.width,
     })
 
+    const localHead = drawCache.poses[0]?.[headPoseIndex]
+
+    if (localHead) {
+      headHeight = localHead[1] - options.characterPosition[1]
+    }
     updateHairInstances(options.gl, hairRenderMeshes, data.hairInstances, hairInstanceCache)
     boxInstanceCount = data.boxInstances.length / options.boxInstanceSize
     uploadFloatBuffer(options.gl, options.boxInstanceBuffer, data.boxInstances.data, boxInstanceCache,
@@ -206,6 +212,9 @@ export function createCharacterRenderSystem(options: {
     },
     get boxInstanceCount() {
       return boxInstanceCount
+    },
+    get headHeight() {
+      return headHeight
     },
     get hairRenderMeshes() {
       return hairRenderMeshes

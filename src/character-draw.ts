@@ -88,6 +88,8 @@ const leftLegIndex = poseJointIndices.get('mixamorig:LeftLeg')!
 const rightLegIndex = poseJointIndices.get('mixamorig:RightLeg')!
 const headIndex = poseJointIndices.get('mixamorig:Head')!
 const headTopIndex = poseJointIndices.get('mixamorig:HeadTop_End')!
+
+export const headPoseIndex = headIndex
 const characterPartPlans = characterParts.map(part => ({
   part,
   fromIndex: poseJointIndices.get(part.from)!,

@@ -3442,6 +3442,11 @@ function emitPlayerParticles(
     const time = stamp * 0.001
     const lift = cigaretteLift(time)
     const exhale = cigaretteExhale(time)
+    // Heights measured from the actual rig: mouth just below the head joint,
+    // hand hanging around mid-body. The wisp tracks the cigarette from the hand
+    // up to the mouth as it is raised for a drag.
+    const mouthHeight = characterRenderSystem.headHeight - 0.1
+    const handHeight = characterRenderSystem.headHeight * 0.5
 
     smokeForward[0] = forwardX
     smokeForward[1] = 0
@@ -3450,7 +3455,7 @@ function emitPlayerParticles(
     if (stamp >= timers.smokeWisp) {
       timers.smokeWisp = stamp + smokeInterval
       smokeTip[0] = position[0] + forwardX * 0.22
-      smokeTip[1] = position[1] + 0.9 + lift * 0.45
+      smokeTip[1] = position[1] + handHeight + lift * (mouthHeight - handHeight)
       smokeTip[2] = position[2] + forwardZ * 0.22
       smokeSystem.emit(smokeTip, smokeForward, 1, false)
     }
@@ -3458,7 +3463,7 @@ function emitPlayerParticles(
     if (exhale > 0 && stamp >= timers.smokeExhale) {
       timers.smokeExhale = stamp + smokeExhaleInterval
       smokeMouth[0] = position[0] + forwardX * 0.18
-      smokeMouth[1] = position[1] + 1.35
+      smokeMouth[1] = position[1] + mouthHeight
       smokeMouth[2] = position[2] + forwardZ * 0.18
       smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
     }
