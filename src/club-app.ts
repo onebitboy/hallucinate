@@ -1766,6 +1766,7 @@ type ParticleTimers = { bubble: number; foam: number; smokeWisp: number; smokeHe
 type ParticlePlayer = {
   position: Vec3
   turn: number
+  actionTurn?: number
   motionBlend: number
   idleClipIndex: number
   mode?: CharacterMode
@@ -3307,6 +3308,7 @@ const draw = (stamp: number) => {
     updateBeachBalls(beachBalls, delta, outsideTree)
   }
   localParticlePlayer.turn = localCharacter.turn
+  localParticlePlayer.actionTurn = cameraController.turn
   localParticlePlayer.motionBlend = localCharacter.motionBlend
   localParticlePlayer.mode = localCharacter.mode
   localParticlePlayer.modeTime = localCharacter.modeTime
@@ -3470,28 +3472,31 @@ function emitPlayerParticles(
 
   const position = player.position
   const turn = player.turn
+  const actionTurn = player.actionTurn ?? turn
   const forwardX = Math.sin(turn)
   const forwardZ = Math.cos(turn)
+  const actionForwardX = Math.sin(actionTurn)
+  const actionForwardZ = Math.cos(actionTurn)
 
   if (isBubbling && stamp >= timers.bubble) {
     timers.bubble = stamp + bubbleInterval
-    bubbleMuzzle[0] = position[0] + forwardX * 0.35
+    bubbleMuzzle[0] = position[0] + actionForwardX * 0.35
     bubbleMuzzle[1] = position[1] + 1.15
-    bubbleMuzzle[2] = position[2] + forwardZ * 0.35
-    bubbleForward[0] = forwardX
+    bubbleMuzzle[2] = position[2] + actionForwardZ * 0.35
+    bubbleForward[0] = actionForwardX
     bubbleForward[1] = 0.35
-    bubbleForward[2] = forwardZ
+    bubbleForward[2] = actionForwardZ
     bubbleSystem.spawn(bubbleMuzzle, bubbleForward, 3)
   }
 
   if (isFoaming && stamp >= timers.foam) {
     timers.foam = stamp + foamInterval
-    foamMuzzle[0] = position[0] + forwardX * 0.45
+    foamMuzzle[0] = position[0] + actionForwardX * 0.45
     foamMuzzle[1] = position[1] + 1.1
-    foamMuzzle[2] = position[2] + forwardZ * 0.45
-    foamForward[0] = forwardX
+    foamMuzzle[2] = position[2] + actionForwardZ * 0.45
+    foamForward[0] = actionForwardX
     foamForward[1] = 0
-    foamForward[2] = forwardZ
+    foamForward[2] = actionForwardZ
     foamSystem.burst(foamMuzzle, foamForward, foamBurstCount)
   }
 
