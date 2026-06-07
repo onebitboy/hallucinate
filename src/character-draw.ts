@@ -514,31 +514,41 @@ function addCigaretteAtHand(
   const handSide = handSideSign(hand, torso, sideX, sideZ)
   const forwardX = turn.sin
   const forwardZ = turn.cos
-  const centerX = hand[0] + dx * 0.1 + forwardX * 0.04
-  const centerY = hand[1] + dy * 0.1 + 0.02
-  const centerZ = hand[2] + dz * 0.1 + forwardZ * 0.04
-  const length = 0.12
+  // Pinch it at the fingertips: reach past the wrist, tuck it into the grip and a little forward.
+  const baseX = hand[0] + dx * 0.18 + sideX * handSide * 0.05 + forwardX * 0.05
+  const baseY = hand[1] + dy * 0.18 + 0.03
+  const baseZ = hand[2] + dz * 0.18 + sideZ * handSide * 0.05 + forwardZ * 0.05
+  // Angle the cigarette forward and up so it reads as held, not lying flat.
+  let dirX = forwardX
+  let dirY = 0.5
+  let dirZ = forwardZ
+  const dirLength = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+
+  dirX /= dirLength
+  dirY /= dirLength
+  dirZ /= dirLength
+  const length = 0.1
 
   cigaretteSide[0] = sideX * handSide
   cigaretteSide[1] = 0
   cigaretteSide[2] = sideZ * handSide
-  cigaretteA[0] = centerX
-  cigaretteA[1] = centerY
-  cigaretteA[2] = centerZ
-  cigaretteB[0] = centerX + forwardX * length
-  cigaretteB[1] = centerY
-  cigaretteB[2] = centerZ + forwardZ * length
-  addCharacterBox(target, boxInstances, cigaretteA, cigaretteB, 0.022, 0.022, style.accessory!, 0.05, player.turn,
+  cigaretteA[0] = baseX
+  cigaretteA[1] = baseY
+  cigaretteA[2] = baseZ
+  cigaretteB[0] = baseX + dirX * length
+  cigaretteB[1] = baseY + dirY * length
+  cigaretteB[2] = baseZ + dirZ * length
+  addCharacterBox(target, boxInstances, cigaretteA, cigaretteB, 0.02, 0.02, style.accessory!, 0.05, player.turn,
     localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
 
   cigaretteEmberA[0] = cigaretteB[0]
   cigaretteEmberA[1] = cigaretteB[1]
   cigaretteEmberA[2] = cigaretteB[2]
-  cigaretteEmberB[0] = cigaretteB[0] + forwardX * 0.02
-  cigaretteEmberB[1] = cigaretteB[1]
-  cigaretteEmberB[2] = cigaretteB[2] + forwardZ * 0.02
-  addCharacterBox(target, boxInstances, cigaretteEmberA, cigaretteEmberB, 0.026, 0.026, cigaretteEmber, 1.6, player.turn,
-    localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
+  cigaretteEmberB[0] = cigaretteB[0] + dirX * 0.016
+  cigaretteEmberB[1] = cigaretteB[1] + dirY * 0.016
+  cigaretteEmberB[2] = cigaretteB[2] + dirZ * 0.016
+  addCharacterBox(target, boxInstances, cigaretteEmberA, cigaretteEmberB, 0.022, 0.022, cigaretteEmber, 1.6,
+    player.turn, localReflection, light, 0, turn.sin, turn.cos, { side: cigaretteSide })
 }
 
 function handSideSign(hand: Vec3, torso: Vec3, sideX: number, sideZ: number) {
