@@ -1,11 +1,15 @@
 import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
+import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
 import { characterCoreChunkCount, idleClipNames } from './character-assets.ts'
 import { resetVertexWriter, vertexWriterData } from './character-geometry.ts'
-import { createCharacterStyleController, glowstickColors } from './character-style.ts'
+import { createCharacterStyleController, glowstickColors, resolveAccessoryKind } from './character-style.ts'
+import { cigaretteExhale, cigaretteLift } from './cigarette.ts'
 import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
+import { createFoamSystem, writeFoamGeometry } from './foam.ts'
+import { createSmokeSystem, writeSmokeGeometry } from './smoke-puff.ts'
 import {
   addGraffitiWallGeometry,
   createGraffitiCanvas,
@@ -56,6 +60,8 @@ import {
   roomAt,
   seatAt,
   usesSkyBackground,
+  walkHeight,
+  walkLoftHeight,
 } from './scene.ts'
 import {
   characterBoxFragment,
@@ -113,6 +119,7 @@ import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
+import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
@@ -144,6 +151,8 @@ const {
   reactionButtons,
   breakdanceButton,
   waveButton,
+  bubbleButton,
+  foamButton,
   photoButton,
   roomsButton,
   supportLink,
@@ -375,6 +384,8 @@ function syncOnlineIndicator() {
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  foamButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   photoButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   roomsButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   supportLink.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1495,6 +1506,12 @@ const postArray = gl.createVertexArray()
 const postBuffer = gl.createBuffer()
 const beachBallArray = gl.createVertexArray()
 const beachBallBuffer = gl.createBuffer()
+const bubbleArray = gl.createVertexArray()
+const bubbleBuffer = gl.createBuffer()
+const foamArray = gl.createVertexArray()
+const foamBuffer = gl.createBuffer()
+const smokePuffArray = gl.createVertexArray()
+const smokePuffBuffer = gl.createBuffer()
 const graffitiArray = gl.createVertexArray()
 const graffitiBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
@@ -1526,7 +1543,8 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisi
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
-  || !beachBallArray || !beachBallBuffer || !graffitiArray || !graffitiBuffer)
+  || !beachBallArray || !beachBallBuffer || !bubbleArray || !bubbleBuffer || !foamArray || !foamBuffer
+  || !smokePuffArray || !smokePuffBuffer || !graffitiArray || !graffitiBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
 }
@@ -1594,6 +1612,9 @@ setupCharacterBoxArray({
 })
 setupPostArray({ array: postArray, buffer: postBuffer, gl })
 setupVertexArray({ array: beachBallArray, buffer: beachBallBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
+setupVertexArray({ array: bubbleArray, buffer: bubbleBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
+setupVertexArray({ array: foamArray, buffer: foamBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
+setupVertexArray({ array: smokePuffArray, buffer: smokePuffBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiPoints, gl, stride,
   usage: gl.STATIC_DRAW })
 
@@ -1716,6 +1737,32 @@ let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
+const bubbleSystem = createBubbleSystem()
+let bubblePoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const bubbleWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const bubbleMuzzle: Vec3 = [0, 0, 0]
+const bubbleForward: Vec3 = [0, 0, 0]
+const bubbleInterval = 55
+let bubbling = false
+const foamSystem = createFoamSystem()
+let foamPoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const foamWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const foamMuzzle: Vec3 = [0, 0, 0]
+const foamForward: Vec3 = [0, 0, 0]
+const foamInterval = 250
+const foamBurstCount = 22
+let foaming = false
+const smokeSystem = createSmokeSystem()
+let smokePuffPoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const smokeWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const smokeTip: Vec3 = [0, 0, 0]
+const smokeMouth: Vec3 = [0, 0, 0]
+const smokeForward: Vec3 = [0, 0, 0]
+const smokeInterval = 120
+const smokeExhaleInterval = 45
+type ParticleTimers = { bubble: number; foam: number; smokeWisp: number; smokeExhale: number }
+const particleTimers = new Map<number, ParticleTimers>()
+const localParticleSource = -1
 const graffitiSplats: GraffitiSplat[] = []
 const graffitiIds = new Set<number>()
 let nextRemoteSeatSyncAt = 0
@@ -1753,6 +1800,7 @@ function connectMultiplayer(spaceSlug?: string) {
     localInput: localCharacter.input,
     localMode: () => localCharacter.mode,
     localIdleClipIndex: () => idleClipIndex,
+    localActions: () => (bubbling ? ACTION_BUBBLING : 0) | (foaming ? ACTION_FOAMING : 0),
     localNickname: () => nickname,
     localStyle: () => ({
       topStyleIndex: styleController.topStyleIndex,
@@ -1814,6 +1862,7 @@ function connectMultiplayer(spaceSlug?: string) {
     onLeave: id => {
       nicknameLabelCache.delete(id)
       chatUi.remove(id)
+      particleTimers.delete(id)
     },
     onOnlineCount: online => {
       onlineCountValue = online.count
@@ -2468,6 +2517,18 @@ bindKeyboardInput({
   stopJumping: () => localCharacter.stopJumping(),
   startWave: () => localCharacter.startWave(),
   stopWave: () => localCharacter.stopWave(),
+  startBubbles: () => {
+    bubbling = true
+  },
+  stopBubbles: () => {
+    bubbling = false
+  },
+  startFoam: () => {
+    foaming = true
+  },
+  stopFoam: () => {
+    foaming = false
+  },
   startBreakdance: () => localCharacter.startBreakdance(),
   openChatInput: () => openChatInput(),
   setAlternativeInput: useAlternativeInput,
@@ -2498,7 +2559,7 @@ createMobileControls({
 })
 bindTapDestination({
   canvas,
-  ignorePointer: event => styleController.accessoryIndex > glowstickColors.length,
+  ignorePointer: event => resolveAccessoryKind(styleController.accessoryIndex) === 'spray',
   jump: target => {
     localCharacter.jumpToward(target)
     multiplayer.sendMotion()
@@ -2518,7 +2579,7 @@ canvas.addEventListener('pointerdown', event => {
     return
   }
 
-  if (styleController.accessoryIndex <= glowstickColors.length) {
+  if (resolveAccessoryKind(styleController.accessoryIndex) !== 'spray') {
     return
   }
 
@@ -2705,6 +2766,32 @@ for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
   waveButton.addEventListener(eventName, () => {
     localCharacter.stopWave()
     multiplayer.sendMotion()
+  })
+}
+
+bubbleButton.addEventListener('pointerdown', event => {
+  event.preventDefault()
+  bubbleButton.setPointerCapture(event.pointerId)
+  bubbling = true
+  canvas.focus()
+})
+
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  bubbleButton.addEventListener(eventName, () => {
+    bubbling = false
+  })
+}
+
+foamButton.addEventListener('pointerdown', event => {
+  event.preventDefault()
+  foamButton.setPointerCapture(event.pointerId)
+  foaming = true
+  canvas.focus()
+})
+
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  foamButton.addEventListener(eventName, () => {
+    foaming = false
   })
 }
 
@@ -3041,6 +3128,9 @@ function renderCurrentSceneFrame(options: {
       light: lightArray,
       post: postArray,
       beachBalls: beachBallArray,
+      bubbles: bubbleArray,
+      foam: foamArray,
+      smokePuff: smokePuffArray,
       graffiti: graffitiArray,
       room: array,
       smoke: smokeArray,
@@ -3076,6 +3166,9 @@ function renderCurrentSceneFrame(options: {
     renderZone: renderZoneIndex(options.zone),
     points,
     beachBallPoints,
+    bubblePoints,
+    foamPoints,
+    smokePuffPoints,
     graffitiPoints: options.inLoft ? emptyPoints : graffitiPoints,
     graffitiTexture,
     post: {
@@ -3195,6 +3288,15 @@ const draw = (stamp: number) => {
   if (!inLoft) {
     updateBeachBalls(beachBalls, delta, outsideTree)
   }
+  emitPlayerParticles(localParticleSource, characterPosition, localCharacter.turn, stamp, bubbling, foaming,
+    introHidden && resolveAccessoryKind(styleController.accessoryIndex) === 'cigarette')
+  for (const [id, player] of multiplayer.players) {
+    emitPlayerParticles(id, player.position, player.turn, stamp, player.bubbling ?? false,
+      player.foaming ?? false, resolveAccessoryKind(player.style.accessoryIndex) === 'cigarette')
+  }
+  bubbleSystem.update(delta)
+  foamSystem.update(delta, inLoft ? loftFloorAt : mainFloorAt)
+  smokeSystem.update(delta)
   const hits = inLoft ? [] : hitBeachBalls(beachBalls, characterPosition)
 
   for (const id of hits) {
@@ -3220,6 +3322,7 @@ const draw = (stamp: number) => {
   else {
     multiplayer.sendMotionIfKeysChanged()
   }
+  multiplayer.sendActionsIfChanged()
 
   if (!inLoft) {
     updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
@@ -3298,6 +3401,9 @@ const draw = (stamp: number) => {
 
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateBeachBallBuffer()
+  updateBubbleBuffer()
+  updateFoamBuffer()
+  updateSmokeBuffer()
   if (!introHidden) {
     updateIntro()
   }
@@ -3314,6 +3420,119 @@ const draw = (stamp: number) => {
   })
 
   scheduleFrame()
+}
+
+// Emit each particle effect a player is currently producing, from their own
+// position. Driven by synced state, so this runs identically for the local
+// player and every remote player. Per-source timers keep the emit rates steady.
+function emitPlayerParticles(
+  source: number,
+  position: Vec3,
+  turn: number,
+  stamp: number,
+  isBubbling: boolean,
+  isFoaming: boolean,
+  isSmoking: boolean,
+) {
+  if (!isBubbling && !isFoaming && !isSmoking) {
+    particleTimers.delete(source)
+    return
+  }
+
+  let timers = particleTimers.get(source)
+
+  if (!timers) {
+    timers = { bubble: 0, foam: 0, smokeWisp: 0, smokeExhale: 0 }
+    particleTimers.set(source, timers)
+  }
+
+  const forwardX = Math.sin(turn)
+  const forwardZ = Math.cos(turn)
+
+  if (isBubbling && stamp >= timers.bubble) {
+    timers.bubble = stamp + bubbleInterval
+    bubbleMuzzle[0] = position[0] + forwardX * 0.35
+    bubbleMuzzle[1] = position[1] + 1.15
+    bubbleMuzzle[2] = position[2] + forwardZ * 0.35
+    bubbleForward[0] = forwardX
+    bubbleForward[1] = 0.35
+    bubbleForward[2] = forwardZ
+    bubbleSystem.spawn(bubbleMuzzle, bubbleForward, 3)
+  }
+
+  if (isFoaming && stamp >= timers.foam) {
+    timers.foam = stamp + foamInterval
+    foamMuzzle[0] = position[0] + forwardX * 0.45
+    foamMuzzle[1] = position[1] + 1.1
+    foamMuzzle[2] = position[2] + forwardZ * 0.45
+    foamForward[0] = forwardX
+    foamForward[1] = 0
+    foamForward[2] = forwardZ
+    foamSystem.burst(foamMuzzle, foamForward, foamBurstCount)
+  }
+
+  if (isSmoking) {
+    const time = stamp * 0.001
+    const lift = cigaretteLift(time)
+    const exhale = cigaretteExhale(time)
+    // Heights measured from the actual rig: mouth just below the head joint,
+    // hand hanging around mid-body. The wisp tracks the cigarette from the hand
+    // up to the mouth as it is raised for a drag.
+    const mouthHeight = characterRenderSystem.headHeight
+    const handHeight = characterRenderSystem.headHeight * 0.55
+
+    smokeForward[0] = forwardX
+    smokeForward[1] = 0
+    smokeForward[2] = forwardZ
+
+    if (stamp >= timers.smokeWisp) {
+      timers.smokeWisp = stamp + smokeInterval
+      smokeTip[0] = position[0] + forwardX * 0.22
+      smokeTip[1] = position[1] + handHeight + lift * (mouthHeight - handHeight)
+      smokeTip[2] = position[2] + forwardZ * 0.22
+      smokeSystem.emit(smokeTip, smokeForward, 1, false)
+    }
+
+    if (exhale > 0 && stamp >= timers.smokeExhale) {
+      timers.smokeExhale = stamp + smokeExhaleInterval
+      smokeMouth[0] = position[0] + forwardX * 0.18
+      smokeMouth[1] = position[1] + mouthHeight
+      smokeMouth[2] = position[2] + forwardZ * 0.18
+      smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
+    }
+  }
+}
+
+function updateBubbleBuffer() {
+  resetVertexWriter(bubbleWriter)
+  writeBubbleGeometry(bubbleWriter, bubbleSystem.bubbles)
+  bubblePoints = vertexWriterData(bubbleWriter)
+  gl.bindBuffer(gl.ARRAY_BUFFER, bubbleBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, bubblePoints, gl.DYNAMIC_DRAW)
+}
+
+function mainFloorAt(x: number, y: number, z: number) {
+  return walkHeight(x, y, z)
+}
+
+function loftFloorAt(x: number, y: number, z: number) {
+  return walkLoftHeight(x, y, z)
+}
+
+function updateFoamBuffer() {
+  resetVertexWriter(foamWriter)
+  writeFoamGeometry(foamWriter, foamSystem.blobs)
+  foamPoints = vertexWriterData(foamWriter)
+  gl.bindBuffer(gl.ARRAY_BUFFER, foamBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, foamPoints, gl.DYNAMIC_DRAW)
+}
+
+function updateSmokeBuffer() {
+  resetVertexWriter(smokeWriter)
+  writeSmokeGeometry(smokeWriter, smokeSystem.puffs)
+  smokePuffPoints = vertexWriterData(smokeWriter)
+  gl.bindBuffer(gl.ARRAY_BUFFER, smokePuffBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, smokePuffPoints, gl.DYNAMIC_DRAW)
 }
 
 function updateBeachBallBuffer() {

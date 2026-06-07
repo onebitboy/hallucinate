@@ -29,6 +29,10 @@ export function bindKeyboardInput(options: {
   stopJumping: () => void
   startWave: () => void
   stopWave: () => void
+  startBubbles: () => void
+  stopBubbles: () => void
+  startFoam: () => void
+  stopFoam: () => void
   startBreakdance: () => void
   cycleHair: (direction: number) => void
   cycleHairColor: (direction: number) => void
@@ -76,6 +80,16 @@ export function bindKeyboardInput(options: {
 
     if (key === 'v') {
       options.startWave()
+      return
+    }
+
+    if (key === 'c') {
+      options.startBubbles()
+      return
+    }
+
+    if (key === 'n') {
+      options.startFoam()
       return
     }
 
@@ -167,6 +181,16 @@ export function bindKeyboardInput(options: {
 
     if (key === 'v') {
       options.stopWave()
+      return
+    }
+
+    if (key === 'c') {
+      options.stopBubbles()
+      return
+    }
+
+    if (key === 'n') {
+      options.stopFoam()
       return
     }
 

@@ -16,7 +16,22 @@ export const glowstickColors: Vec3[] = [
   [1, 0.22, 0.04],
 ]
 export const sprayColors: Vec3[] = graffitiColors
-export const accessoryPalette: Vec3[] = [...glowstickColors, ...sprayColors]
+export const cigaretteColors: Vec3[] = [
+  [0.96, 0.96, 0.92],
+]
+export const accessoryPalette: Vec3[] = [...glowstickColors, ...sprayColors, ...cigaretteColors]
+
+export function resolveAccessoryKind(accessoryIndex: number): ResolvedPlayerStyle['accessoryKind'] {
+  const index = normalizeIndex(accessoryIndex, accessoryPalette.length + 1)
+
+  return index === 0
+    ? undefined
+    : index <= glowstickColors.length
+    ? 'glowstick'
+    : index <= glowstickColors.length + sprayColors.length
+    ? 'spray'
+    : 'cigarette'
+}
 
 export function createCharacterStyleController() {
   let shirtColorIndex = 0
@@ -134,11 +149,7 @@ export function resolvePlayerStyle(style: PlayerStyle): ResolvedPlayerStyle {
   const top = topStyleData(topIndex)
   const bottomMode: BottomMode = bottomIndex < jewelPalette.length ? 'pants' : 'skirt'
   const pantsColor = jewelPalette[bottomIndex % jewelPalette.length]!
-  const accessoryKind: ResolvedPlayerStyle['accessoryKind'] = accessoryIndex === 0
-    ? undefined
-    : accessoryIndex <= glowstickColors.length
-    ? 'glowstick'
-    : 'spray'
+  const accessoryKind = resolveAccessoryKind(accessoryIndex)
   const resolved = {
     topMode: top.mode,
     bottomMode,

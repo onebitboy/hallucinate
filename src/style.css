@@ -681,6 +681,8 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 
 #breakdance-button,
 #wave-button,
+#bubble-button,
+#foam-button,
 #photo-button,
 #rooms-button,
 #support-link {
@@ -700,6 +702,8 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 
 #breakdance-button,
 #wave-button,
+#bubble-button,
+#foam-button,
 #photo-button {
   right: var(--action-right);
   border: 0;
@@ -715,6 +719,14 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 
 #wave-button {
   bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 4);
+}
+
+#bubble-button {
+  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 5);
+}
+
+#foam-button {
+  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 6);
 }
 
 #photo-button {
@@ -743,6 +755,8 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 
 #breakdance-button[data-hidden="true"],
 #wave-button[data-hidden="true"],
+#bubble-button[data-hidden="true"],
+#foam-button[data-hidden="true"],
 #photo-button[data-hidden="true"],
 #rooms-button[data-hidden="true"],
 #support-link[data-hidden="true"] {
@@ -751,6 +765,8 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 
 html[data-touch-controls="true"] #breakdance-button[data-hidden="true"],
 html[data-touch-controls="true"] #wave-button[data-hidden="true"],
+html[data-touch-controls="true"] #bubble-button[data-hidden="true"],
+html[data-touch-controls="true"] #foam-button[data-hidden="true"],
 html[data-touch-controls="true"] #photo-button[data-hidden="true"],
 html[data-touch-controls="true"] #rooms-button[data-hidden="true"],
 html[data-touch-controls="true"] #support-link[data-hidden="true"] {
@@ -773,6 +789,8 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #chat-form,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #online-indicator,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #breakdance-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #wave-button,
+html[data-touch-controls="true"] body[data-intro-visible="true"] #bubble-button,
+html[data-touch-controls="true"] body[data-intro-visible="true"] #foam-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #photo-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   display: none;

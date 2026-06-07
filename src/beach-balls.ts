@@ -1,9 +1,9 @@
 import { characterFloor } from './character-data.ts'
-import { reserveFloats } from './character-geometry.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { clamp } from './math.ts'
 import { outsideBounds } from './scene-data.ts'
 import { collideSphereRoom, walkHeight } from './scene.ts'
+import { createUnitSphere, reserveSphereFloats, writeSphere } from './sphere-geometry.ts'
 import type { BeachBall, CircleBounds, Vec3 } from './types.ts'
 
 export const beachBallRadius = 0.52
@@ -79,12 +79,11 @@ export function hitBeachBalls(balls: BeachBall[], player: Vec3) {
 }
 
 export function writeBeachBallGeometry(target: VertexWriter, balls: BeachBall[]) {
-  const verticesPerBall = beachBallRows * beachBallColumns * 6
-
-  reserveFloats(target, balls.length * verticesPerBall * 11)
+  reserveSphereFloats(target, beachBallUnitSphere, balls.length)
 
   for (const ball of balls) {
-    writeBeachBall(target, ball)
+    writeSphere(target, beachBallUnitSphere, ball.position[0], ball.position[1], ball.position[2], beachBallRadius,
+      palette[ball.id]!, glow)
   }
 }
 
@@ -112,69 +111,4 @@ function collideBallRoom(ball: BeachBall, outsideTree: CircleBounds) {
   }
 }
 
-const beachBallRows = 8
-const beachBallColumns = 16
-const beachBallUnitVertices = createBeachBallUnitVertices()
-
-function writeBeachBall(target: VertexWriter, ball: BeachBall) {
-  const color = palette[ball.id]!
-  const data = target.data
-  let offset = target.length
-
-  for (let i = 0; i < beachBallUnitVertices.length; i += 3) {
-    offset = writeVertex(data, offset, ball.position[0] + beachBallUnitVertices[i]! * beachBallRadius,
-      ball.position[1] + beachBallUnitVertices[i + 1]! * beachBallRadius,
-      ball.position[2] + beachBallUnitVertices[i + 2]! * beachBallRadius, color)
-  }
-
-  target.length = offset
-}
-
-function writeVertex(data: Float32Array, offset: number, x: number, y: number, z: number, color: Vec3) {
-  data[offset] = x
-  data[offset + 1] = y
-  data[offset + 2] = z
-  data[offset + 3] = color[0]
-  data[offset + 4] = color[1]
-  data[offset + 5] = color[2]
-  data[offset + 6] = glow
-  data[offset + 7] = 0
-  data[offset + 8] = 0
-  data[offset + 9] = 0
-  data[offset + 10] = 0
-
-  return offset + 11
-}
-
-function createBeachBallUnitVertices() {
-  const vertices: number[] = []
-
-  for (let y = 0; y < beachBallRows; y++) {
-    const top = -Math.PI / 2 + Math.PI * y / beachBallRows
-    const bottom = -Math.PI / 2 + Math.PI * (y + 1) / beachBallRows
-
-    for (let x = 0; x < beachBallColumns; x++) {
-      const left = Math.PI * 2 * x / beachBallColumns
-      const right = Math.PI * 2 * (x + 1) / beachBallColumns
-
-      addUnitQuad(vertices, top, bottom, left, right)
-    }
-  }
-
-  return new Float32Array(vertices)
-}
-
-function addUnitQuad(target: number[], top: number, bottom: number, left: number, right: number) {
-  addUnitPoint(target, top, left)
-  addUnitPoint(target, top, right)
-  addUnitPoint(target, bottom, right)
-  addUnitPoint(target, top, left)
-  addUnitPoint(target, bottom, right)
-  addUnitPoint(target, bottom, left)
-}
-
-function addUnitPoint(target: number[], vertical: number, horizontal: number) {
-  const radius = Math.cos(vertical)
-
-  target.push(Math.cos(horizontal) * radius, Math.sin(vertical), Math.sin(horizontal) * radius)
-}
+const beachBallUnitSphere = createUnitSphere(8, 16)

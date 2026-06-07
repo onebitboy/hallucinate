@@ -176,7 +176,7 @@ export type ResolvedPlayerStyle = {
   hairColor: Vec3
   skin: Vec3
   accessory?: Vec3
-  accessoryKind?: 'glowstick' | 'spray'
+  accessoryKind?: 'glowstick' | 'spray' | 'cigarette'
 }
 
 export type PlayerDestination = {
@@ -213,6 +213,8 @@ export type Player = {
   style: PlayerStyle
   resolvedStyle: ResolvedPlayerStyle
   seed: number
+  bubbling?: boolean
+  foaming?: boolean
 }
 
 export type BeachBall = {
