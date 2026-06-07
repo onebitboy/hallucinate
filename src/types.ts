@@ -212,6 +212,8 @@ export type Player = {
   style: PlayerStyle
   resolvedStyle: ResolvedPlayerStyle
   seed: number
+  bubbling?: boolean
+  foaming?: boolean
 }
 
 export type BeachBall = {

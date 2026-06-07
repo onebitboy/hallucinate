@@ -2,12 +2,16 @@ import { characterFloor } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { lengthSq } from './math.ts'
 import {
+  ACTION_BUBBLING,
+  ACTION_FOAMING,
+  ACTIONS,
   angleToProtocol,
   BEACH_BALLS,
   decodeBeachBalls,
   decodeGraffiti,
   decodeKeys,
   decodeLeave,
+  decodeServerActions,
   decodeModerationMessage,
   decodeOnline,
   decodeRoomState,
@@ -20,6 +24,7 @@ import {
   encodeAdminMessage,
   encodeBeachBalls,
   encodeClientMessage,
+  encodeClientActions,
   encodeClientMotion,
   encodeClientNickname,
   encodeGraffiti,
@@ -68,6 +73,7 @@ export function createMultiplayer(options: {
   localInput: Vec3
   localMode: () => CharacterMode
   localIdleClipIndex: () => number
+  localActions: () => number
   localNickname: () => string
   localStyle: () => {
     topStyleIndex: number
@@ -107,6 +113,7 @@ export function createMultiplayer(options: {
   let lastAngle = -1
   let lastMode = -1
   let lastHeight = Infinity
+  let lastActions = -1
   let socket = connect()
 
   function connect() {
@@ -119,6 +126,7 @@ export function createMultiplayer(options: {
       heartbeat = setInterval(() => send(encodeHeartbeat()), heartbeatInterval)
       videoProgress = setInterval(() => sendVideoProgress(), videoProgressInterval)
       room = options.initialRoom
+      lastActions = -1
       sendMotion()
       sendNickname()
       send(encodeRoomChange(room))
@@ -262,6 +270,18 @@ export function createMultiplayer(options: {
       return
     }
 
+    if (type === ACTIONS) {
+      const packet = decodeServerActions(view)
+      const player = players.get(packet.id)
+
+      if (player) {
+        player.bubbling = (packet.actions & ACTION_BUBBLING) !== 0
+        player.foaming = (packet.actions & ACTION_FOAMING) !== 0
+      }
+
+      return
+    }
+
     if (type === MODERATION) {
       const message = decodeModerationMessage(view)
 
@@ -362,6 +382,14 @@ export function createMultiplayer(options: {
       queue(encodeAdminMessage({ pass, command, id }))
     },
     sendMotion,
+    sendActionsIfChanged() {
+      const actions = options.localActions()
+
+      if (actions !== lastActions) {
+        lastActions = actions
+        send(encodeClientActions(actions))
+      }
+    },
     sendVideoEnded,
     sendVideoProgress,
     sendVideoPlaylist,

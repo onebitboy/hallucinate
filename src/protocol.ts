@@ -20,12 +20,16 @@ export const VIDEO_PLAYLIST = 17
 export const VIDEO_ENDED = 18
 export const VIDEO_PLAYLIST_REQUEST = 19
 export const NICKNAME = 20
+export const ACTIONS = 21
+
+export const ACTION_BUBBLING = 1
+export const ACTION_FOAMING = 2
 
 export const roomCount = 3
 export const messageMaxLength = 120
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 38
+export const protocolVersion = 39
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -117,6 +121,11 @@ export type BeachBallPacket = {
 
 export type GraffitiPacket = {
   splats: GraffitiSplat[]
+}
+
+export type ActionsPacket = {
+  id: number
+  actions: number
 }
 
 export type AdminPacket = {
@@ -690,6 +699,42 @@ export function decodeServerNickname(view: DataView): NicknamePacket {
   return {
     id: view.getUint16(1),
     text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5, length)),
+  }
+}
+
+export function encodeClientActions(actions: number) {
+  const data = new ArrayBuffer(2)
+  const view = new DataView(data)
+
+  view.setUint8(0, ACTIONS)
+  view.setUint8(1, actions)
+
+  return data
+}
+
+export function decodeClientActions(view: DataView) {
+  expectSize(view, 2)
+
+  return view.getUint8(1)
+}
+
+export function encodeServerActions(packet: ActionsPacket) {
+  const data = new ArrayBuffer(4)
+  const view = new DataView(data)
+
+  view.setUint8(0, ACTIONS)
+  view.setUint16(1, packet.id)
+  view.setUint8(3, packet.actions)
+
+  return data
+}
+
+export function decodeServerActions(view: DataView): ActionsPacket {
+  expectSize(view, 4)
+
+  return {
+    id: view.getUint16(1),
+    actions: view.getUint8(3),
   }
 }
 

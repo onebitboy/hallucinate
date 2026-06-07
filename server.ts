@@ -9,6 +9,7 @@ import { accessoryPalette } from './src/character-style.ts'
 import { graffitiColors, graffitiWallBounds, graffitiWallCount, maxGraffitiSplats } from './src/graffiti.ts'
 import { photoWallThumbnailHeight, photoWallThumbnailWidth } from './src/photo-wall-data.ts'
 import {
+  ACTIONS,
   ADMIN,
   BEACH_BALLS,
   C_HEARTBEAT,
@@ -16,6 +17,7 @@ import {
   C_ROOM_CHANGE,
   decodeAdminMessage,
   decodeBeachBalls,
+  decodeClientActions,
   decodeClientMessage,
   decodeClientMotion,
   decodeClientNickname,
@@ -30,6 +32,7 @@ import {
   encodeModerationMessage,
   encodeOnline,
   encodeRoomState,
+  encodeServerActions,
   encodeServerMessage,
   encodeServerMotion,
   encodeServerNickname,
@@ -363,6 +366,12 @@ const server = Bun.serve<SocketData>({
         if (type === NICKNAME) {
           touchInteraction(client)
           setNickname(client, decodeClientNickname(view))
+          return
+        }
+
+        if (type === ACTIONS) {
+          touchInteraction(client)
+          broadcast(client, encodeServerActions({ id: client.id, actions: decodeClientActions(view) & 0b11 }))
           return
         }
 

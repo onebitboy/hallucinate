@@ -114,6 +114,7 @@ import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
+import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
 import type { VideoEndedEntry } from './protocol.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
@@ -1731,7 +1732,6 @@ const bubbleMuzzle: Vec3 = [0, 0, 0]
 const bubbleForward: Vec3 = [0, 0, 0]
 const bubbleInterval = 55
 let bubbling = false
-let nextBubbleAt = 0
 const foamSystem = createFoamSystem()
 let foamPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const foamWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -1740,7 +1740,6 @@ const foamForward: Vec3 = [0, 0, 0]
 const foamInterval = 250
 const foamBurstCount = 22
 let foaming = false
-let nextFoamAt = 0
 const smokeSystem = createSmokeSystem()
 let smokePuffPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const smokeWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -1749,8 +1748,9 @@ const smokeMouth: Vec3 = [0, 0, 0]
 const smokeForward: Vec3 = [0, 0, 0]
 const smokeInterval = 120
 const smokeExhaleInterval = 45
-let nextSmokeAt = 0
-let nextSmokeExhaleAt = 0
+type ParticleTimers = { bubble: number; foam: number; smokeWisp: number; smokeExhale: number }
+const particleTimers = new Map<number, ParticleTimers>()
+const localParticleSource = -1
 const graffitiSplats: GraffitiSplat[] = []
 const graffitiIds = new Set<number>()
 let nextRemoteSeatSyncAt = 0
@@ -1784,6 +1784,7 @@ function connectMultiplayer(spaceSlug?: string) {
     localInput: localCharacter.input,
     localMode: () => localCharacter.mode,
     localIdleClipIndex: () => idleClipIndex,
+    localActions: () => (bubbling ? ACTION_BUBBLING : 0) | (foaming ? ACTION_FOAMING : 0),
     localNickname: () => nickname,
     localStyle: () => ({
       topStyleIndex: styleController.topStyleIndex,
@@ -1845,6 +1846,7 @@ function connectMultiplayer(spaceSlug?: string) {
     onLeave: id => {
       nicknameLabelCache.delete(id)
       chatUi.remove(id)
+      particleTimers.delete(id)
     },
     onOnlineCount: online => {
       onlineCountValue = online.count
@@ -3253,19 +3255,14 @@ const draw = (stamp: number) => {
   if (!inLoft) {
     updateBeachBalls(beachBalls, delta, outsideTree)
   }
-  if (bubbling && stamp >= nextBubbleAt) {
-    nextBubbleAt = stamp + bubbleInterval
-    emitBubbles()
+  emitPlayerParticles(localParticleSource, characterPosition, localCharacter.turn, stamp, bubbling, foaming,
+    introHidden && resolveAccessoryKind(styleController.accessoryIndex) === 'cigarette')
+  for (const player of multiplayer.players.values()) {
+    emitPlayerParticles(player.id, player.position, player.turn, stamp, player.bubbling ?? false,
+      player.foaming ?? false, resolveAccessoryKind(player.style.accessoryIndex) === 'cigarette')
   }
   bubbleSystem.update(delta)
-  if (foaming && stamp >= nextFoamAt) {
-    nextFoamAt = stamp + foamInterval
-    emitFoam()
-  }
   foamSystem.update(delta, inLoft ? loftFloorAt : mainFloorAt)
-  if (introHidden && resolveAccessoryKind(styleController.accessoryIndex) === 'cigarette') {
-    emitCigaretteSmoke(stamp)
-  }
   smokeSystem.update(delta)
   const hits = inLoft ? [] : hitBeachBalls(beachBalls, characterPosition)
 
@@ -3292,6 +3289,7 @@ const draw = (stamp: number) => {
   else {
     multiplayer.sendMotionIfKeysChanged()
   }
+  multiplayer.sendActionsIfChanged()
 
   if (!inLoft) {
     updatePlayers(npcPlayers, delta, stamp * 0.001, outsideTree, occupiedSeats)
@@ -3391,18 +3389,80 @@ const draw = (stamp: number) => {
   scheduleFrame()
 }
 
-function emitBubbles() {
-  const turn = localCharacter.turn
+// Emit each particle effect a player is currently producing, from their own
+// position. Driven by synced state, so this runs identically for the local
+// player and every remote player. Per-source timers keep the emit rates steady.
+function emitPlayerParticles(
+  source: number,
+  position: Vec3,
+  turn: number,
+  stamp: number,
+  isBubbling: boolean,
+  isFoaming: boolean,
+  isSmoking: boolean,
+) {
+  if (!isBubbling && !isFoaming && !isSmoking) {
+    particleTimers.delete(source)
+    return
+  }
+
+  let timers = particleTimers.get(source)
+
+  if (!timers) {
+    timers = { bubble: 0, foam: 0, smokeWisp: 0, smokeExhale: 0 }
+    particleTimers.set(source, timers)
+  }
+
   const forwardX = Math.sin(turn)
   const forwardZ = Math.cos(turn)
 
-  bubbleMuzzle[0] = characterPosition[0] + forwardX * 0.35
-  bubbleMuzzle[1] = characterPosition[1] + 1.15
-  bubbleMuzzle[2] = characterPosition[2] + forwardZ * 0.35
-  bubbleForward[0] = forwardX
-  bubbleForward[1] = 0.35
-  bubbleForward[2] = forwardZ
-  bubbleSystem.spawn(bubbleMuzzle, bubbleForward, 3)
+  if (isBubbling && stamp >= timers.bubble) {
+    timers.bubble = stamp + bubbleInterval
+    bubbleMuzzle[0] = position[0] + forwardX * 0.35
+    bubbleMuzzle[1] = position[1] + 1.15
+    bubbleMuzzle[2] = position[2] + forwardZ * 0.35
+    bubbleForward[0] = forwardX
+    bubbleForward[1] = 0.35
+    bubbleForward[2] = forwardZ
+    bubbleSystem.spawn(bubbleMuzzle, bubbleForward, 3)
+  }
+
+  if (isFoaming && stamp >= timers.foam) {
+    timers.foam = stamp + foamInterval
+    foamMuzzle[0] = position[0] + forwardX * 0.45
+    foamMuzzle[1] = position[1] + 1.1
+    foamMuzzle[2] = position[2] + forwardZ * 0.45
+    foamForward[0] = forwardX
+    foamForward[1] = 0
+    foamForward[2] = forwardZ
+    foamSystem.burst(foamMuzzle, foamForward, foamBurstCount)
+  }
+
+  if (isSmoking) {
+    const time = stamp * 0.001
+    const lift = cigaretteLift(time)
+    const exhale = cigaretteExhale(time)
+
+    smokeForward[0] = forwardX
+    smokeForward[1] = 0
+    smokeForward[2] = forwardZ
+
+    if (stamp >= timers.smokeWisp) {
+      timers.smokeWisp = stamp + smokeInterval
+      smokeTip[0] = position[0] + forwardX * 0.22
+      smokeTip[1] = position[1] + 1 + lift * 0.5
+      smokeTip[2] = position[2] + forwardZ * 0.22
+      smokeSystem.emit(smokeTip, smokeForward, 1, false)
+    }
+
+    if (exhale > 0 && stamp >= timers.smokeExhale) {
+      timers.smokeExhale = stamp + smokeExhaleInterval
+      smokeMouth[0] = position[0] + forwardX * 0.18
+      smokeMouth[1] = position[1] + 1.5
+      smokeMouth[2] = position[2] + forwardZ * 0.18
+      smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
+    }
+  }
 }
 
 function updateBubbleBuffer() {
@@ -3421,55 +3481,12 @@ function loftFloorAt(x: number, y: number, z: number) {
   return walkLoftHeight(x, y, z)
 }
 
-function emitFoam() {
-  const turn = localCharacter.turn
-  const forwardX = Math.sin(turn)
-  const forwardZ = Math.cos(turn)
-
-  foamMuzzle[0] = characterPosition[0] + forwardX * 0.45
-  foamMuzzle[1] = characterPosition[1] + 1.1
-  foamMuzzle[2] = characterPosition[2] + forwardZ * 0.45
-  foamForward[0] = forwardX
-  foamForward[1] = 0
-  foamForward[2] = forwardZ
-  foamSystem.burst(foamMuzzle, foamForward, foamBurstCount)
-}
-
 function updateFoamBuffer() {
   resetVertexWriter(foamWriter)
   writeFoamGeometry(foamWriter, foamSystem.blobs)
   foamPoints = vertexWriterData(foamWriter)
   gl.bindBuffer(gl.ARRAY_BUFFER, foamBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, foamPoints, gl.DYNAMIC_DRAW)
-}
-
-function emitCigaretteSmoke(stamp: number) {
-  const time = stamp * 0.001
-  const turn = localCharacter.turn
-  const forwardX = Math.sin(turn)
-  const forwardZ = Math.cos(turn)
-  const lift = cigaretteLift(time)
-  const exhale = cigaretteExhale(time)
-
-  smokeForward[0] = forwardX
-  smokeForward[1] = 0
-  smokeForward[2] = forwardZ
-
-  if (stamp >= nextSmokeAt) {
-    nextSmokeAt = stamp + smokeInterval
-    smokeTip[0] = characterPosition[0] + forwardX * 0.22
-    smokeTip[1] = characterPosition[1] + 1 + lift * 0.5
-    smokeTip[2] = characterPosition[2] + forwardZ * 0.22
-    smokeSystem.emit(smokeTip, smokeForward, 1, false)
-  }
-
-  if (exhale > 0 && stamp >= nextSmokeExhaleAt) {
-    nextSmokeExhaleAt = stamp + smokeExhaleInterval
-    smokeMouth[0] = characterPosition[0] + forwardX * 0.18
-    smokeMouth[1] = characterPosition[1] + 1.5
-    smokeMouth[2] = characterPosition[2] + forwardZ * 0.18
-    smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
-  }
 }
 
 function updateSmokeBuffer() {
