@@ -7,6 +7,7 @@ import { createCharacterStyleController, glowstickColors } from './character-sty
 import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
+import { createFoamSystem, writeFoamGeometry } from './foam.ts'
 import {
   addGraffitiWallGeometry,
   createGraffitiCanvas,
@@ -52,6 +53,8 @@ import {
   roomAt,
   seatAt,
   usesSkyBackground,
+  walkHeight,
+  walkLoftHeight,
 } from './scene.ts'
 import {
   characterBoxFragment,
@@ -141,6 +144,7 @@ const {
   breakdanceButton,
   waveButton,
   bubbleButton,
+  foamButton,
   photoButton,
   roomsButton,
   supportLink,
@@ -373,6 +377,7 @@ function syncOnlineIndicator() {
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  foamButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   photoButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   roomsButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   supportLink.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1487,6 +1492,8 @@ const beachBallArray = gl.createVertexArray()
 const beachBallBuffer = gl.createBuffer()
 const bubbleArray = gl.createVertexArray()
 const bubbleBuffer = gl.createBuffer()
+const foamArray = gl.createVertexArray()
+const foamBuffer = gl.createBuffer()
 const graffitiArray = gl.createVertexArray()
 const graffitiBuffer = gl.createBuffer()
 const target = createTarget(gl, 1, 1)
@@ -1518,7 +1525,8 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !doorCoverVisi
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
-  || !beachBallArray || !beachBallBuffer || !bubbleArray || !bubbleBuffer || !graffitiArray || !graffitiBuffer)
+  || !beachBallArray || !beachBallBuffer || !bubbleArray || !bubbleBuffer || !foamArray || !foamBuffer
+  || !graffitiArray || !graffitiBuffer)
 {
   throw new Error('Failed to initialize WebGL resources')
 }
@@ -1588,6 +1596,7 @@ setupCharacterBoxArray({
 setupPostArray({ array: postArray, buffer: postBuffer, gl })
 setupVertexArray({ array: beachBallArray, buffer: beachBallBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: bubbleArray, buffer: bubbleBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
+setupVertexArray({ array: foamArray, buffer: foamBuffer, data: 0, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupVertexArray({ array: graffitiArray, buffer: graffitiBuffer, data: graffitiPoints, gl, stride,
   usage: gl.STATIC_DRAW })
 
@@ -1718,6 +1727,15 @@ const bubbleForward: Vec3 = [0, 0, 0]
 const bubbleInterval = 55
 let bubbling = false
 let nextBubbleAt = 0
+const foamSystem = createFoamSystem()
+let foamPoints: Float32Array<ArrayBufferLike> = new Float32Array()
+const foamWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const foamMuzzle: Vec3 = [0, 0, 0]
+const foamForward: Vec3 = [0, 0, 0]
+const foamInterval = 250
+const foamBurstCount = 22
+let foaming = false
+let nextFoamAt = 0
 const graffitiSplats: GraffitiSplat[] = []
 const graffitiIds = new Set<number>()
 let nextRemoteSeatSyncAt = 0
@@ -2460,6 +2478,12 @@ bindKeyboardInput({
   stopBubbles: () => {
     bubbling = false
   },
+  startFoam: () => {
+    foaming = true
+  },
+  stopFoam: () => {
+    foaming = false
+  },
   startBreakdance: () => localCharacter.startBreakdance(),
   openChatInput: () => openChatInput(),
   setAlternativeInput: useAlternativeInput,
@@ -2705,6 +2729,19 @@ bubbleButton.addEventListener('pointerdown', event => {
 for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
   bubbleButton.addEventListener(eventName, () => {
     bubbling = false
+  })
+}
+
+foamButton.addEventListener('pointerdown', event => {
+  event.preventDefault()
+  foamButton.setPointerCapture(event.pointerId)
+  foaming = true
+  canvas.focus()
+})
+
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  foamButton.addEventListener(eventName, () => {
+    foaming = false
   })
 }
 
@@ -3042,6 +3079,7 @@ function renderCurrentSceneFrame(options: {
       post: postArray,
       beachBalls: beachBallArray,
       bubbles: bubbleArray,
+      foam: foamArray,
       graffiti: graffitiArray,
       room: array,
       smoke: smokeArray,
@@ -3078,6 +3116,7 @@ function renderCurrentSceneFrame(options: {
     points,
     beachBallPoints,
     bubblePoints,
+    foamPoints,
     graffitiPoints: options.inLoft ? emptyPoints : graffitiPoints,
     graffitiTexture,
     post: {
@@ -3202,6 +3241,11 @@ const draw = (stamp: number) => {
     emitBubbles()
   }
   bubbleSystem.update(delta)
+  if (foaming && stamp >= nextFoamAt) {
+    nextFoamAt = stamp + foamInterval
+    emitFoam()
+  }
+  foamSystem.update(delta, inLoft ? loftFloorAt : mainFloorAt)
   const hits = inLoft ? [] : hitBeachBalls(beachBalls, characterPosition)
 
   for (const id of hits) {
@@ -3306,6 +3350,7 @@ const draw = (stamp: number) => {
   const characterCount = characterRenderSystem.update(stamp * 0.001)
   updateBeachBallBuffer()
   updateBubbleBuffer()
+  updateFoamBuffer()
   if (!introHidden) {
     updateIntro()
   }
@@ -3344,6 +3389,36 @@ function updateBubbleBuffer() {
   bubblePoints = vertexWriterData(bubbleWriter)
   gl.bindBuffer(gl.ARRAY_BUFFER, bubbleBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, bubblePoints, gl.DYNAMIC_DRAW)
+}
+
+function mainFloorAt(x: number, y: number, z: number) {
+  return walkHeight(x, y, z)
+}
+
+function loftFloorAt(x: number, y: number, z: number) {
+  return walkLoftHeight(x, y, z)
+}
+
+function emitFoam() {
+  const turn = localCharacter.turn
+  const forwardX = Math.sin(turn)
+  const forwardZ = Math.cos(turn)
+
+  foamMuzzle[0] = characterPosition[0] + forwardX * 0.45
+  foamMuzzle[1] = characterPosition[1] + 1.1
+  foamMuzzle[2] = characterPosition[2] + forwardZ * 0.45
+  foamForward[0] = forwardX
+  foamForward[1] = 0
+  foamForward[2] = forwardZ
+  foamSystem.burst(foamMuzzle, foamForward, foamBurstCount)
+}
+
+function updateFoamBuffer() {
+  resetVertexWriter(foamWriter)
+  writeFoamGeometry(foamWriter, foamSystem.blobs)
+  foamPoints = vertexWriterData(foamWriter)
+  gl.bindBuffer(gl.ARRAY_BUFFER, foamBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, foamPoints, gl.DYNAMIC_DRAW)
 }
 
 function updateBeachBallBuffer() {
