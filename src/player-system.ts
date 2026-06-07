@@ -1,6 +1,7 @@
 import { characterFloor, hairPalette, jewelPalette, skinPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { clamp, lengthSq, smoothAngle } from './math.ts'
+import { findPath } from './pathfinding.ts'
 import {
   backDoor,
   djBooth,
@@ -338,7 +339,7 @@ function updateDestinationPlayer(
     }
   }
 
-  const target = activePlayerTarget(player, time)
+  const target = activePlayerTarget(player, time, outsideTree)
   const dx = target[0] - player.position[0]
   const dz = target[2] - player.position[2]
   const distanceSq = dx * dx + dz * dz
@@ -464,9 +465,15 @@ function turnTowardDestination(player: Player, delta: number) {
   player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
 }
 
-function activePlayerTarget(player: Player, time: number) {
+function activePlayerTarget(player: Player, time: number, outsideTree: CircleBounds) {
   if (!doorFlow(player)) {
-    return travelTarget(player, time)
+    const target = travelTarget(player, time)
+
+    if (isOutside(player.position) && player.destination.outside) {
+      return travelPathTarget(player, target, outsideTree)
+    }
+
+    return target
   }
 
   return doorTarget(player)
@@ -520,6 +527,30 @@ function travelTarget(player: Player, time: number) {
   return player.travelTarget
 }
 
+function travelPathTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
+  if (!player.travelPathTarget || !samePoint(player.travelPathTarget, target)) {
+    player.travelPath = findPath(player.position, target, outsideTree)
+    player.travelPathTarget = target
+  }
+
+  while (player.travelPath!.length > 0 && waypointReached(player.position, player.travelPath![0]!)) {
+    player.travelPath!.shift()
+  }
+
+  return player.travelPath![0] ?? target
+}
+
+function samePoint(a: Vec3, b: Vec3) {
+  return a[0] === b[0] && a[2] === b[2]
+}
+
+function waypointReached(position: Vec3, waypoint: Vec3) {
+  const dx = waypoint[0] - position[0]
+  const dz = waypoint[2] - position[2]
+
+  return dx * dx + dz * dz < npcConfig.arrive.waypoint * npcConfig.arrive.waypoint
+}
+
 function trySitPlayer(player: Player, time: number, occupiedSeats: Set<string>) {
   if (player.leavingSeatUntil && time < player.leavingSeatUntil) {
     return false
@@ -559,6 +590,8 @@ function sitPlayer(
   player.travelLateralUntil = undefined
   player.travelLateralDirection = undefined
   player.travelTarget = undefined
+  player.travelPath = undefined
+  player.travelPathTarget = undefined
   player.nextTravelTargetAt = undefined
   player.doorTarget = undefined
   player.leavingSeatUntil = undefined
@@ -662,6 +695,8 @@ function choosePlayerDestination(
   player.travelLateralUntil = undefined
   player.travelLateralDirection = undefined
   player.travelTarget = undefined
+  player.travelPath = undefined
+  player.travelPathTarget = undefined
   player.nextTravelTargetAt = time
   player.doorTarget = undefined
   player.destinationUntil = time + 30

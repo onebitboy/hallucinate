@@ -203,6 +203,8 @@ export type Player = {
   travelLateralUntil?: number
   travelLateralDirection?: -1 | 1
   travelTarget?: Vec3
+  travelPath?: Vec3[]
+  travelPathTarget?: Vec3
   destinationUntil?: number
   doorTarget?: Vec3
   leavingSeatUntil?: number
