@@ -603,7 +603,8 @@ body[data-arcade-open="true"] #merch-cards {
     0 0 16px rgb(0 196 255 / 0.18);
 }
 
-#intro-nickname-input {
+#intro-nickname-field,
+#intro-instagram-field {
   width: min(240px, 100%);
   justify-self: center;
   border: 2px solid currentColor;
@@ -616,6 +617,39 @@ body[data-arcade-open="true"] #merch-cards {
   text-shadow: 0 0 8px currentColor;
   outline: none;
   box-shadow: 0 0 18px rgb(255 0 0 / 0.18);
+}
+
+#intro-nickname-field,
+#intro-instagram-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+#intro-nickname-icon,
+#intro-instagram-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+#intro-nickname-input,
+#intro-instagram-input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: block;
+  font: inherit;
+  height: 16px;
+  line-height: 16px;
+  outline: none;
+  padding: 0;
+  text-align: center;
+  text-shadow: inherit;
 }
 
 #intro-start:hover {
@@ -1016,6 +1050,27 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   text-underline-offset: 3px;
   cursor: pointer;
   pointer-events: auto;
+}
+
+.chat-instagram-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  font-weight: 900;
+  line-height: 16px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  pointer-events: auto;
+  vertical-align: -2px;
+}
+
+.chat-instagram-link img {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
 }
 
 .chat-ban-button {
@@ -1605,14 +1660,9 @@ html[data-touch-controls="true"] #chat-form[data-open="true"] {
   opacity: 1;
 }
 
-html[data-touch-controls="true"] #nickname-input,
 html[data-touch-controls="true"] #chat-input {
   max-width: none;
   min-width: 0;
-}
-
-html[data-touch-controls="true"] #nickname-input {
-  flex: 0 1 112px;
 }
 
 html[data-touch-controls="true"] #chat-input {
@@ -1732,7 +1782,6 @@ html[data-touch-controls="true"] #chat-log {
   z-index: 140;
 }
 
-#nickname-input,
 #chat-input,
 .chat-label[data-speaking="true"],
 .chat-bubble {
@@ -1747,7 +1796,6 @@ html[data-touch-controls="true"] #chat-log {
   box-shadow: 0 0 18px rgb(255 0 0 / 0.18);
 }
 
-#nickname-input,
 #chat-input {
   position: relative;
   top: 4px;
@@ -1755,12 +1803,8 @@ html[data-touch-controls="true"] #chat-log {
   outline: none;
 }
 
-#nickname-input {
-  width: 112px;
-}
-
 #chat-input {
-  width: 220px;
+  width: 260px;
 }
 
 #chat-bubble {
@@ -1788,6 +1832,10 @@ html[data-touch-controls="true"] #chat-log {
   pointer-events: none;
   text-align: center;
   text-shadow: 0 0 8px currentColor;
+}
+
+.chat-label[data-linked="true"] {
+  pointer-events: auto;
 }
 
 .chat-label[data-visible="false"],

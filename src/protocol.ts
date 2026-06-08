@@ -28,9 +28,10 @@ export const ACTION_FOAMING = 2
 
 export const roomCount = 3
 export const messageMaxLength = 120
+export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 40
+export const protocolVersion = 42
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -60,13 +61,20 @@ export type RoomStatePacket = {
   players: SpawnPacket[]
 }
 
-export type MessagePacket = {
-  id: number
+export type ClientMessagePacket = {
   text: string
 }
 
-export type NicknamePacket = {
+export type ClientProfilePacket = {
+  insta: string
+  nick: string
+}
+
+export type ProfilePacket = ClientProfilePacket & {
   id: number
+}
+
+export type MessagePacket = ProfilePacket & {
   text: string
 }
 
@@ -641,95 +649,119 @@ export function decodeRoomState(view: DataView): RoomStatePacket {
   }
 }
 
-export function encodeClientMessage(text: string) {
-  const bytes = textEncoder.encode(text)
-  const data = new ArrayBuffer(3 + bytes.length)
+export function encodeClientMessage(packet: ClientMessagePacket) {
+  const textBytes = textEncoder.encode(packet.text)
+  const data = new ArrayBuffer(3 + textBytes.length)
   const view = new DataView(data)
 
   view.setUint8(0, MESSAGE)
-  view.setUint16(1, bytes.length)
-  new Uint8Array(data, 3).set(bytes)
+  view.setUint16(1, textBytes.length)
+  new Uint8Array(data, 3).set(textBytes)
 
   return data
 }
 
-export function decodeClientMessage(view: DataView) {
+export function decodeClientMessage(view: DataView): ClientMessagePacket {
   expectAtLeastSize(view, 3)
 
-  const length = view.getUint16(1)
-  expectTextSize(view, 3, length)
+  const textLength = view.getUint16(1)
+  expectTextSize(view, 3, textLength)
 
-  return textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 3, length))
+  return {
+    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 3, textLength)),
+  }
 }
 
 export function encodeServerMessage(packet: MessagePacket) {
-  const bytes = textEncoder.encode(packet.text)
-  const data = new ArrayBuffer(5 + bytes.length)
+  const nickBytes = textEncoder.encode(packet.nick)
+  const instaBytes = textEncoder.encode(packet.insta)
+  const textBytes = textEncoder.encode(packet.text)
+  const data = new ArrayBuffer(9 + nickBytes.length + instaBytes.length + textBytes.length)
   const view = new DataView(data)
 
   view.setUint8(0, MESSAGE)
   view.setUint16(1, packet.id)
-  view.setUint16(3, bytes.length)
-  new Uint8Array(data, 5).set(bytes)
+  view.setUint16(3, nickBytes.length)
+  view.setUint16(5, instaBytes.length)
+  view.setUint16(7, textBytes.length)
+  new Uint8Array(data, 9).set(nickBytes)
+  new Uint8Array(data, 9 + nickBytes.length).set(instaBytes)
+  new Uint8Array(data, 9 + nickBytes.length + instaBytes.length).set(textBytes)
 
   return data
 }
 
 export function decodeServerMessage(view: DataView): MessagePacket {
-  expectAtLeastSize(view, 5)
+  expectAtLeastSize(view, 9)
 
-  const length = view.getUint16(3)
-  expectTextSize(view, 5, length)
+  const nickLength = view.getUint16(3)
+  const instaLength = view.getUint16(5)
+  const textLength = view.getUint16(7)
+  expectSize(view, 9 + nickLength + instaLength + textLength)
 
   return {
     id: view.getUint16(1),
-    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5, length)),
+    insta: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 9 + nickLength, instaLength)),
+    nick: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 9, nickLength)),
+    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 9 + nickLength + instaLength, textLength)),
   }
 }
 
-export function encodeClientNickname(text: string) {
-  const bytes = textEncoder.encode(text)
-  const data = new ArrayBuffer(3 + bytes.length)
+export function encodeClientProfile(packet: ClientProfilePacket) {
+  const nickBytes = textEncoder.encode(packet.nick)
+  const instaBytes = textEncoder.encode(packet.insta)
+  const data = new ArrayBuffer(5 + nickBytes.length + instaBytes.length)
   const view = new DataView(data)
 
   view.setUint8(0, NICKNAME)
-  view.setUint16(1, bytes.length)
-  new Uint8Array(data, 3).set(bytes)
+  view.setUint16(1, nickBytes.length)
+  view.setUint16(3, instaBytes.length)
+  new Uint8Array(data, 5).set(nickBytes)
+  new Uint8Array(data, 5 + nickBytes.length).set(instaBytes)
 
   return data
 }
 
-export function decodeClientNickname(view: DataView) {
-  expectAtLeastSize(view, 3)
+export function decodeClientProfile(view: DataView): ClientProfilePacket {
+  expectAtLeastSize(view, 5)
 
-  const length = view.getUint16(1)
-  expectTextSize(view, 3, length)
+  const nickLength = view.getUint16(1)
+  const instaLength = view.getUint16(3)
+  expectSize(view, 5 + nickLength + instaLength)
 
-  return textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 3, length))
+  return {
+    insta: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5 + nickLength, instaLength)),
+    nick: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5, nickLength)),
+  }
 }
 
-export function encodeServerNickname(packet: NicknamePacket) {
-  const bytes = textEncoder.encode(packet.text)
-  const data = new ArrayBuffer(5 + bytes.length)
+export function encodeServerProfile(packet: ProfilePacket) {
+  const nickBytes = textEncoder.encode(packet.nick)
+  const instaBytes = textEncoder.encode(packet.insta)
+  const data = new ArrayBuffer(7 + nickBytes.length + instaBytes.length)
   const view = new DataView(data)
 
   view.setUint8(0, NICKNAME)
   view.setUint16(1, packet.id)
-  view.setUint16(3, bytes.length)
-  new Uint8Array(data, 5).set(bytes)
+  view.setUint16(3, nickBytes.length)
+  view.setUint16(5, instaBytes.length)
+  new Uint8Array(data, 7).set(nickBytes)
+  new Uint8Array(data, 7 + nickBytes.length).set(instaBytes)
 
   return data
 }
 
-export function decodeServerNickname(view: DataView): NicknamePacket {
-  expectAtLeastSize(view, 5)
+export function decodeServerProfile(view: DataView): ProfilePacket {
+  expectAtLeastSize(view, 7)
 
-  const length = view.getUint16(3)
-  expectTextSize(view, 5, length)
+  const nickLength = view.getUint16(3)
+  const instaLength = view.getUint16(5)
+  expectSize(view, 7 + nickLength + instaLength)
 
   return {
     id: view.getUint16(1),
-    text: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 5, length)),
+    insta: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 7 + nickLength, instaLength)),
+    nick: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + 7, nickLength)),
   }
 }
 

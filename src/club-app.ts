@@ -28,6 +28,7 @@ import {
   sprayWallPoint,
 } from './graffiti.ts'
 import { bindKeyboardInput, setAlternativeInput } from './input.ts'
+import { createInstagramLink } from './instagram-link.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { bindTapDestination, createMobileControls } from './mobile-controls.ts'
@@ -35,7 +36,7 @@ import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
 import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
-import { ACTION_BUBBLING, ACTION_FOAMING } from './protocol.ts'
+import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
@@ -129,7 +130,7 @@ import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { createPhotoWallRenderer } from './photo-wall-renderer.ts'
 import { createPhotoWallUi } from './photo-wall-ui.ts'
-import type { VideoEndedEntry } from './protocol.ts'
+import type { MessagePacket, VideoEndedEntry } from './protocol.ts'
 import { createSceneLighting } from './scene-lighting.ts'
 import { createStrobeDrawController } from './strobe-draw.ts'
 import { createStrobeLights } from './strobe-object.ts'
@@ -149,7 +150,6 @@ const {
   djVideo,
   photoWall,
   chatForm,
-  nicknameInput,
   chatInput,
   chatBubble,
   chatLog,
@@ -169,6 +169,7 @@ const {
   intro,
   introEffect,
   introBar,
+  introInstagramInput,
   introNicknameInput,
   introProgress,
   introStart,
@@ -301,8 +302,9 @@ type MainPose = {
 }
 let lastMainPose: MainPose | undefined
 let nickname = savedState?.nickname ?? ''
-nicknameInput.value = nickname
+let instagram = normalizeInstagram(savedState?.instagram ?? '')
 introNicknameInput.value = nickname
+introInstagramInput.value = instagram
 const adminIdRoot = document.createElement('div')
 let sendVideoEndedNow = (_entry: VideoEndedEntry) => {}
 let sendVideoPlaylistNow = (_zone: VideoZone, _ids: string[]) => {}
@@ -548,25 +550,23 @@ syncOnlineIndicator()
 adminIdRoot.id = 'admin-id-root'
 document.body.append(adminIdRoot)
 
-type ChatLogEntry = {
+type ChatLogEntry = MessagePacket & {
   color: string
   emoji?: string
-  id: number
-  text: string
 }
 
 const chatLogRows = new WeakMap<HTMLElement, ChatLogEntry[]>()
 
-function addChatLogMessage(id: number, text: string) {
-  const color = chatMessageColor(id, text)
-  const emoji = emojiReactionFromMessage(text)
+function addChatLogMessage(packet: MessagePacket) {
+  const color = chatMessageColor(packet)
+  const emoji = emojiReactionFromMessage(packet.text)
   const last = chatLog.lastElementChild
 
   if (emoji && last instanceof HTMLElement) {
     const entries = chatLogRows.get(last)
-    const entry = { color, emoji, id, text }
+    const entry = { ...packet, color, emoji }
 
-    if (entries?.every(entry => entry.emoji) && chatLogEntryLabel(entries[0]!) === chatLogEntryLabel(entry)) {
+    if (entries?.every(entry => entry.emoji) && chatLogEntryKey(entries[0]!) === chatLogEntryKey(entry)) {
       entries.push(entry)
       renderChatLogRow(last)
       chatLog.scrollTop = chatLog.scrollHeight
@@ -602,7 +602,7 @@ function addChatLogMessage(id: number, text: string) {
   ban.addEventListener('pointerdown', sendBan, { capture: true })
   ban.addEventListener('click', sendBan)
   row.append(ban, message)
-  chatLogRows.set(row, [{ color, emoji, id, text }])
+  chatLogRows.set(row, [{ ...packet, color, emoji }])
   renderChatLogRow(row)
   chatLog.append(row)
   chatLog.scrollTop = chatLog.scrollHeight
@@ -618,19 +618,33 @@ function renderChatLogRow(row: HTMLElement) {
   row.style.color = first.color
   row.dataset.userIds = entries.map(entry => entry.id).join(' ')
   if (entries.every(entry => entry.emoji)) {
-    message.textContent = `${chatLogEntryLabel(first)} ${entries.map(entry => entry.emoji).join(' ')}`
+    message.replaceChildren()
+    renderChatLogEntryLabel(message, first)
+    message.append(document.createTextNode(` ${entries.map(entry => entry.emoji).join(' ')}`))
   }
   else {
-    renderChatLogText(message, first.text)
+    renderChatLogText(message, first)
   }
 }
 
 function chatLogEntryLabel(entry: ChatLogEntry) {
-  return /^<[^>\n]+>(?: |$)/.exec(entry.text)?.[0].trim() ?? nicknameLabel(String(entry.id))
+  return nicknameLabel(identityName(entry.id, entry.nick))
 }
 
-function renderChatLogText(target: HTMLElement, text: string) {
+function chatLogEntryKey(entry: ChatLogEntry) {
+  return `${chatLogEntryLabel(entry)}\n${entry.insta}`
+}
+
+function renderChatLogEntryLabel(target: HTMLElement, entry: ChatLogEntry) {
+  renderChatNickname(target, chatLogEntryLabel(entry), entry.insta)
+}
+
+function renderChatLogText(target: HTMLElement, entry: ChatLogEntry) {
   target.replaceChildren()
+  const text = entry.text
+
+  renderChatNickname(target, chatLogEntryLabel(entry), entry.insta)
+  target.append(document.createTextNode(' '))
   let index = 0
 
   for (const match of roomSlugMatches(text)) {
@@ -653,6 +667,15 @@ function renderChatLogText(target: HTMLElement, text: string) {
   }
 
   target.append(document.createTextNode(text.slice(index)))
+}
+
+function renderChatNickname(target: HTMLElement, label: string, instagram: string) {
+  if (!instagram) {
+    target.append(document.createTextNode(label))
+    return
+  }
+
+  target.append(createInstagramLink(label, instagram))
 }
 
 function roomSlugMatches(text: string) {
@@ -1030,14 +1053,14 @@ function clearAdminIdLabels() {
   adminIdLabels.clear()
 }
 
-function chatMessageColor(id: number, text: string) {
-  const name = chatMessageNickname(text) ?? String(id)
+function chatMessageColor(message: MessagePacket) {
+  const name = identityName(message.id, message.nick)
 
   return identityColor(name)
 }
 
-function chatMessageNickname(text: string) {
-  return /^<([^>\n]+)>(?: |$)/.exec(text)?.[1]
+function chatMessageKey(message: Pick<MessagePacket, 'id' | 'text'>) {
+  return `${message.id}\n${message.text}`
 }
 
 function mentionsNickname(text: string) {
@@ -1114,7 +1137,7 @@ function syncOnlineSelf() {
 }
 
 function syncChatFormColor() {
-  const next = activeNicknameInput().value.trim()
+  const next = introHidden ? nickname : normalizeNickname(introNicknameInput.value)
   const selfId = multiplayer?.selfId || 0
 
   if (next === lastChatFormIdentity && selfId === lastChatFormSelfId) {
@@ -1142,18 +1165,14 @@ function syncChatFormColor() {
   }
 }
 
-function activeNicknameInput() {
-  return document.activeElement === introNicknameInput ? introNicknameInput : nicknameInput
-}
-
 function syncNicknameLabels() {
   syncChatFormColor()
 
   for (const [id, player] of multiplayer.players) {
     const name = identityName(id, playerNicknames.get(id))
-    const cached = cachedNicknameLabel(id, name)
+    const cached = cachedNicknameLabel(id, name, playerInstagrams.get(id) ?? '')
 
-    chatUi.setLabel(id, cached.label, player.position, cached.color)
+    chatUi.setLabel(id, cached.label, player.position, cached.color, cached.instagram)
   }
 }
 
@@ -1162,21 +1181,40 @@ function syncRemoteNicknameLabel(id: number) {
 
   if (player) {
     const name = identityName(id, playerNicknames.get(id))
-    const cached = cachedNicknameLabel(id, name)
+    const cached = cachedNicknameLabel(id, name, playerInstagrams.get(id) ?? '')
 
-    chatUi.setLabel(id, cached.label, player.position, cached.color)
+    chatUi.setLabel(id, cached.label, player.position, cached.color, cached.instagram)
   }
 }
 
-function cachedNicknameLabel(id: number, name: string) {
+function rememberPlayerProfile(id: number, nick: string, instagram: string) {
+  if (nick) {
+    playerNicknames.set(id, nick)
+  }
+  else {
+    playerNicknames.delete(id)
+  }
+
+  if (instagram) {
+    playerInstagrams.set(id, instagram)
+  }
+  else {
+    playerInstagrams.delete(id)
+  }
+
+  nicknameLabelCache.delete(id)
+}
+
+function cachedNicknameLabel(id: number, name: string, instagram: string) {
   const cached = nicknameLabelCache.get(id)
 
-  if (cached?.name === name) {
+  if (cached?.name === name && cached.instagram === instagram) {
     return cached
   }
 
   const next = {
     color: identityColor(name),
+    instagram,
     label: nicknameLabel(name),
     name,
   }
@@ -1417,6 +1455,7 @@ let lastOnlineText = ''
 let lastOnlineCountValue = -1
 let lastOnlineIdleValue = -1
 let introWaveSent = false
+let profileSubmitted = false
 
 intro.addEventListener('touchmove', event => {
   if (!introHidden) {
@@ -1439,7 +1478,10 @@ function setIntroEffectPointer(event: PointerEvent) {
 }
 
 function startIntro() {
-  syncNickname(introNicknameInput.value)
+  if (!submitIntroProfile()) {
+    return
+  }
+
   if (!introWaveSent) {
     introWaveSent = true
     sendChatMessage('👋')
@@ -1448,25 +1490,38 @@ function startIntro() {
   introStart.dataset.playing = String(videoPlaying)
 }
 
-function submitIntroNickname() {
+function submitIntroProfile() {
+  if (!introNicknameInput.reportValidity()) {
+    introNicknameInput.focus()
+    return false
+  }
+
   syncNickname(introNicknameInput.value)
+  syncInstagram(introInstagramInput.value)
+  profileSubmitted = true
+  multiplayer.sendProfile()
   introNicknameInput.blur()
+  introInstagramInput.blur()
   canvas.focus()
+
+  return true
 }
 
 introStart.addEventListener('click', startIntro)
 introNicknameInput.addEventListener('change', () => syncNickname(introNicknameInput.value))
 introNicknameInput.addEventListener('input', syncChatFormColor)
+introInstagramInput.addEventListener('change', () => syncInstagram(introInstagramInput.value))
 
-function handleIntroNicknameKey(event: KeyboardEvent) {
+function handleIntroProfileKey(event: KeyboardEvent) {
   if (event.key !== 'Enter') {
     return
   }
 
   event.preventDefault()
-  submitIntroNickname()
+  startIntro()
 }
-introNicknameInput.addEventListener('keydown', handleIntroNicknameKey)
+introNicknameInput.addEventListener('keydown', handleIntroProfileKey)
+introInstagramInput.addEventListener('keydown', handleIntroProfileKey)
 addEventListener('keydown', handleIntroStartKey)
 
 function handleIntroStartKey(event: KeyboardEvent) {
@@ -1480,8 +1535,8 @@ function handleIntroStartKey(event: KeyboardEvent) {
   }
 
   event.preventDefault()
-  if (document.activeElement === introNicknameInput) {
-    submitIntroNickname()
+  if (document.activeElement === introNicknameInput || document.activeElement === introInstagramInput) {
+    submitIntroProfile()
     return
   }
 
@@ -1866,8 +1921,9 @@ function localMoveAngle() {
 let multiplayer: ReturnType<typeof createMultiplayer>
 let hasMultiplayer = false
 const predictedMessages = new Map<string, number>()
+const playerInstagrams = new Map<number, string>()
 const playerNicknames = new Map<number, string>()
-const nicknameLabelCache = new Map<number, { color: string; label: string; name: string }>()
+const nicknameLabelCache = new Map<number, { color: string; instagram: string; label: string; name: string }>()
 const beachBalls = createBeachBalls()
 let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
@@ -1942,6 +1998,7 @@ function connectMultiplayer(spaceSlug?: string) {
 
   hasMultiplayer = true
   predictedMessages.clear()
+  playerInstagrams.clear()
   playerNicknames.clear()
   nicknameLabelCache.clear()
   chatUi.clear()
@@ -1955,7 +2012,9 @@ function connectMultiplayer(spaceSlug?: string) {
     localMode: () => localCharacter.mode,
     localIdleClipIndex: () => idleClipIndex,
     localActions: () => (bubbling ? ACTION_BUBBLING : 0) | (foaming ? ACTION_FOAMING : 0),
+    localInstagram: () => instagram,
     localNickname: () => nickname,
+    localProfileReady: () => profileSubmitted,
     localStyle: () => ({
       topStyleIndex: styleController.topStyleIndex,
       bottomStyleIndex: styleController.bottomStyleIndex,
@@ -1971,49 +2030,49 @@ function connectMultiplayer(spaceSlug?: string) {
       requestedRoom = room
       saveCurrentClubState(true, room)
     },
-    onMessage: (id, text) => {
-      if (id === multiplayer.selfId && predictedMessages.has(text)) {
-        const count = predictedMessages.get(text)!
+    onMessage: message => {
+      const key = chatMessageKey(message)
+
+      if (message.id === multiplayer.selfId && predictedMessages.has(key)) {
+        const count = predictedMessages.get(key)!
 
         if (count === 1) {
-          predictedMessages.delete(text)
+          predictedMessages.delete(key)
         }
         else {
-          predictedMessages.set(text, count - 1)
+          predictedMessages.set(key, count - 1)
         }
 
         return
       }
 
-      const position = id === multiplayer.selfId
+      const position = message.id === multiplayer.selfId
         ? characterPosition
-        : multiplayer.players.get(id)?.position
+        : multiplayer.players.get(message.id)?.position
 
-      if (id !== multiplayer.selfId && graphicsPaused && mentionsNickname(text)) {
+      rememberPlayerProfile(message.id, message.nick, message.insta)
+
+      if (message.id !== multiplayer.selfId && graphicsPaused && mentionsNickname(message.text)) {
         playMentionDing()
       }
 
-      const color = addChatLogMessage(id, text)
+      const color = addChatLogMessage(message)
       if (position) {
-        chatUi.show(id, text, position, performance.now(), color)
+        chatUi.show(message.id, message.text, position, performance.now(), color,
+          nicknameLabel(identityName(message.id, message.nick)))
       }
     },
     onDeleteMessages: id => {
       deleteChatLogMessages(id)
       chatUi.removeMessages(id)
     },
-    onNickname: (id, text) => {
-      if (text) {
-        playerNicknames.set(id, text)
-      }
-      else {
-        playerNicknames.delete(id)
-        nicknameLabelCache.delete(id)
-      }
-
-      syncRemoteNicknameLabel(id)
+    onProfile: profile => {
+      rememberPlayerProfile(profile.id, profile.nick, profile.insta)
+      syncRemoteNicknameLabel(profile.id)
     },
     onLeave: id => {
+      playerInstagrams.delete(id)
+      playerNicknames.delete(id)
       nicknameLabelCache.delete(id)
       chatUi.remove(id)
       particleTimers.delete(id)
@@ -2627,20 +2686,32 @@ const styleActions: Record<
   },
 }
 
-function messageWithNickname(text: string) {
-  return text ? `${nicknameLabel(identityName(multiplayer.selfId, nickname))} ${text}` : text
-}
-
-function syncNickname(value = activeNicknameInput().value) {
-  const next = value.trim()
+function syncNickname(value = introNicknameInput.value) {
+  const next = normalizeNickname(value)
 
   if (next !== nickname) {
     nickname = next
-    nicknameInput.value = nickname
     introNicknameInput.value = nickname
     saveCurrentClubState(true)
-    multiplayer.sendNickname()
   }
+}
+
+function normalizeNickname(value: string) {
+  return value.trim()
+}
+
+function syncInstagram(value = introInstagramInput.value) {
+  const next = normalizeInstagram(value)
+
+  if (next !== instagram || introInstagramInput.value !== next) {
+    instagram = next
+    introInstagramInput.value = instagram
+    saveCurrentClubState(true)
+  }
+}
+
+function normalizeInstagram(value: string) {
+  return [...value.trim().replace(/^@+/, '').replace(/[^0-9A-Za-z._]/g, '')].slice(0, instagramMaxLength).join('')
 }
 
 function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoomIndex()) {
@@ -2655,6 +2726,7 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoom
     alternativeInput,
     hairController,
     idleClipIndex,
+    instagram,
     key: saveKey,
     localCharacter,
     nickname,
@@ -2664,8 +2736,8 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoom
 }
 
 bindKeyboardInput({
-  activeInputs: [introNicknameInput, nicknameInput, chatInput, rentRoomInput, claimPassword, loftMusicPassword,
-    loftMusicSource],
+  activeInputs: [introNicknameInput, introInstagramInput, chatInput, rentRoomInput, claimPassword,
+    loftMusicPassword, loftMusicSource],
   keys,
   startJumping: () => localCharacter.startJumping(),
   stopJumping: () => localCharacter.stopJumping(),
@@ -2852,14 +2924,17 @@ function graffitiKey(splat: GraffitiSplat) {
 }
 
 function sendChatMessage(message: string) {
-  syncNickname()
-  const text = multiplayer.sendMessage(messageWithNickname(message))
+  const packet = multiplayer.sendMessage(message)
 
-  if (text) {
-    predictedMessages.set(text, (predictedMessages.get(text) ?? 0) + 1)
-    const color = addChatLogMessage(multiplayer.selfId, text)
+  if (packet) {
+    const entry = { id: multiplayer.selfId, insta: instagram, nick: nickname, ...packet }
+    const key = chatMessageKey(entry)
 
-    chatUi.show(multiplayer.selfId, text, characterPosition, performance.now(), color)
+    predictedMessages.set(key, (predictedMessages.get(key) ?? 0) + 1)
+    const color = addChatLogMessage(entry)
+
+    chatUi.show(multiplayer.selfId, entry.text, characterPosition, performance.now(), color,
+      nicknameLabel(identityName(entry.id, entry.nick)))
   }
 }
 
@@ -2880,9 +2955,6 @@ function toggleChatInput(focus = true) {
     scrollChatLogToBottom()
   }
 }
-
-nicknameInput.addEventListener('change', () => syncNickname(nicknameInput.value))
-nicknameInput.addEventListener('input', syncChatFormColor)
 
 chatInput.addEventListener('keydown', event => {
   if (event.key !== 'Enter') {

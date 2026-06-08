@@ -1,5 +1,6 @@
 import { projectVisiblePointInto, projectWallPointInto } from './projection.ts'
 import type { ProjectedPoint, WallProjector } from './projection.ts'
+import { createInstagramLink } from './instagram-link.ts'
 import { emojiReactionFromMessage } from './reactions.ts'
 import type { Vec3 } from './types.ts'
 
@@ -19,6 +20,7 @@ type ChatLabel = {
   color: string
   element: HTMLDivElement
   hideAt: number
+  instagram: string
   owner: number
   position: Vec3
   text: string
@@ -96,12 +98,14 @@ export function createChatUi(
 
       return text
     },
-    show(id: number, text: string, bubblePosition: Vec3, stamp: number, color: string) {
+    show(id: number, text: string, bubblePosition: Vec3, stamp: number, color: string, labelText = '') {
       const label = labels.get(id)
       const reaction = emojiReactionFromMessage(text)
+      const bubbleText = labelText ? `${labelText} ${text}` : text
 
       if (label) {
-        label.element.textContent = text
+        label.element.textContent = bubbleText
+        label.element.dataset.linked = 'false'
         label.element.dataset.speaking = 'true'
         label.hideAt = stamp + bubbleDuration
         label.element.style.color = color
@@ -116,7 +120,7 @@ export function createChatUi(
         : createBubble(bubbleRoot, id, bubblePosition)
 
       if (!reaction) {
-        bubble.element.textContent = text
+        bubble.element.textContent = bubbleText
         bubble.element.style.color = color
       }
       bubble.position = bubblePosition
@@ -150,7 +154,8 @@ export function createChatUi(
       const label = labels.get(id)
 
       if (label) {
-        label.element.textContent = label.text
+        renderLabel(label)
+        label.element.dataset.speaking = 'false'
         label.hideAt = 0
       }
     },
@@ -184,7 +189,7 @@ export function createChatUi(
 
       bubbles.clear()
     },
-    setLabel(id: number, text: string, labelPosition: Vec3, color: string) {
+    setLabel(id: number, text: string, labelPosition: Vec3, color: string, instagram = '') {
       let label = labels.get(id)
 
       if (!text) {
@@ -202,14 +207,15 @@ export function createChatUi(
       }
 
       label.text = text
+      label.instagram = instagram
       label.position = labelPosition
       if (label.color !== color) {
         label.color = color
         label.element.style.color = color
       }
       if (label.hideAt === 0) {
-        if (label.element.textContent !== text) {
-          label.element.textContent = text
+        if (label.element.textContent !== text || label.element.dataset.instagram !== instagram) {
+          renderLabel(label)
         }
         label.element.dataset.speaking = 'false'
       }
@@ -232,7 +238,7 @@ export function createChatUi(
 
       for (const label of labels.values()) {
         if (label.hideAt > 0 && stamp > label.hideAt) {
-          label.element.textContent = label.text
+          renderLabel(label)
           label.element.dataset.speaking = 'false'
           label.hideAt = 0
         }
@@ -263,6 +269,7 @@ function createLabel(root: HTMLDivElement, owner: number, position: Vec3): ChatL
     color: 'white',
     element,
     hideAt: 0,
+    instagram: '',
     owner,
     position,
     text: '',
@@ -276,6 +283,14 @@ function createLabel(root: HTMLDivElement, owner: number, position: Vec3): ChatL
   root.append(element)
 
   return label
+}
+
+function renderLabel(label: ChatLabel) {
+  label.element.replaceChildren(label.instagram
+    ? createInstagramLink(label.text, label.instagram)
+    : document.createTextNode(label.text))
+  label.element.dataset.instagram = label.instagram
+  label.element.dataset.linked = String(Boolean(label.instagram))
 }
 
 function createBubble(root: HTMLDivElement, owner: number, position: Vec3): ChatBubble {

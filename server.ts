@@ -21,7 +21,7 @@ import {
   decodeClientActions,
   decodeClientMessage,
   decodeClientMotion,
-  decodeClientNickname,
+  decodeClientProfile,
   decodeGraffiti,
   decodeRoomChange,
   decodeVideoEnded,
@@ -36,13 +36,15 @@ import {
   encodeServerActions,
   encodeServerMessage,
   encodeServerMotion,
-  encodeServerNickname,
+  encodeServerProfile,
   encodeSpawn,
   encodeVideoPlaylistRequest,
   encodeVideoProgressRequest,
   encodeVideoSync,
   GRAFFITI,
+  instagramMaxLength,
   MESSAGE,
+  type MessagePacket,
   modeCount,
   type MotionPacket,
   NICKNAME,
@@ -67,6 +69,7 @@ import type { GraffitiSplat, VideoZone } from './src/types.ts'
 
 type Client = {
   id: number
+  instagram: string
   ip: string
   lastInteractionAt: number
   lastSeen: number
@@ -100,10 +103,7 @@ type StoredVideoPlaylistEntry = VideoPlaylistEntry & {
   sourceIds: string[]
 }
 
-type ChatHistoryEntry = {
-  id: number
-  text: string
-}
+type ChatHistoryEntry = MessagePacket
 
 type LoftRoom = {
   slug: string
@@ -304,9 +304,10 @@ const server = Bun.serve<SocketData>({
         return
       }
 
-      const client: Client = {
-        id,
-        ip: socket.data.ip,
+        const client: Client = {
+          id,
+          instagram: '',
+          ip: socket.data.ip,
         lastInteractionAt: now,
         lastSeen: now,
         lastMotionAt: now,
@@ -338,7 +339,7 @@ const server = Bun.serve<SocketData>({
       clients.set(socket, client)
       addToRoom(client, 0)
       sendRoomState(client)
-      sendNicknames(client)
+      sendProfiles(client)
       sendChatHistory(client)
       sendVideoSync(client)
       sendBeachBalls(client)
@@ -381,16 +382,22 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === MESSAGE) {
-          const text = truncateMessage(decodeClientMessage(view))
+          const packet = decodeClientMessage(view)
+          const text = truncateMessage(packet.text)
           const normalizedText = normalizeChatText(text)
           const emoji = emojiText(text)
           const slur = slurMatch(text)
 
           touchInteraction(client)
+          if (!client.nickname) {
+            throw new Error(`Invalid message without nickname ${client.id}`)
+          }
           if ((normalizedText || emoji) && !binaryText(text) && !slur) {
             console.log(`[chat] ${client.id} ${client.ip}: ${text}`)
-            addChatHistory(client, text)
-            broadcastSpace(clientSpace(client), encodeServerMessage({ id: client.id, text }))
+            const message = { id: client.id, insta: client.instagram, nick: client.nickname, text }
+
+            addChatHistory(client, message)
+            broadcastSpace(clientSpace(client), encodeServerMessage(message))
           }
 
           return
@@ -398,7 +405,7 @@ const server = Bun.serve<SocketData>({
 
         if (type === NICKNAME) {
           touchInteraction(client)
-          setNickname(client, decodeClientNickname(view))
+          setProfile(client, decodeClientProfile(view))
           return
         }
 
@@ -1643,10 +1650,10 @@ function sendRoomState(client: Client) {
   }))
 }
 
-function sendNicknames(client: Client) {
+function sendProfiles(client: Client) {
   for (const next of spaceClients(clientSpace(client))) {
     if (next.nickname) {
-      client.socket.send(encodeServerNickname({ id: next.id, text: next.nickname }))
+      client.socket.send(encodeServerProfile({ id: next.id, insta: next.instagram, nick: next.nickname }))
     }
   }
 }
@@ -1657,10 +1664,10 @@ function sendChatHistory(client: Client) {
   }
 }
 
-function addChatHistory(client: Client, text: string) {
+function addChatHistory(client: Client, entry: ChatHistoryEntry) {
   const history = clientSpace(client).chatHistory
 
-  history.push({ id: client.id, text })
+  history.push(entry)
   while (history.length > chatHistoryMax) {
     history.shift()
   }
@@ -1674,17 +1681,35 @@ function removeChatHistory(space: SpaceState, id: number) {
   }
 }
 
-function setNickname(client: Client, text: string) {
+function setProfile(client: Client, profile: { insta: string; nick: string }) {
+  const nickname = validateNickname(profile.nick)
+  const instagram = validateInstagram(profile.insta)
+
+  client.instagram = instagram
+  client.nickname = nickname
+  broadcastSpace(clientSpace(client), encodeServerProfile({ id: client.id, insta: instagram, nick: nickname }))
+}
+
+function validateNickname(text: string) {
   const nickname = text.trim()
 
-  if (nickname.length > nicknameMaxLength || nickname.includes('\n') || nickname.includes('<')
+  if (!nickname || nickname.length > nicknameMaxLength || nickname.includes('\n') || nickname.includes('<')
     || nickname.includes('>'))
   {
     throw new Error(`Invalid nickname ${nickname}`)
   }
 
-  client.nickname = nickname
-  broadcastSpace(clientSpace(client), encodeServerNickname({ id: client.id, text: nickname }))
+  return nickname
+}
+
+function validateInstagram(text: string) {
+  const instagram = text.trim()
+
+  if (instagram.length > instagramMaxLength || (instagram && !/^[0-9A-Za-z._]+$/.test(instagram))) {
+    throw new Error(`Invalid instagram ${instagram}`)
+  }
+
+  return instagram
 }
 
 function sendBeachBalls(client: Client) {

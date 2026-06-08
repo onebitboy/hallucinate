@@ -17,7 +17,7 @@ import {
   decodeRoomState,
   decodeServerMessage,
   decodeServerMotion,
-  decodeServerNickname,
+  decodeServerProfile,
   decodeSpawn,
   decodeVideoPlaylistRequest,
   decodeVideoProgressRequest,
@@ -27,7 +27,7 @@ import {
   encodeClientMessage,
   encodeClientActions,
   encodeClientMotion,
-  encodeClientNickname,
+  encodeClientProfile,
   encodeGraffiti,
   encodeHeartbeat,
   encodeKeys,
@@ -50,8 +50,11 @@ import {
   S_ROOM_STATE,
   S_SPAWN,
   sceneToProtocol,
+  type ClientMessagePacket,
   type OnlinePacket,
   type GraffitiPacket,
+  type MessagePacket,
+  type ProfilePacket,
   type SpawnPacket,
   truncateMessage,
   VIDEO_PLAYLIST_REQUEST,
@@ -78,7 +81,9 @@ export function createMultiplayer(options: {
   localMode: () => CharacterMode
   localIdleClipIndex: () => number
   localActions: () => number
+  localInstagram: () => string
   localNickname: () => string
+  localProfileReady: () => boolean
   localStyle: () => {
     topStyleIndex: number
     bottomStyleIndex: number
@@ -90,8 +95,8 @@ export function createMultiplayer(options: {
   initialRoom: number
   spaceSlug?: string
   onRoomState: (room: number) => void
-  onMessage: (id: number, text: string) => void
-  onNickname: (id: number, text: string) => void
+  onMessage: (message: MessagePacket) => void
+  onProfile: (profile: ProfilePacket) => void
   onDeleteMessages: (id: number) => void
   onLeave: (id: number) => void
   onOnlineCount: (online: OnlinePacket) => void
@@ -118,6 +123,7 @@ export function createMultiplayer(options: {
   let lastMode = -1
   let lastHeight = Infinity
   let lastActions = -1
+  let profileQueued = false
   let socket = connect()
 
   function connect() {
@@ -132,7 +138,9 @@ export function createMultiplayer(options: {
       room = options.initialRoom
       lastActions = -1
       sendMotion()
-      sendNickname()
+      if (options.localProfileReady() && !profileQueued) {
+        sendProfile()
+      }
       send(encodeRoomChange(room))
       flush()
     })
@@ -268,14 +276,14 @@ export function createMultiplayer(options: {
     if (type === MESSAGE) {
       const message = decodeServerMessage(view)
 
-      options.onMessage(message.id, message.text)
+      options.onMessage(message)
       return
     }
 
     if (type === NICKNAME) {
-      const nickname = decodeServerNickname(view)
+      const profile = decodeServerProfile(view)
 
-      options.onNickname(nickname.id, nickname.text)
+      options.onProfile(profile)
       return
     }
 
@@ -319,6 +327,8 @@ export function createMultiplayer(options: {
     while (pending.length) {
       socket.send(pending.shift()!)
     }
+
+    profileQueued = false
   }
 
   function sendMotion() {
@@ -369,8 +379,16 @@ export function createMultiplayer(options: {
     send(encodeVideoEnded({ entry }))
   }
 
-  function sendNickname() {
-    queue(encodeClientNickname(options.localNickname()))
+  function sendProfile() {
+    const data = encodeClientProfile({ insta: options.localInstagram(), nick: options.localNickname() })
+
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(data)
+    }
+    else {
+      pending.push(data)
+      profileQueued = true
+    }
   }
 
   return {
@@ -389,12 +407,14 @@ export function createMultiplayer(options: {
       const next = truncateMessage(text)
 
       if (next) {
-        queue(encodeClientMessage(next))
-      }
+        const packet: ClientMessagePacket = { text: next }
 
-      return next
+        queue(encodeClientMessage(packet))
+
+        return packet
+      }
     },
-    sendNickname,
+    sendProfile,
     sendAdmin(pass: string, command: 'ban' | 'banSubnet' | 'randomTrack', id: number) {
       queue(encodeAdminMessage({ pass, command, id }))
     },

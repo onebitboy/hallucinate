@@ -16,6 +16,7 @@ export type ClubState = {
   bottomStyleIndex?: number
   accessoryIndex?: number
   alternativeInput?: boolean
+  instagram?: string
   nickname?: string
   room?: number
 }

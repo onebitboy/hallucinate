@@ -63,6 +63,7 @@ export function saveClubState(options: {
   hairController: ReturnType<typeof createCharacterHairController>
   alternativeInput: boolean
   idleClipIndex: number
+  instagram: string
   key: string
   localCharacter: ReturnType<typeof createLocalCharacter>
   nickname: string
@@ -89,6 +90,7 @@ export function saveClubState(options: {
     bottomStyleIndex: options.styleController.bottomStyleIndex,
     accessoryIndex: options.styleController.accessoryIndex,
     alternativeInput: options.alternativeInput,
+    instagram: options.instagram,
     nickname: options.nickname,
     room: options.room,
   })

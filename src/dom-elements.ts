@@ -3,7 +3,6 @@ export function getDomElements() {
   const djVideo = document.createElement('div')
   const photoWall = document.createElement('div')
   const chatForm = document.createElement('form')
-  const nicknameInput = document.createElement('input')
   const chatInput = document.createElement('input')
   const chatSubmit = document.createElement('button')
   const chatBubble = document.createElement('div')
@@ -31,7 +30,12 @@ export function getDomElements() {
   const introLogo = document.createElement('div')
   const introLogoTitle = document.createElement('div')
   const introLogoSubtext = document.createElement('div')
+  const introNicknameField = document.createElement('label')
+  const introNicknameIcon = document.createElement('img')
   const introNicknameInput = document.createElement('input')
+  const introInstagramField = document.createElement('label')
+  const introInstagramIcon = document.createElement('img')
+  const introInstagramInput = document.createElement('input')
   const introStart = document.createElement('button')
   const introGithub = document.createElement('a')
   const introGithubIcon = document.createElement('img')
@@ -51,11 +55,6 @@ export function getDomElements() {
 
   chatForm.id = 'chat-form'
   chatForm.className = 'absolute opacity-0'
-
-  nicknameInput.id = 'nickname-input'
-  nicknameInput.maxLength = 32
-  nicknameInput.placeholder = 'nickname'
-  nicknameInput.setAttribute('autocomplete', 'nickname')
 
   chatInput.id = 'chat-input'
   chatInput.maxLength = 120
@@ -131,7 +130,12 @@ export function getDomElements() {
   introLogo.id = 'intro-logo'
   introLogoTitle.id = 'intro-logo-title'
   introLogoSubtext.id = 'intro-logo-subtext'
+  introNicknameField.id = 'intro-nickname-field'
+  introNicknameIcon.id = 'intro-nickname-icon'
   introNicknameInput.id = 'intro-nickname-input'
+  introInstagramField.id = 'intro-instagram-field'
+  introInstagramIcon.id = 'intro-instagram-icon'
+  introInstagramInput.id = 'intro-instagram-input'
   introStart.id = 'intro-start'
   introGithub.id = 'intro-github'
   introGithubIcon.id = 'intro-github-icon'
@@ -140,10 +144,22 @@ export function getDomElements() {
   introProgress.id = 'intro-progress'
   introLogoTitle.textContent = 'hallucinate'
   introLogoSubtext.textContent = 'Massively Multiplayer Online Rave'
+  introNicknameField.setAttribute('aria-label', 'Nickname')
+  introNicknameIcon.src = '/user.svg'
+  introNicknameIcon.alt = ''
   introNicknameInput.maxLength = 32
-  introNicknameInput.placeholder = 'nickname'
+  introNicknameInput.pattern = '[^<>\\n]+'
+  introNicknameInput.placeholder = 'Your nickname'
+  introNicknameInput.required = true
   introNicknameInput.setAttribute('autocomplete', 'nickname')
   introNicknameInput.setAttribute('enterkeyhint', 'done')
+  introInstagramField.setAttribute('aria-label', 'Instagram')
+  introInstagramIcon.src = '/instagram.svg'
+  introInstagramIcon.alt = ''
+  introInstagramInput.maxLength = 30
+  introInstagramInput.placeholder = 'Your Instagram id'
+  introInstagramInput.autocomplete = 'username'
+  introInstagramInput.setAttribute('enterkeyhint', 'done')
   introStart.type = 'button'
   introStart.textContent = 'enter'
   introGithub.href = 'https://github.com/stagas/hallucinate'
@@ -154,14 +170,16 @@ export function getDomElements() {
   introGithubIcon.alt = ''
   introProgress.textContent = '0%'
 
-  chatForm.append(nicknameInput, chatInput, chatSubmit)
+  chatForm.append(chatInput, chatSubmit)
   onlineCount.append(onlineSelf, onlineText)
   onlineIndicator.append(chatLog, onlineCount)
   introTrack.append(introBar)
   maleTShirtLink.append(maleTShirtImage)
   femaleTShirtLink.append(femaleTShirtImage)
   merchCards.append(maleTShirtLink, femaleTShirtLink)
-  introPanel.append(introTrack, introProgress, introNicknameInput, introStart)
+  introNicknameField.append(introNicknameIcon, introNicknameInput)
+  introInstagramField.append(introInstagramIcon, introInstagramInput)
+  introPanel.append(introTrack, introProgress, introNicknameField, introInstagramField, introStart)
   introGithub.append(introGithubIcon)
   intro.append(introEffect, introPanel, introGithub)
   document.body.prepend(canvas, djVideo, photoWall, chatForm, chatBubble, onlineIndicator, reactionButtons,
@@ -172,7 +190,6 @@ export function getDomElements() {
     djVideo,
     photoWall,
     chatForm,
-    nicknameInput,
     chatInput,
     chatBubble,
     chatLog,
@@ -192,6 +209,7 @@ export function getDomElements() {
     intro,
     introEffect,
     introBar,
+    introInstagramInput,
     introNicknameInput,
     introProgress,
     introStart,
