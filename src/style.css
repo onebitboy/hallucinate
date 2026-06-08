@@ -1565,6 +1565,7 @@ html[data-touch-controls="true"] #mobile-controls {
 }
 
 html[data-touch-controls="true"] #help-ui .help-cluster,
+html[data-touch-controls="true"] #help-ui .help-row-actions,
 html[data-touch-controls="true"] #help-ui .help-box-speak,
 html[data-touch-controls="true"] #help-ui .help-box-alternative,
 html[data-touch-controls="true"] #help-ui .help-box-toggle {
