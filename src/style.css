@@ -1354,7 +1354,7 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
 
 .help-box {
   display: grid;
-  min-width: 112px;
+  min-width: 80px;
   height: 46px;
   align-content: center;
   gap: 4px;
@@ -1363,7 +1363,6 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   background: rgb(8 8 10 / 0.64);
   color: rgb(255 238 238);
   box-shadow: 0 0 18px rgb(255 0 0 / 0.12);
-  padding: 0 10px;
   text-align: center;
 }
 
@@ -1419,6 +1418,16 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   left: 24px;
   bottom: calc(24px + var(--app-bottom));
   width: 164px;
+}
+
+.help-row-actions {
+  position: absolute;
+  left: 204px;
+  bottom: calc(24px + var(--app-bottom));
+}
+
+.help-row-actions .help-box {
+  position: static;
 }
 
 .help-box-alternative {
