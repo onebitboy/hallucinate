@@ -572,7 +572,7 @@ type ChatLogEntry = MessagePacket & {
   emoji?: string
 }
 
-const chatLogRows = new WeakMap<HTMLElement, ChatLogEntry[]>()
+const chatLogRows = new Map<HTMLElement, ChatLogEntry[]>()
 
 function addChatLogMessage(packet: MessagePacket) {
   const color = chatMessageColor(packet)
@@ -596,12 +596,12 @@ function addChatLogMessage(packet: MessagePacket) {
   }
 
   if (emoji && packet.photoTimestamp && last instanceof HTMLElement) {
-    const entries = chatLogRows.get(last)
-    const first = entries?.[0]
+    const row = chatPhotoRow(packet.photoTimestamp) ?? last
+    const entries = chatLogRows.get(row)
 
-    if (entries && first?.photoTimestamp === packet.photoTimestamp) {
+    if (entries?.[0]?.photoTimestamp === packet.photoTimestamp) {
       entries.push(entry)
-      renderChatLogRow(last)
+      renderChatLogRow(row)
       chatLog.scrollTop = chatLog.scrollHeight
 
       return color
@@ -833,11 +833,29 @@ function deleteChatLogMessages(id: number) {
           renderChatLogRow(row)
         }
         else {
+          chatLogRows.delete(row)
           row.remove()
         }
       }
     }
   }
+}
+
+function chatPhotoRow(photoTimestamp: number) {
+  let fallback: HTMLElement | undefined
+
+  for (const [row, entries] of chatLogRows) {
+    if (entries[0]?.photoTimestamp !== photoTimestamp) {
+      continue
+    }
+    if (entries.some(entry => !entry.emoji)) {
+      return row
+    }
+
+    fallback = row
+  }
+
+  return fallback
 }
 
 const adminDialog = document.createElement('dialog')
@@ -2146,6 +2164,7 @@ function connectMultiplayer(spaceSlug?: string) {
   playerNicknames.clear()
   nicknameLabelCache.clear()
   chatUi.clear()
+  chatLogRows.clear()
   chatLog.replaceChildren()
   clearAdminIdLabels()
   multiplayer = createMultiplayer({
