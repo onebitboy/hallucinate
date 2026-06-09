@@ -279,12 +279,12 @@ float outsideSurfaceMask() {
 
 vec3 outsideModeColor(vec3 color) {
   if (characterPass == 1) {
-    vec3 nightColor = color * vec3(0.86, 0.88, 0.98) + vec3(0.045, 0.05, 0.08);
+    vec3 nightColor = color * vec3(0.9) + vec3(0.04, 0.045, 0.055);
 
     return mix(color, nightColor, outsideSurfaceMask() * outsideNight);
   }
 
-  vec3 nightColor = color * vec3(0.32, 0.44, 0.68) + vec3(0.0, 0.014, 0.13);
+  vec3 nightColor = color * vec3(0.62) + vec3(0.018, 0.022, 0.032);
 
   return mix(color, nightColor, outsideSurfaceMask() * outsideNight);
 }
