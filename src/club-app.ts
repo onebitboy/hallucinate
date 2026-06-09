@@ -3141,7 +3141,8 @@ chatForm.addEventListener('submit', event => {
   sendChatMessage(chatUi.submit(document.documentElement.dataset.touchControls !== 'true'))
 })
 
-photoButton.addEventListener('click', () => {
+photoButton.addEventListener('pointerdown', event => {
+  event.preventDefault()
   void takePhoto()
 })
 
