@@ -38,14 +38,16 @@ const npcConfig = {
     linger: [45, 120] as const,
     jitter: [0.35, 0.9] as const,
     danceFloor: {
-      sideRange: 3.1,
-      backRange: [0, 5.4] as const,
+      sideRange: 4.7,
+      backRange: [0.2, 8.8] as const,
       distance: 0.9,
+      jitter: 0.95,
     },
     outsideDanceFloor: {
       sideRange: 4.8,
       backRange: [0, 8.4] as const,
       distance: 0.9,
+      jitter: 0.8,
     },
     kioskRadius: [1.9, 6.4] as const,
     foodTruckDistance: [1.25, 2.25] as const,
@@ -781,23 +783,17 @@ function choosePlayerDestination(
 }
 
 function djDestination(seed: number, step: number, inside: boolean) {
-  const sideRange = inside
-    ? npcConfig.destination.danceFloor.sideRange
-    : npcConfig.destination.outsideDanceFloor.sideRange
-  const jitterAmount = inside ? 0.45 : 0.8
-  const jitterX = seededRange(seed, step + 102, -sideRange, sideRange)
-    + seededRange(seed, step + 111, -jitterAmount, jitterAmount)
-  const jitterZ =
-    seededRange(seed, step + 103, npcConfig.destination.danceFloor.backRange[0],
-      npcConfig.destination.danceFloor.backRange[1])
-    + seededRange(seed, step + 112, -jitterAmount, jitterAmount)
+  const danceFloor = inside
+    ? npcConfig.destination.danceFloor
+    : npcConfig.destination.outsideDanceFloor
+  const jitterX = seededRange(seed, step + 102, -danceFloor.sideRange, danceFloor.sideRange)
+    + seededRange(seed, step + 111, -danceFloor.jitter, danceFloor.jitter)
+  const jitterZ = seededRange(seed, step + 103, danceFloor.backRange[0], danceFloor.backRange[1])
+    + seededRange(seed, step + 112, -danceFloor.jitter, danceFloor.jitter)
 
   return inside
     ? danceFloorDestination(djBooth, false, 1, jitterX, jitterZ)
-    : danceFloorDestination(outsideDjBooth, true, -1, jitterX,
-      seededRange(seed, step + 103, npcConfig.destination.outsideDanceFloor.backRange[0],
-        npcConfig.destination.outsideDanceFloor.backRange[1])
-        + seededRange(seed, step + 112, -jitterAmount, jitterAmount), npcConfig.destination.outsideDanceFloor.distance)
+    : danceFloorDestination(outsideDjBooth, true, -1, jitterX, jitterZ, danceFloor.distance)
 }
 
 function seatDestination(
