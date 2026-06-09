@@ -2971,6 +2971,20 @@ createMobileControls({
   openChatInput: () => toggleChatInput(false),
   dismissVideoHint: helpUi.dismissVideoHint,
 })
+
+document.addEventListener('pointerdown', event => {
+  if (document.documentElement.dataset.touchControls !== 'true') {
+    return
+  }
+
+  const active = document.activeElement
+  if (!(active instanceof HTMLInputElement) || event.target instanceof HTMLInputElement) {
+    return
+  }
+
+  active.blur()
+}, { capture: true })
+
 bindTapDestination({
   canvas,
   ignorePointer: event => resolveAccessoryKind(styleController.accessoryIndex) === 'spray',
