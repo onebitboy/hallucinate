@@ -1,6 +1,7 @@
 import type { Vec3, Vertex } from './types.ts'
 
 export const imageTextureHaze = 8
+export const tShirtHaze = 0.75
 
 export function addBox(
   target: Vertex[],
@@ -68,14 +69,15 @@ export function addQuad(
   color: [number, number, number],
   glow: number,
   strobe = 0,
+  haze = 0,
 ) {
   target.push(
-    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [b[0], b[1], b[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
-    [d[0], d[1], d[2], color[0], color[1], color[2], glow, strobe, 0, 0, 0],
+    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
+    [b[0], b[1], b[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
+    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
+    [a[0], a[1], a[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
+    [c[0], c[1], c[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
+    [d[0], d[1], d[2], color[0], color[1], color[2], glow, strobe, 0, 0, haze],
   )
 }
 

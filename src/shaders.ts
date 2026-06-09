@@ -1,7 +1,7 @@
 import { landscapeBounds, tent } from './scene-data.ts'
 
 import { characterFloor } from './character-data.ts'
-import { imageTextureHaze } from './geometry.ts'
+import { imageTextureHaze, tShirtHaze } from './geometry.ts'
 
 const tentX = glslFloat(tent.x)
 const tentZ = glslFloat(tent.z)
@@ -19,6 +19,7 @@ const treeShadowFront = glslFloat(landscapeBounds.front)
 const treeShadowWidth = glslFloat(landscapeBounds.right - landscapeBounds.left)
 const treeShadowDepth = glslFloat(landscapeBounds.front - landscapeBounds.back)
 const imageTextureThreshold = glslFloat(imageTextureHaze - 0.5)
+const tShirtHazeGlsl = glslFloat(tShirtHaze)
 
 function glslFloat(value: number) {
   return value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '.0')
@@ -278,6 +279,10 @@ float outsideSurfaceMask() {
 }
 
 vec3 outsideModeColor(vec3 color) {
+  if (hazeAmount == ${tShirtHazeGlsl}) {
+    return color;
+  }
+
   if (characterPass == 1) {
     vec3 nightColor = color * vec3(0.9) + vec3(0.04, 0.045, 0.055);
 

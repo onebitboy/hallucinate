@@ -1,6 +1,6 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy } from './constants.ts'
-import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke } from './geometry.ts'
+import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke, tShirtHaze } from './geometry.ts'
 import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideSideLightZs, landscapeBounds,
@@ -424,13 +424,13 @@ function addFlatTShirt(target: Vertex[], center: Vec3, basis: TShirtStandBasis, 
   const cuffBottom = top - 0.34
 
   addQuad(target, tShirtPoint(center, basis, bottom, -half), tShirtPoint(center, basis, bottom, half),
-    tShirtPoint(center, basis, top, half), tShirtPoint(center, basis, top, -half), color, 0)
+    tShirtPoint(center, basis, top, half), tShirtPoint(center, basis, top, -half), color, 0, 0, tShirtHaze)
   addQuad(target, tShirtPoint(center, basis, shoulderTop, -sleeveIn),
     tShirtPoint(center, basis, shoulderBottom, -sleeveIn), tShirtPoint(center, basis, cuffBottom, -sleeveOut),
-    tShirtPoint(center, basis, cuffTop, -sleeveOut), color, 0)
+    tShirtPoint(center, basis, cuffTop, -sleeveOut), color, 0, 0, tShirtHaze)
   addQuad(target, tShirtPoint(center, basis, shoulderBottom, sleeveIn),
     tShirtPoint(center, basis, shoulderTop, sleeveIn), tShirtPoint(center, basis, cuffTop, sleeveOut),
-    tShirtPoint(center, basis, cuffBottom, sleeveOut), color, 0)
+    tShirtPoint(center, basis, cuffBottom, sleeveOut), color, 0, 0, tShirtHaze)
   addTShirtLogo(target, center, basis, y + 0.08, color)
 }
 
