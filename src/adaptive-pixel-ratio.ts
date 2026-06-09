@@ -1,89 +1,65 @@
 import { clamp, mix } from './math.ts'
 
-export function createAdaptivePixelRatio() {
-  const min = 0.35
-  const step = 0.15
-  const slowFrame = 1 / 55
+export function createAdaptiveResolution() {
+  const pixelRatioMin = 0.65
+  const pixelRatioStep = 0.15
+  const pixelRatioSlowFrame = 1 / 55
+  const bloomScaleMin = 1.5
+  const bloomScaleMax = 2
+  const bloomScaleStep = 0.1
+  const bloomScaleSlowFrame = 1 / 54
   const fastFrame = 1 / 59
-  const scale = window.devicePixelRatio
-  let ratio = scale
+  let pixelRatio = window.devicePixelRatio
+  let bloomScale = bloomScaleMax
   let frameTime = 1 / 60
-  let changeAt = 0
+  let pixelRatioChangeAt = 0
+  let bloomScaleChangeAt = 0
 
-  return {
-    ratio: () => ratio,
-    update(delta: number, stamp: number) {
-      if (delta === 0) {
-        return ratio
-      }
+  const state = () => ({
+    pixelRatio,
+    bloomScale,
+  })
 
-      frameTime = mix(frameTime, delta, 0.08)
-      ratio = clamp(ratio, min, window.devicePixelRatio)
-
-      if (stamp < changeAt) {
-        return ratio
-      }
-
-      const max = window.devicePixelRatio
-
-      const next = frameTime > slowFrame
-        ? ratio - step
-        : frameTime < fastFrame
-        ? ratio + step
-        : ratio
-      const direction = Math.sign(next - ratio)
-
-      if (direction === 0) {
-        return ratio
-      }
-
-      ratio = clamp(next, min, max)
-      changeAt = stamp + (direction > 0 ? 2000 : 250)
-      // console.log('[club] pixel ratio', ratio.toFixed(2), 'fps', Math.round(1 / frameTime))
-
-      return ratio
-    },
+  function updatePixelRatio(step: number, stamp: number) {
+    pixelRatio = clamp(pixelRatio + step, pixelRatioMin, window.devicePixelRatio)
+    pixelRatioChangeAt = stamp + (step > 0 ? 2000 : 250)
   }
-}
 
-export function createAdaptiveBloomScale() {
-  const min = 0.35
-  const max = 1
-  const step = 0.1
-  const slowFrame = 1 / 54
-  const fastFrame = 1 / 59
-  let scale = max
-  let frameTime = 1 / 60
-  let changeAt = 0
+  function updateBloomScale(step: number, stamp: number) {
+    bloomScale = clamp(bloomScale + step, bloomScaleMin, bloomScaleMax)
+    bloomScaleChangeAt = stamp + (step > 0 ? 2500 : 250)
+  }
 
   return {
-    scale: () => scale,
+    pixelRatio: () => pixelRatio,
+    bloomScale: () => bloomScale,
+    maxBloomScale: () => bloomScaleMax,
     update(delta: number, stamp: number) {
       if (delta === 0) {
-        return scale
+        return state()
       }
 
       frameTime = mix(frameTime, delta, 0.08)
+      pixelRatio = clamp(pixelRatio, pixelRatioMin, window.devicePixelRatio)
 
-      if (stamp < changeAt) {
-        return scale
+      if (frameTime > pixelRatioSlowFrame && pixelRatio > pixelRatioMin && stamp >= pixelRatioChangeAt) {
+        updatePixelRatio(-pixelRatioStep, stamp)
+      }
+      else if (frameTime > bloomScaleSlowFrame && pixelRatio <= pixelRatioMin && bloomScale > bloomScaleMin
+        && stamp >= bloomScaleChangeAt)
+      {
+        updateBloomScale(-bloomScaleStep, stamp)
+      }
+      else if (frameTime < fastFrame && bloomScale < bloomScaleMax && stamp >= bloomScaleChangeAt) {
+        updateBloomScale(bloomScaleStep, stamp)
+      }
+      else if (frameTime < fastFrame && bloomScale >= bloomScaleMax && pixelRatio < window.devicePixelRatio
+        && stamp >= pixelRatioChangeAt)
+      {
+        updatePixelRatio(pixelRatioStep, stamp)
       }
 
-      const next = frameTime > slowFrame
-        ? scale - step
-        : frameTime < fastFrame
-        ? scale + step
-        : scale
-      const direction = Math.sign(next - scale)
-
-      if (direction === 0) {
-        return scale
-      }
-
-      scale = clamp(next, min, max)
-      changeAt = stamp + (direction > 0 ? 2500 : 250)
-
-      return scale
+      return state()
     },
   }
 }

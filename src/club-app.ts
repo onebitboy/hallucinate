@@ -1,4 +1,4 @@
-import { createAdaptiveBloomScale, createAdaptivePixelRatio } from './adaptive-pixel-ratio.ts'
+import { createAdaptiveResolution } from './adaptive-pixel-ratio.ts'
 import { createBeachBalls, hitBeachBalls, updateBeachBalls, writeBeachBallGeometry } from './beach-balls.ts'
 import { createBubbleSystem, writeBubbleGeometry } from './bubbles.ts'
 import { idleClipNames } from './character-assets.ts'
@@ -1486,8 +1486,7 @@ const arcadeScreenPoints: [ProjectedPoint, ProjectedPoint, ProjectedPoint, Proje
   { x: 0, y: 0 },
   { x: 0, y: 0 },
 ]
-const pixelRatio = createAdaptivePixelRatio()
-const bloomScale = createAdaptiveBloomScale()
+const adaptiveResolution = createAdaptiveResolution()
 const introEffectRenderer = createIntroEffect(introEffect)
 const mentionDing = new Audio('/ding.mp3')
 const feedbackMaxAmount = 0.91
@@ -3186,7 +3185,7 @@ async function capturePhoto() {
 
   try {
     forcedPixelRatio = window.devicePixelRatio
-    forcedBloomScale = 1
+    forcedBloomScale = adaptiveResolution.maxBloomScale()
     resize()
     renderPhotoFrame(lastStamp || performance.now(), videoPreview, photoWallPreviewUrls.length > 0)
     return await canvasWebpBlob(canvas, 0.94)
@@ -3321,14 +3320,14 @@ function canvasWebpBlob(target: HTMLCanvasElement, quality: number) {
 }
 
 const resize = () => {
-  const ratio = forcedPixelRatio ?? pixelRatio.ratio()
+  const ratio = forcedPixelRatio ?? adaptiveResolution.pixelRatio()
   const width = Math.floor(canvas.clientWidth * ratio)
   const height = Math.floor(canvas.clientHeight * ratio)
   projectorViewport.clientWidth = width / ratio
   projectorViewport.clientHeight = height / ratio
   projectorViewport.width = width
   projectorViewport.height = height
-  const bloom = forcedBloomScale ?? bloomScale.scale()
+  const bloom = forcedBloomScale ?? adaptiveResolution.bloomScale()
   const bloomWidth = Math.max(1, Math.floor(width * bloom))
   const bloomHeight = Math.max(1, Math.floor(height * bloom))
   const feedbackWidth = feedback.current.width
@@ -3653,8 +3652,9 @@ const draw = (stamp: number) => {
 
   strobeController.setFrame(frame)
   lastStamp = stamp
-  const nextPixelRatio = pixelRatio.update(delta, stamp)
-  const nextBloomScale = bloomScale.update(delta, stamp)
+  const resolution = adaptiveResolution.update(delta, stamp)
+  const nextPixelRatio = resolution.pixelRatio
+  const nextBloomScale = resolution.bloomScale
 
   resizeDirty = resizeDirty || nextPixelRatio !== lastPixelRatio || nextBloomScale !== lastBloomScale
   clubGlobal.clubPixelRatio = nextPixelRatio
