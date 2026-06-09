@@ -1,5 +1,6 @@
-import assimpjs from 'assimpjs'
+import { loadPackedAssimpScene } from './packed-assimp.ts'
 import type { AssimpScene } from './types.ts'
+import type assimpjs from 'assimpjs'
 
 type LoadRequest = {
   id: number
@@ -15,7 +16,7 @@ type LoadResponse = {
   error?: string
 }
 
-let assimp: ReturnType<typeof assimpjs> | undefined
+let assimp: Promise<Awaited<ReturnType<typeof assimpjs>>> | undefined
 
 self.onmessage = (event: MessageEvent<LoadRequest>) => {
   loadAssimpScenes(event.data)
@@ -31,9 +32,14 @@ self.onmessage = (event: MessageEvent<LoadRequest>) => {
 }
 
 async function loadAssimpScenes(request: LoadRequest) {
-  const ajs = await assimpModule()
-
   return Promise.all(request.files.map(async file => {
+    const packed = await loadPackedAssimpScene(file.path)
+
+    if (packed) {
+      return packed
+    }
+
+    const ajs = await assimpModule()
     const response = await fetch(file.path)
 
     if (!response.ok) {
@@ -55,11 +61,13 @@ async function loadAssimpScenes(request: LoadRequest) {
 }
 
 function assimpModule() {
-  assimp ??= assimpjs({
-    locateFile(path) {
-      return path.endsWith('.wasm') ? '/assimpjs.wasm' : path
-    },
-  })
+  assimp ??= import('assimpjs').then(module =>
+    module.default({
+      locateFile(path) {
+        return path.endsWith('.wasm') ? '/assimpjs.wasm' : path
+      },
+    })
+  )
 
   return assimp
 }

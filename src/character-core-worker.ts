@@ -1,4 +1,3 @@
-import assimpjs from 'assimpjs'
 import { characterBones } from './character-data.ts'
 import { createHairMeshes } from './character-hair.ts'
 import {
@@ -7,7 +6,9 @@ import {
   validateCharacterRig,
 } from './character-rig.ts'
 import { normalizeIndex } from './math.ts'
+import { loadPackedAssimpScene } from './packed-assimp.ts'
 import type { AssimpScene, CharacterRig, HairMesh } from './types.ts'
+import type assimpjs from 'assimpjs'
 
 type CoreRequest = {
   id: number
@@ -41,7 +42,7 @@ const coreFiles = [
   { path: '/woman-hair.fbx', name: 'woman-hair.fbx' },
 ] as const
 
-let assimp: ReturnType<typeof assimpjs> | undefined
+let assimp: Promise<Awaited<ReturnType<typeof assimpjs>>> | undefined
 
 self.onmessage = (event: MessageEvent<CoreRequest>) => {
   loadCore(event.data)
@@ -105,6 +106,12 @@ async function loadCore(request: CoreRequest): Promise<CoreLoadedResponse> {
 }
 
 async function loadAssimpScene(path: string, name: string) {
+  const packed = await loadPackedAssimpScene(path)
+
+  if (packed) {
+    return packed
+  }
+
   const ajs = await assimpModule()
   const response = await fetch(path)
 
@@ -126,11 +133,13 @@ async function loadAssimpScene(path: string, name: string) {
 }
 
 function assimpModule() {
-  assimp ??= assimpjs({
-    locateFile(path) {
-      return path.endsWith('.wasm') ? '/assimpjs.wasm' : path
-    },
-  })
+  assimp ??= import('assimpjs').then(module =>
+    module.default({
+      locateFile(path) {
+        return path.endsWith('.wasm') ? '/assimpjs.wasm' : path
+      },
+    })
+  )
 
   return assimp
 }

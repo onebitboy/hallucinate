@@ -8,6 +8,7 @@
     "dev:web": "vite",
     "dev:app": "bun --watch --no-clear-screen server.ts",
     "build": "tsc && vite build",
+    "pack:assets": "bun scripts/pack-assimp-assets.ts",
     "start": "bun server.ts",
     "preview": "vite preview"
   },
