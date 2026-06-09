@@ -604,14 +604,14 @@ body[data-arcade-open="true"] #merch-cards {
   border-bottom-color: rgb(255 255 255 / 0.1);
   border-radius: 7px;
   background:
-    linear-gradient(rgb(64 64 70 / 0.92), rgb(18 18 23 / 0.98)),
-    rgb(18 18 23 / 0.98);
+    linear-gradient(180deg, rgb(8 32 116), rgb(0 196 255) 42%, rgb(255 32 48) 78%),
+    rgb(255 32 48);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.22),
     inset 0 -3px 0 rgb(0 0 0 / 0.34),
     0 3px 0 rgb(0 0 0 / 0.52),
-    0 0 18px rgb(255 0 0 / 0.2),
-    0 0 34px rgb(0 196 255 / 0.1);
+    0 0 18px rgb(255 0 0 / 0.28),
+    0 0 34px rgb(0 196 255 / 0.18);
   color: rgb(255 248 248);
   cursor: pointer;
   font: 900 13px/1 "Iansui", ui-sans-serif, system-ui, sans-serif;
@@ -674,8 +674,8 @@ body[data-arcade-open="true"] #merch-cards {
 #intro-start:hover {
   border-color: rgb(255 255 255 / 0.38);
   background:
-    linear-gradient(rgb(78 78 84 / 0.94), rgb(24 24 30 / 0.98)),
-    rgb(24 24 30 / 0.98);
+    linear-gradient(180deg, rgb(10 42 148), rgb(18 214 255) 42%, rgb(255 45 62) 78%),
+    rgb(255 45 62);
 }
 
 #intro-start:active {
@@ -1568,7 +1568,8 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   bottom: calc(24px + var(--app-bottom));
 }
 
-.help-row-actions .help-box {
+.help-row-actions .help-box,
+.help-row-alternative-actions .help-box {
   position: static;
 }
 
@@ -1576,6 +1577,12 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
   left: 24px;
   bottom: calc(78px + var(--app-bottom));
   width: 164px;
+}
+
+.help-row-alternative-actions {
+  position: absolute;
+  left: 204px;
+  bottom: calc(78px + var(--app-bottom));
 }
 
 .help-box-toggle {
@@ -1708,6 +1715,7 @@ html[data-touch-controls="true"] #mobile-controls {
 
 html[data-touch-controls="true"] #help-ui .help-cluster,
 html[data-touch-controls="true"] #help-ui .help-row-actions,
+html[data-touch-controls="true"] #help-ui .help-row-alternative-actions,
 html[data-touch-controls="true"] #help-ui .help-box-speak,
 html[data-touch-controls="true"] #help-ui .help-box-alternative,
 html[data-touch-controls="true"] #help-ui .help-box-toggle {
@@ -1967,4 +1975,9 @@ html[data-touch-controls="true"] #chat-log {
   text-shadow: 0 0 12px rgb(255 255 255 / 0.36), 0 0 22px rgb(255 0 90 / 0.24);
   transform-origin: center;
   will-change: opacity, transform;
+}
+
+html[data-touch-controls="true"] body[data-intro-visible="true"] #help-ui,
+html[data-touch-controls="true"] body[data-intro-visible="true"] #support-link {
+  display: none;
 }

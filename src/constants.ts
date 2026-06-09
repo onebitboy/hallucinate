@@ -12,6 +12,8 @@ export const electricNavy: Vec3 = [0.0, 0.028, 0.42]
 export const debugDayNight = false
 const dayCycleLoopSeconds = 30
 const dayCycleLoopStartedAt = Date.now()
+const sunriseHour = 7
+const daylightHours = 12
 
 export function dayCycleAt(date?: Date): DayCycle {
   const now = date ?? new Date()
@@ -19,7 +21,7 @@ export function dayCycleAt(date?: Date): DayCycle {
   const loop = debugDayNight && dayCycleLoopSeconds > 0 && date === undefined
   const progress = loop
     ? ((Date.now() - dayCycleLoopStartedAt) / (dayCycleLoopSeconds * 1000) % 1) * 2 - 0.5
-    : (hours - 6) / 12
+    : (hours - sunriseHour) / daylightHours
   const angle = progress * Math.PI
   const height = Math.sin(angle)
   const eastWest = Math.cos(angle)

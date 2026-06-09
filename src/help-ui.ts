@@ -42,10 +42,12 @@ const alternativeLeftRows: HelpKey[][] = [
 const actionRow: HelpKey[] = [
   { keys: ['c'], label: 'bubbles' },
   { keys: ['v'], label: 'wave' },
-  { keys: ['g'], label: 'sunglasses' },
-  { keys: ['h'], label: 'breakdance' },
   { keys: ['b'], label: 'bounce' },
   { keys: ['n'], label: 'foam' },
+]
+const alternativeActionRow: HelpKey[] = [
+  { keys: ['g'], label: 'sunglasses' },
+  { keys: ['h'], label: 'breakdance' },
 ]
 
 const moveRows: HelpKey[][] = [
@@ -71,6 +73,7 @@ export function createHelpUi() {
   const left = document.createElement('div')
   const move = document.createElement('div')
   const actions = helpRow(actionRow)
+  const alternativeActions = helpRow(alternativeActionRow)
   const speak = helpBox({ keys: ['space'], label: 'speak' })
   const alternative = helpBox({ keys: ['tab'], label: 'alt inputs' })
   const toggle = helpBox({ keys: ['?'], label: 'help' })
@@ -81,6 +84,7 @@ export function createHelpUi() {
   left.className = 'help-cluster help-cluster-left'
   move.className = 'help-cluster help-cluster-move'
   actions.className = 'help-row help-row-actions'
+  alternativeActions.className = 'help-row help-row-alternative-actions'
   speak.className = 'help-box help-box-speak'
   alternative.className = 'help-box help-box-alternative'
   toggle.className = 'help-box help-box-toggle'
@@ -90,7 +94,7 @@ export function createHelpUi() {
   renderCluster(left, leftRows)
   renderCluster(move, moveRows)
 
-  root.append(left, move, speak, actions, alternative, video, toggle)
+  root.append(left, move, speak, actions, alternative, alternativeActions, video, toggle)
   document.body.append(root)
 
   return {
