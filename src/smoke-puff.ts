@@ -1,4 +1,5 @@
 import type { VertexWriter } from './character-geometry.ts'
+import { createRandomPool } from './random-pool.ts'
 import { createUnitSphere, reserveSphereFloats, writeSphere } from './sphere-geometry.ts'
 import type { Vec3 } from './types.ts'
 
@@ -24,6 +25,7 @@ const maxLife = 2.8
 const puffGlow = 0.18
 const smokeColor: Vec3 = [0.72, 0.72, 0.76]
 const unitSphere = createUnitSphere(6, 8)
+const random = createRandomPool()
 
 function createPuff(): SmokePuff {
   return {
@@ -45,15 +47,15 @@ export function createSmokeSystem() {
       const puff = pool.pop() ?? createPuff()
       const push = exhale ? 0.9 : 0.2
 
-      puff.position[0] = origin[0] + (Math.random() - 0.5) * 0.06
-      puff.position[1] = origin[1] + (Math.random() - 0.5) * 0.06
-      puff.position[2] = origin[2] + (Math.random() - 0.5) * 0.06
-      puff.velocity[0] = forward[0] * push + (Math.random() - 0.5) * drift
-      puff.velocity[1] = rise * (0.7 + Math.random() * 0.6)
-      puff.velocity[2] = forward[2] * push + (Math.random() - 0.5) * drift
+      puff.position[0] = origin[0] + (random() - 0.5) * 0.06
+      puff.position[1] = origin[1] + (random() - 0.5) * 0.06
+      puff.position[2] = origin[2] + (random() - 0.5) * 0.06
+      puff.velocity[0] = forward[0] * push + (random() - 0.5) * drift
+      puff.velocity[1] = rise * (0.7 + random() * 0.6)
+      puff.velocity[2] = forward[2] * push + (random() - 0.5) * drift
       puff.baseRadius = (exhale ? puffRadius : wispRadius) * radiusScale
       puff.radius = puff.baseRadius
-      puff.maxLife = minLife + Math.random() * (maxLife - minLife)
+      puff.maxLife = minLife + random() * (maxLife - minLife)
       puff.life = puff.maxLife
       puffs.push(puff)
     }

@@ -63,6 +63,7 @@ type HeadBasis = {
   up: Vec3
   forward: Vec3
 }
+type CachedTurnBasis = TurnBasis & { turn: number }
 
 export type CharacterDrawCache = {
   basePose?: SampledPose
@@ -145,6 +146,9 @@ const sunglassesLens: Vec3 = [0.035, 0.018, 0.01]
 const sunglassesFrame: Vec3 = [0.07, 0.038, 0.018]
 const playerVisibility = { depth: 0, distanceSq: 0, visible: false }
 const farHairDistanceSq = 34 * 34
+const maxCachedBasePoses = 960
+const maxCachedBlendPoses = 1440
+const turnBasisCache = new WeakMap<object, CachedTurnBasis>()
 
 export function buildCharacterDrawData(options: BuildOptions) {
   const cache = options.drawCache
@@ -214,21 +218,28 @@ export function buildCharacterDrawData(options: BuildOptions) {
     }
   }
 
-  for (const key of basePoses.keys()) {
-    if (!usedBasePoseKeys.has(key)) {
-      basePoses.delete(key)
-    }
-  }
-  for (const key of npcBlendCache.keys()) {
-    if (!usedNpcBlendKeys.has(key)) {
-      npcBlendCache.delete(key)
-    }
-  }
+  prunePoseCache(basePoses, usedBasePoseKeys, maxCachedBasePoses)
+  prunePoseCache(npcBlendCache, usedNpcBlendKeys, maxCachedBlendPoses)
 
   return {
     vertices,
     boxInstances,
     hairInstances,
+  }
+}
+
+function prunePoseCache<T>(cache: Map<number, T>, used: Set<number>, max: number) {
+  if (cache.size <= max) {
+    return
+  }
+
+  for (const key of cache.keys()) {
+    if (!used.has(key)) {
+      cache.delete(key)
+      if (cache.size <= max) {
+        return
+      }
+    }
   }
 }
 
@@ -292,10 +303,7 @@ function addRenderedCharacter(
     groundJointIndices, characterScale, basePose, blendCache, placedPose, cacheFrame)
   const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
   const localReflection = detailedHair
-  const turn: TurnBasis = {
-    cos: Math.cos(player.turn),
-    sin: Math.sin(player.turn),
-  }
+  const turn = characterTurnBasis(player)
 
   if (style.accessoryKind === 'cigarette') {
     raisePoseCigaretteArm(pose, turn, options.time)
@@ -339,6 +347,24 @@ function addRenderedCharacter(
   else if (hair && renderHair && options.hairMeshes.length > 0) {
     addNpcHairInstance(hairInstances, pose, hair, style.hairColor)
   }
+}
+
+function characterTurnBasis(player: CharacterInput): TurnBasis {
+  const cached = turnBasisCache.get(player)
+
+  if (cached && cached.turn === player.turn) {
+    return cached
+  }
+
+  const next = {
+    cos: Math.cos(player.turn),
+    sin: Math.sin(player.turn),
+    turn: player.turn,
+  }
+
+  turnBasisCache.set(player, next)
+
+  return next
 }
 
 function addSunglasses(

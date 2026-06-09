@@ -333,6 +333,7 @@ const server = Bun.serve<SocketData>({
             skinColorIndex: 2,
             accessoryIndex: 0,
           },
+          sunglasses: false,
         },
       }
 

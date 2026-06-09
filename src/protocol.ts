@@ -31,12 +31,12 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 43
+export const protocolVersion = 44
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const angleScale = 256 / (Math.PI * 2)
-const motionSize = 16
+const motionSize = 17
 const spawnSize = motionSize + 2
 const graffitiReset = 1
 const graffitiComplete = 2
@@ -51,6 +51,7 @@ export type MotionPacket = {
   idleClipIndex: number
   mode: number
   style: PlayerStyle
+  sunglasses: boolean
 }
 
 export type SpawnPacket = Required<MotionPacket>
@@ -933,6 +934,7 @@ function writeMotion(view: DataView, offset: number, packet: MotionPacket) {
   view.setUint8(offset + 13, packet.style.hairColorIndex)
   view.setUint8(offset + 14, packet.style.skinColorIndex)
   view.setUint8(offset + 15, packet.style.accessoryIndex)
+  view.setUint8(offset + 16, Number(packet.sunglasses))
 }
 
 function readMotion(view: DataView, offset: number): MotionPacket {
@@ -952,5 +954,6 @@ function readMotion(view: DataView, offset: number): MotionPacket {
       skinColorIndex: view.getUint8(offset + 14),
       accessoryIndex: view.getUint8(offset + 15),
     },
+    sunglasses: view.getUint8(offset + 16) !== 0,
   }
 }

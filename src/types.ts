@@ -216,6 +216,7 @@ export type Player = {
   style: PlayerStyle
   resolvedStyle: ResolvedPlayerStyle
   seed: number
+  sunglasses?: boolean
   bubbling?: boolean
   foaming?: boolean
 }

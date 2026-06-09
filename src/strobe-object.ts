@@ -4,6 +4,11 @@ import { clamp, mix, smoothstep } from './math.ts'
 import { outsideDjBooth, roomBounds } from './scene-data.ts'
 import type { StrobeLight, StrobeReflectionLight, Vec3 } from './types.ts'
 
+type StrobeTargetCache = {
+  frame: number
+  target: Vec3
+}
+
 export function strobeLightAmount(point: Vec3, normal: Vec3, light: StrobeLight, target: Vec3) {
   return strobeReflectionAmount(point, normal, {
     light,
@@ -47,6 +52,8 @@ export function strobeRandom(id: number, frame: number) {
 
   return value - Math.floor(value)
 }
+
+const strobeTargetCache = new WeakMap<StrobeLight, StrobeTargetCache>()
 
 export function createStrobeLights() {
   const lights: StrobeLight[] = []
@@ -98,10 +105,23 @@ export function createStrobeLights() {
 }
 
 export function strobeTarget(light: StrobeLight, time: number): Vec3 {
-  if (light.zone === 'outside') {
-    return outsideStrobeTarget(light, time)
+  const frame = Math.floor(time * 60)
+  const cached = strobeTargetCache.get(light)
+
+  if (cached?.frame === frame) {
+    return cached.target
   }
 
+  const target = light.zone === 'outside'
+    ? outsideStrobeTarget(light, time)
+    : insideStrobeTarget(light, time)
+
+  strobeTargetCache.set(light, { frame, target })
+
+  return target
+}
+
+function insideStrobeTarget(light: StrobeLight, time: number): Vec3 {
   const cycle = time % 16
   const sweepTime = cycle < 5.5 ? time : time - 3
   const speed = 1.15

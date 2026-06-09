@@ -1,4 +1,5 @@
 import type { VertexWriter } from './character-geometry.ts'
+import { createRandomPool } from './random-pool.ts'
 import { createUnitSphere, reserveSphereFloats, writeSphere } from './sphere-geometry.ts'
 import type { Vec3 } from './types.ts'
 
@@ -23,6 +24,7 @@ const fadeTime = 1.6
 const foamGlow = 0.8
 const foamColor: Vec3 = [0.95, 0.97, 1]
 const unitSphere = createUnitSphere(6, 10)
+const random = createRandomPool()
 
 export type FloorAt = (x: number, y: number, z: number) => number
 
@@ -44,15 +46,15 @@ export function createFoamSystem() {
     for (let i = 0; i < count; i++) {
       const blob = pool.pop() ?? createFoam()
 
-      blob.position[0] = origin[0] + (Math.random() - 0.5) * 0.2
-      blob.position[1] = origin[1] + (Math.random() - 0.5) * 0.2
-      blob.position[2] = origin[2] + (Math.random() - 0.5) * 0.2
-      blob.velocity[0] = forward[0] * forwardSpeed + (Math.random() - 0.5) * spread
-      blob.velocity[1] = upSpeed + Math.random() * upSpeed
-      blob.velocity[2] = forward[2] * forwardSpeed + (Math.random() - 0.5) * spread
-      blob.baseRadius = minRadius + Math.random() * (maxRadius - minRadius)
+      blob.position[0] = origin[0] + (random() - 0.5) * 0.2
+      blob.position[1] = origin[1] + (random() - 0.5) * 0.2
+      blob.position[2] = origin[2] + (random() - 0.5) * 0.2
+      blob.velocity[0] = forward[0] * forwardSpeed + (random() - 0.5) * spread
+      blob.velocity[1] = upSpeed + random() * upSpeed
+      blob.velocity[2] = forward[2] * forwardSpeed + (random() - 0.5) * spread
+      blob.baseRadius = minRadius + random() * (maxRadius - minRadius)
       blob.radius = blob.baseRadius
-      blob.life = minLife + Math.random() * (maxLife - minLife)
+      blob.life = minLife + random() * (maxLife - minLife)
       blobs.push(blob)
     }
   }

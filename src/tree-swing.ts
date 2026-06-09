@@ -27,6 +27,19 @@ const up: Vec3 = [0, 1, 0]
 const rope: Vec3 = [0.58, 0.44, 0.26]
 const wood: Vec3 = [0.16, 0.075, 0.028]
 const unusedInstances: VertexWriter = { data: new Float32Array(0), length: 0 }
+const directionX = Math.sin(config.angle)
+const directionZ = Math.cos(config.angle)
+const turn = config.angle + config.facing
+const forwardX = Math.sin(turn)
+const forwardZ = Math.cos(turn)
+const turnSin = Math.sin(turn)
+const turnCos = Math.cos(turn)
+const sideX = turnCos
+const sideZ = -turnSin
+const ropeLength = config.anchorHeight - config.seatHeight
+const sideOffset = config.ropeSpacing * 0.5
+const seatOffset = config.seatWidth * 0.5
+const swingFrequency = Math.PI * 2 / config.swingSeconds
 
 export const treeSwing: TreeSwing = {
   anchorLeft: [0, 0, 0],
@@ -36,7 +49,7 @@ export const treeSwing: TreeSwing = {
   seat: {
     id,
     position: [0, characterFloor + config.seatHeight + config.sittingHeightOffset, 0],
-    turn: config.angle + config.facing,
+    turn,
   },
   seatLeft: [0, 0, 0],
   seatRight: [0, 0, 0],
@@ -50,24 +63,14 @@ export function updateTreeSwing(delta: number, time: number, tree: CircleBounds,
   const active = occupied ? 1 : 0
   const amount = 1 - Math.exp(-config.swingRiseSpeed * delta)
   const swingAmount = treeSwing.swing + (active - treeSwing.swing) * amount
-  const directionX = Math.sin(config.angle)
-  const directionZ = Math.cos(config.angle)
-  const turn = config.angle + config.facing
-  const forwardX = Math.sin(turn)
-  const forwardZ = Math.cos(turn)
-  const sideX = Math.cos(turn)
-  const sideZ = -Math.sin(turn)
   const topX = tree.x + directionX * config.distance
   const topY = characterFloor + config.anchorHeight
   const topZ = tree.z + directionZ * config.distance
-  const ropeLength = config.anchorHeight - config.seatHeight
-  const swing = Math.sin(time / config.swingSeconds * Math.PI * 2 + config.phase) * config.swingAngle * swingAmount
+  const swing = Math.sin(time * swingFrequency + config.phase) * config.swingAngle * swingAmount
   const swingOffset = Math.sin(swing) * ropeLength
   const seatX = topX + forwardX * swingOffset
   const seatY = topY - Math.cos(swing) * ropeLength
   const seatZ = topZ + forwardZ * swingOffset
-  const sideOffset = config.ropeSpacing * 0.5
-  const seatOffset = config.seatWidth * 0.5
   const boardY = seatY - config.seatThickness * 0.5
 
   treeSwing.swing = swingAmount
@@ -116,12 +119,9 @@ export function treeSwingSeatAt(
 
 export function writeTreeSwingGeometry(target: VertexWriter, light: CharacterLight) {
   addCharacterBox(target, unusedInstances, treeSwing.anchorLeft, treeSwing.ropeLeft, config.ropeThickness,
-    config.ropeThickness, rope, 0, treeSwing.seat.turn, true, light, 0, Math.sin(treeSwing.seat.turn),
-    Math.cos(treeSwing.seat.turn), { side: treeSwing.side })
+    config.ropeThickness, rope, 0, treeSwing.seat.turn, true, light, 0, turnSin, turnCos, { side: treeSwing.side })
   addCharacterBox(target, unusedInstances, treeSwing.anchorRight, treeSwing.ropeRight, config.ropeThickness,
-    config.ropeThickness, rope, 0, treeSwing.seat.turn, true, light, 0, Math.sin(treeSwing.seat.turn),
-    Math.cos(treeSwing.seat.turn), { side: treeSwing.side })
+    config.ropeThickness, rope, 0, treeSwing.seat.turn, true, light, 0, turnSin, turnCos, { side: treeSwing.side })
   addCharacterBox(target, unusedInstances, treeSwing.seatLeft, treeSwing.seatRight, config.seatThickness,
-    config.seatDepth, wood, 0.04, treeSwing.seat.turn, true, light, 0, Math.sin(treeSwing.seat.turn),
-    Math.cos(treeSwing.seat.turn), { side: up })
+    config.seatDepth, wood, 0.04, treeSwing.seat.turn, true, light, 0, turnSin, turnCos, { side: up })
 }

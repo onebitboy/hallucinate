@@ -125,6 +125,8 @@ import { characterFloor } from './character-data.ts'
 import type { VertexWriter } from './character-geometry.ts'
 import { createCharacterHairController } from './character-hair-control.ts'
 import { createCharacterRenderSystem } from './character-render-system.ts'
+import { uploadFloatBuffer } from './character-gpu.ts'
+import type { NumberBufferCache } from './character-gpu.ts'
 import { createChatUi } from './chat-ui.ts'
 import { renderClubFrame } from './club-renderer.ts'
 import { dayCycleAt } from './constants.ts'
@@ -1372,10 +1374,16 @@ function useAlternativeInput(value: boolean) {
 }
 
 function setSunglasses(value: boolean) {
+  const changed = sunglasses !== value
+
   sunglasses = value
   sunglassesButton.dataset.active = String(value)
   sunglassesButton.setAttribute('aria-pressed', String(value))
   sunglassesOverlay.dataset.active = String(value)
+
+  if (changed && hasMultiplayer) {
+    multiplayer.sendMotion()
+  }
 }
 
 function toggleSunglasses() {
@@ -2088,13 +2096,16 @@ const nicknameLabelCache = new Map<number, { color: string; instagram: string; l
 const beachBalls = createBeachBalls()
 let beachBallPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const beachBallWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const beachBallBufferCache: NumberBufferCache = { data: beachBallWriter.data }
 let treeSwingPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const treeSwingWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const treeSwingBufferCache: NumberBufferCache = { data: treeSwingWriter.data }
 const beachBallAuthorityUntil = new Map<number, number>()
 const beachBallAuthorityDuration = 2000
 const bubbleSystem = createBubbleSystem()
 let bubblePoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const bubbleWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const bubbleBufferCache: NumberBufferCache = { data: bubbleWriter.data }
 const bubbleMuzzle: Vec3 = [0, 0, 0]
 const bubbleForward: Vec3 = [0, 0, 0]
 const bubbleInterval = 55
@@ -2102,6 +2113,7 @@ let bubbling = false
 const foamSystem = createFoamSystem()
 let foamPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const foamWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const foamBufferCache: NumberBufferCache = { data: foamWriter.data }
 const foamMuzzle: Vec3 = [0, 0, 0]
 const foamForward: Vec3 = [0, 0, 0]
 const foamInterval = 250
@@ -2111,6 +2123,7 @@ let sunglasses = false
 const smokeSystem = createSmokeSystem()
 let smokePuffPoints: Float32Array<ArrayBufferLike> = new Float32Array()
 const smokeWriter: VertexWriter = { data: new Float32Array(0), length: 0 }
+const smokeBufferCache: NumberBufferCache = { data: smokeWriter.data }
 const smokeTip: Vec3 = [0, 0, 0]
 const smokeMouth: Vec3 = [0, 0, 0]
 const smokeForward: Vec3 = [0, 0, 0]
@@ -2176,6 +2189,7 @@ function connectMultiplayer(spaceSlug?: string) {
     localInput: localCharacter.input,
     localMode: () => localCharacter.mode,
     localIdleClipIndex: () => idleClipIndex,
+    localSunglasses: () => sunglasses,
     localActions: () => (bubbling ? ACTION_BUBBLING : 0) | (foaming ? ACTION_FOAMING : 0),
     localInstagram: () => instagram,
     localNickname: () => nickname,
@@ -4010,8 +4024,7 @@ function updateBubbleBuffer() {
   resetVertexWriter(bubbleWriter)
   writeBubbleGeometry(bubbleWriter, bubbleSystem.bubbles)
   bubblePoints = vertexWriterData(bubbleWriter)
-  gl.bindBuffer(gl.ARRAY_BUFFER, bubbleBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, bubblePoints, gl.DYNAMIC_DRAW)
+  uploadFloatBuffer(gl, bubbleBuffer, bubbleWriter.data, bubbleBufferCache, bubbleWriter.length)
 }
 
 function mainFloorAt(x: number, y: number, z: number) {
@@ -4026,46 +4039,38 @@ function updateFoamBuffer() {
   resetVertexWriter(foamWriter)
   writeFoamGeometry(foamWriter, foamSystem.blobs)
   foamPoints = vertexWriterData(foamWriter)
-  gl.bindBuffer(gl.ARRAY_BUFFER, foamBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, foamPoints, gl.DYNAMIC_DRAW)
+  uploadFloatBuffer(gl, foamBuffer, foamWriter.data, foamBufferCache, foamWriter.length)
 }
 
 function updateSmokeBuffer() {
   resetVertexWriter(smokeWriter)
   writeSmokeGeometry(smokeWriter, smokeSystem.puffs)
   smokePuffPoints = vertexWriterData(smokeWriter)
-  gl.bindBuffer(gl.ARRAY_BUFFER, smokePuffBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, smokePuffPoints, gl.DYNAMIC_DRAW)
+  uploadFloatBuffer(gl, smokePuffBuffer, smokeWriter.data, smokeBufferCache, smokeWriter.length)
 }
 
 function updateBeachBallBuffer() {
   if (appSpace.kind === 'loft') {
     beachBallPoints = emptyPoints
-    gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
     return
   }
 
   resetVertexWriter(beachBallWriter)
   writeBeachBallGeometry(beachBallWriter, beachBalls)
   beachBallPoints = vertexWriterData(beachBallWriter)
-  gl.bindBuffer(gl.ARRAY_BUFFER, beachBallBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, beachBallPoints, gl.DYNAMIC_DRAW)
+  uploadFloatBuffer(gl, beachBallBuffer, beachBallWriter.data, beachBallBufferCache, beachBallWriter.length)
 }
 
 function updateTreeSwingBuffer() {
   if (appSpace.kind === 'loft') {
     treeSwingPoints = emptyPoints
-    gl.bindBuffer(gl.ARRAY_BUFFER, treeSwingBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, treeSwingPoints, gl.DYNAMIC_DRAW)
     return
   }
 
   resetVertexWriter(treeSwingWriter)
   writeTreeSwingGeometry(treeSwingWriter, addLocalReflection)
   treeSwingPoints = vertexWriterData(treeSwingWriter)
-  gl.bindBuffer(gl.ARRAY_BUFFER, treeSwingBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, treeSwingPoints, gl.DYNAMIC_DRAW)
+  uploadFloatBuffer(gl, treeSwingBuffer, treeSwingWriter.data, treeSwingBufferCache, treeSwingWriter.length)
 }
 
 function scheduleGraffitiTexturePaint(splats: GraffitiSplat[]) {

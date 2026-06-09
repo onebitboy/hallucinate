@@ -80,6 +80,7 @@ export function createMultiplayer(options: {
   localInput: Vec3
   localMode: () => CharacterMode
   localIdleClipIndex: () => number
+  localSunglasses: () => boolean
   localActions: () => number
   localInstagram: () => string
   localNickname: () => string
@@ -383,6 +384,7 @@ export function createMultiplayer(options: {
       idleClipIndex: options.localIdleClipIndex(),
       mode: protocolMode,
       style: options.localStyle(),
+      sunglasses: options.localSunglasses(),
     }))
     lastKeys = keys
     lastAngle = angle
@@ -548,6 +550,7 @@ function createRemotePlayer(packet: SpawnPacket): Player {
     },
     style: packet.style,
     resolvedStyle: resolvePlayerStyle(packet.style),
+    sunglasses: packet.sunglasses,
     seed: packet.id,
   }
 
@@ -574,6 +577,7 @@ function applyRemotePose(player: Player, packet: SpawnPacket) {
   player.idleClipIndex = packet.idleClipIndex
   player.style = packet.style
   player.resolvedStyle = resolvePlayerStyle(packet.style)
+  player.sunglasses = packet.sunglasses
 }
 
 function validRemotePose(packet: SpawnPacket) {

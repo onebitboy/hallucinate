@@ -1,4 +1,5 @@
 import type { VertexWriter } from './character-geometry.ts'
+import { createRandomPool } from './random-pool.ts'
 import { createUnitSphere, reserveSphereFloats, writeSphere } from './sphere-geometry.ts'
 import type { Vec3 } from './types.ts'
 
@@ -24,6 +25,7 @@ const maxLife = 6
 const bubbleGlow = 1
 const unitSphere = createUnitSphere(6, 10)
 const color: Vec3 = [0, 0, 0]
+const random = createRandomPool()
 
 function createBubble(): Bubble {
   return {
@@ -47,17 +49,17 @@ export function createBubbleSystem() {
     for (let i = 0; i < count; i++) {
       const bubble = pool.pop() ?? createBubble()
 
-      bubble.position[0] = origin[0] + (Math.random() - 0.5) * 0.18
-      bubble.position[1] = origin[1] + (Math.random() - 0.5) * 0.18
-      bubble.position[2] = origin[2] + (Math.random() - 0.5) * 0.18
-      bubble.velocity[0] = forward[0] * emitSpeed + (Math.random() - 0.5) * spread
-      bubble.velocity[1] = forward[1] * verticalSpeed + (Math.random() - 0.7) * 0.26
-      bubble.velocity[2] = forward[2] * emitSpeed + (Math.random() - 0.5) * spread
-      bubble.radius = minRadius + Math.random() * (maxRadius - minRadius)
-      bubble.life = minLife + Math.random() * (maxLife - minLife)
-      bubble.wobblePhase = Math.random() * Math.PI * 2
-      bubble.wobbleRate = 2.4 + Math.random() * 2.6
-      bubble.hue = Math.random()
+      bubble.position[0] = origin[0] + (random() - 0.5) * 0.18
+      bubble.position[1] = origin[1] + (random() - 0.5) * 0.18
+      bubble.position[2] = origin[2] + (random() - 0.5) * 0.18
+      bubble.velocity[0] = forward[0] * emitSpeed + (random() - 0.5) * spread
+      bubble.velocity[1] = forward[1] * verticalSpeed + (random() - 0.7) * 0.26
+      bubble.velocity[2] = forward[2] * emitSpeed + (random() - 0.5) * spread
+      bubble.radius = minRadius + random() * (maxRadius - minRadius)
+      bubble.life = minLife + random() * (maxLife - minLife)
+      bubble.wobblePhase = random() * Math.PI * 2
+      bubble.wobbleRate = 2.4 + random() * 2.6
+      bubble.hue = random()
       bubbles.push(bubble)
     }
   }
