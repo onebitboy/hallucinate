@@ -72,6 +72,7 @@ export function createCharacterRenderSystem(options: {
     boxInstances: { data: new Float32Array(0), length: 0 },
     hairInstances: { data: new Float32Array(0), length: 0 },
     npcBlendCache: new Map(),
+    npcPoseFrames: new WeakMap(),
     poses: [],
     usedBasePoseKeys: new Set(),
     usedNpcBlendKeys: new Set(),

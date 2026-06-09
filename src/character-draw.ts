@@ -65,12 +65,24 @@ type HeadBasis = {
   forward: Vec3
 }
 
+type CachedNpcPose = {
+  frame: number
+  key: number
+  pose: Vec3[]
+}
+
+type ThrottledNpcPose = {
+  pose: Vec3[]
+  update: boolean
+}
+
 export type CharacterDrawCache = {
   basePose?: SampledPose
   basePoses: Map<number, SampledPose>
   boxInstances: VertexWriter
   hairInstances: VertexWriter
   npcBlendCache: PoseBlendCache
+  npcPoseFrames: WeakMap<Player, CachedNpcPose>
   poses: Vec3[][]
   usedBasePoseKeys: Set<number>
   usedNpcBlendKeys: Set<number>
@@ -148,6 +160,8 @@ const playerVisibility = { depth: 0, distanceSq: 0, visible: false }
 const farHairDistanceSq = 34 * 34
 const maxCachedBasePoses = 960
 const maxCachedBlendPoses = 1440
+const midPoseThrottleDistanceSq = 20 * 20
+const farPoseThrottleDistanceSq = 32 * 32
 const characterTurnBasis = createObjectTurnBasisCache<CharacterInput>()
 
 export function buildCharacterDrawData(options: BuildOptions) {
@@ -156,6 +170,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
   const boxInstances = cache?.boxInstances ?? { data: new Float32Array(0), length: 0 }
   const hairInstances = cache?.hairInstances ?? { data: new Float32Array(0), length: 0 }
   const npcBlendCache = cache?.npcBlendCache ?? new Map()
+  const npcPoseFrames = cache?.npcPoseFrames ?? new WeakMap()
   const poses = cache?.poses ?? []
   const basePoses = cache?.basePoses ?? new Map()
   const usedBasePoseKeys = cache?.usedBasePoseKeys ?? new Set<number>()
@@ -211,9 +226,14 @@ export function buildCharacterDrawData(options: BuildOptions) {
         usedNpcBlendKeys.add(directClip ? poseKey : blendKey)
       }
 
+      const frame = Math.floor(options.time * 60)
+      const throttle = npcPoseThrottle(player, directClip, visibility.distanceSq)
+      const npcPose = throttledNpcPose(npcPoseFrames, player, frame, throttle, directClip ? poseKey : blendKey)
+      const placedPose = npcPose?.pose ?? poseCache(poses, poseIndex)
+
       addRenderedCharacter(vertices, boxInstances, hairInstances, player, options, false, sampledBasePose,
-        cachedPose ? npcBlendCache : undefined, poseCache(poses, poseIndex), sampledTime, poseKey,
-        visibility.distanceSq <= farHairDistanceSq)
+        cachedPose ? npcBlendCache : undefined, placedPose, sampledTime, poseKey,
+        visibility.distanceSq <= farHairDistanceSq, npcPose && !npcPose.update ? npcPose.pose : undefined)
       poseIndex++
     }
   }
@@ -226,6 +246,53 @@ export function buildCharacterDrawData(options: BuildOptions) {
     boxInstances,
     hairInstances,
   }
+}
+
+function npcPoseThrottle(player: Player, directClip: boolean, distanceSq: number) {
+  const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
+
+  if (directClip || player.mode === 'wave' || player.mode === 'waveOut' || style.accessoryKind === 'cigarette') {
+    return 1
+  }
+  if (distanceSq > farPoseThrottleDistanceSq) {
+    return 3
+  }
+  if (distanceSq > midPoseThrottleDistanceSq) {
+    return 2
+  }
+
+  return 1
+}
+
+function throttledNpcPose(
+  poses: WeakMap<Player, CachedNpcPose>,
+  player: Player,
+  frame: number,
+  throttle: number,
+  key: number,
+): ThrottledNpcPose | undefined {
+  if (throttle === 1) {
+    return undefined
+  }
+
+  let pose = poses.get(player)
+
+  if (!pose || pose.key !== key) {
+    pose = {
+      frame: frame - throttle,
+      key,
+      pose: Array.from({ length: characterPoseJoints.length }, () => [0, 0, 0] as Vec3),
+    }
+    poses.set(player, pose)
+  }
+
+  if (frame - pose.frame >= throttle) {
+    pose.frame = frame
+
+    return { pose: pose.pose, update: true }
+  }
+
+  return { pose: pose.pose, update: false }
 }
 
 function prunePoseCache<T>(cache: Map<number, T>, used: Set<number>, max: number) {
@@ -298,8 +365,9 @@ function addRenderedCharacter(
   time = options.time,
   cacheFrame = 0,
   renderHair = true,
+  poseOverride?: Vec3[],
 ) {
-  const pose = sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet,
+  const pose = poseOverride ?? sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet,
     groundJointIndices, characterScale, basePose, blendCache, placedPose, cacheFrame)
   const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
   const localReflection = detailedHair
