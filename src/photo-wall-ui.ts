@@ -525,7 +525,16 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     viewerSourceImage = targetSourceImage
     if (animate && targetSourceImage) {
       const targetTransform = viewerTargetTransform(tilt)
-      const sourceTransform = prepareViewerAtSource(targetSourceImage)
+      let sourceTransform = ''
+
+      try {
+        sourceTransform = prepareViewerAtSource(targetSourceImage)
+      }
+      catch (e) {
+        console.error(e)
+        viewerClose.focus()
+        return
+      }
 
       requestAnimationFrame(() => {
         if (openId !== viewerOpenId || !viewer.open || viewerClosing) {

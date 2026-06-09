@@ -19,6 +19,10 @@ const matrixScratch = new Array<number>(9).fill(0)
 const scaleScratch: Vec3 = [0, 0, 0]
 
 export function projectedQuadTransform(width: number, height: number, points: ProjectedPoint[]) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width === 0 || height === 0) {
+    throw new Error(`Invalid projected quad size ${width}x${height}`)
+  }
+
   quadFrom[0]!.x = 0
   quadFrom[0]!.y = height
   quadFrom[1]!.x = width
@@ -32,6 +36,7 @@ export function projectedQuadTransform(width: number, height: number, points: Pr
   quadBasisInto(quadFrom, basisFrom)
   invertProjectiveInto(basisFrom, inverseFrom)
   multiplyProjectiveInto(basisTo, inverseFrom, matrixScratch)
+  assertProjectiveMatrix(matrixScratch)
 
   return `matrix3d(${matrixScratch[0]},${matrixScratch[3]},0,${matrixScratch[6]},${matrixScratch[1]},${
     matrixScratch[4]
@@ -121,6 +126,10 @@ function invertProjectiveInto(matrix: number[], target: number[]) {
   const i = matrix[8]!
   const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
 
+  if (!Number.isFinite(determinant) || determinant === 0) {
+    throw new Error(`Singular projective matrix determinant ${determinant}`)
+  }
+
   target[0] = (e * i - f * h) / determinant
   target[1] = (c * h - b * i) / determinant
   target[2] = (b * f - c * e) / determinant
@@ -132,6 +141,14 @@ function invertProjectiveInto(matrix: number[], target: number[]) {
   target[8] = (a * e - b * d) / determinant
 
   return target
+}
+
+function assertProjectiveMatrix(matrix: number[]) {
+  for (const value of matrix) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Invalid projective matrix value ${value}`)
+    }
+  }
 }
 
 export function createWallProjector(camera: Camera, viewport: Viewport, target?: {
