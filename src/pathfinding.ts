@@ -27,7 +27,7 @@ const directions = [
 export function findPath(from: Vec3, to: Vec3, outsideTree: CircleBounds) {
   const start = nearestWalkableCell(from[0], from[2], outsideTree)
   const goal = nearestWalkableCell(to[0], to[2], outsideTree)
-  const bounds = searchBounds(start.x, start.z, goal.x, goal.z)
+  const bounds = searchBounds()
   const open: Node[] = [{
     ...start,
     f: heuristic(start.x, start.z, goal.x, goal.z),
@@ -192,14 +192,12 @@ function heuristic(x: number, z: number, goalX: number, goalZ: number) {
   return Math.hypot(goalX - x, goalZ - z)
 }
 
-function searchBounds(startX: number, startZ: number, goalX: number, goalZ: number) {
-  const padding = 20
-
+function searchBounds() {
   return {
-    left: Math.max(toCell(outsideBounds.left), Math.min(startX, goalX) - padding),
-    right: Math.min(toCell(outsideBounds.right), Math.max(startX, goalX) + padding),
-    back: Math.max(toCell(outsideBounds.back), Math.min(startZ, goalZ) - padding),
-    front: Math.min(toCell(outsideBounds.front), Math.max(startZ, goalZ) + padding),
+    left: toCell(outsideBounds.left),
+    right: toCell(outsideBounds.right),
+    back: toCell(outsideBounds.back),
+    front: toCell(outsideBounds.front),
   }
 }
 
