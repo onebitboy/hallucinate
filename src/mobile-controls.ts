@@ -1,4 +1,5 @@
 import { characterFloor } from './character-data.ts'
+import { usesTouchControls } from './device.ts'
 import type { WallProjector } from './projection.ts'
 import type { Vec3 } from './types.ts'
 
@@ -84,15 +85,6 @@ export function createMobileControls(options: {
 
 function updateTouchControlsMode() {
   document.documentElement.dataset.touchControls = String(usesTouchControls())
-}
-
-function usesTouchControls() {
-  const platform = navigator.platform
-  const agent = navigator.userAgent
-
-  return matchMedia('(pointer: coarse)').matches
-    || innerWidth <= 1180
-    || (/iPad|iPhone|Android/.test(agent) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1))
 }
 
 export function bindTapDestination(options: {

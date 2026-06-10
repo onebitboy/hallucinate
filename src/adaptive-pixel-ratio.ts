@@ -1,11 +1,13 @@
 import { clamp, mix } from './math.ts'
 
+import { isMobileUserAgent } from './device.ts'
+
 export function createAdaptiveResolution() {
-  const pixelRatioMin = 0.65
+  const pixelRatioMin = isMobileUserAgent() ? 0.25 : 0.5
   const pixelRatioStep = 0.15
   const pixelRatioSlowFrame = 1 / 55
-  const bloomScaleMin = 1.5
-  const bloomScaleMax = 2
+  const bloomScaleMin = isMobileUserAgent() ? 0.5 : 1.5
+  const bloomScaleMax = isMobileUserAgent() ? 1 : 2
   const bloomScaleStep = 0.1
   const bloomScaleSlowFrame = 1 / 54
   const fastFrame = 1 / 59
