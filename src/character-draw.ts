@@ -38,6 +38,7 @@ type CharacterInput = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
+  poseUp?: Vec3
   sunglasses?: boolean
   idleClipIndex: number
   style: PlayerStyle

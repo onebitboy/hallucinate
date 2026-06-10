@@ -160,7 +160,15 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         center: [target[0], target[1], target[2]] as Vec3,
       }
     },
-    update(delta: number, input: Vec3, characterTurn: number, bounceActive: boolean, lookDown = false, loft = false) {
+    update(
+      delta: number,
+      input: Vec3,
+      characterTurn: number,
+      bounceActive: boolean,
+      lookDown = false,
+      loft = false,
+      cameraUp?: Vec3,
+    ) {
       const moving = lengthSq(input) > 0
       const movingBack = moving && input[2] < 0
 
@@ -207,9 +215,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
 
       wasMoving = moving
 
-      target[0] = characterPosition[0]
-      target[1] = characterPosition[1] + 1.2
-      target[2] = characterPosition[2]
+      const basis = cameraBasis(turn, cameraUp)
+      const targetHeight = 1.2
+
+      target[0] = characterPosition[0] + basis.upX * targetHeight
+      target[1] = characterPosition[1] + basis.upY * targetHeight
+      target[2] = characterPosition[2] + basis.upZ * targetHeight
       const zone = loft ? 'loft' : roomAt(characterPosition)
 
       if (holdingManualCamera && !dragging) {
@@ -226,10 +237,11 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       const bounceAllowed = bounceActive && !bouncePaused
       const distance = bounceAllowed && !outside ? cameraDanceDistance(time) : 2.2
       const bounce = bounceAllowed ? cameraDanceBounce(time) : 0
+      const cameraHeight = 1.35 + pitch + bounce
       const ideal: Vec3 = [
-        characterPosition[0] - Math.sin(turn) * distance,
-        characterPosition[1] + 1.35 + pitch + bounce,
-        characterPosition[2] - Math.cos(turn) * distance,
+        characterPosition[0] - basis.forwardX * distance + basis.upX * cameraHeight,
+        characterPosition[1] - basis.forwardY * distance + basis.upY * cameraHeight,
+        characterPosition[2] - basis.forwardZ * distance + basis.upZ * cameraHeight,
       ]
 
       ideal[0] = zone === 'loft'
@@ -272,6 +284,54 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       position[1] = Math.max(position[1],
         (loft ? characterFloor : walkHeight(position[0], characterPosition[1], position[2])) + 0.35)
     },
+  }
+}
+
+function cameraBasis(turn: number, up?: Vec3) {
+  const sin = Math.sin(turn)
+  const cos = Math.cos(turn)
+  let sideX = cos
+  let sideY = 0
+  let sideZ = -sin
+  let upX = 0
+  let upY = 1
+  let upZ = 0
+
+  if (up) {
+    const upLength = Math.sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2])
+
+    if (upLength === 0) {
+      throw new Error('Cannot orient camera with zero up vector')
+    }
+
+    upX = up[0] / upLength
+    upY = up[1] / upLength
+    upZ = up[2] / upLength
+
+    const dot = sideX * upX + sideY * upY + sideZ * upZ
+
+    sideX -= upX * dot
+    sideY -= upY * dot
+    sideZ -= upZ * dot
+
+    const sideLength = Math.sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ)
+
+    if (sideLength === 0) {
+      throw new Error('Cannot orient camera with parallel turn and up')
+    }
+
+    sideX /= sideLength
+    sideY /= sideLength
+    sideZ /= sideLength
+  }
+
+  return {
+    forwardX: sideY * upZ - sideZ * upY,
+    forwardY: sideZ * upX - sideX * upZ,
+    forwardZ: sideX * upY - sideY * upX,
+    upX,
+    upY,
+    upZ,
   }
 }
 

@@ -62,10 +62,14 @@ export const outsideTreeSwing = {
   seatWidth: 0.86,
   seatDepth: 0.34,
   seatThickness: 0.08,
-  swingAngle: Math.PI * 11 / 180,
+  swingMaxAngle: Math.PI * 62 / 180,
+  swingDamping: 0.10,
+  swingEmptyDamping: 0.72,
+  swingControlDeadZone: 0.018,
+  swingControlForce: 1.45,
+  swingNpcControl: 0.07,
+  swingNpcMaxAngle: Math.PI * 7 / 180,
   swingSeconds: 2.75,
-  swingRiseSpeed: 2.8,
-  phase: 0,
 }
 export const outsideHut: Bounds = { x: -18, z: 20.5, width: 6.2, depth: 5 }
 export const outsideHutDeckHeight = 0.32

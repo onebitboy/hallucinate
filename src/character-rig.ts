@@ -131,6 +131,7 @@ export function sampleCharacterPose(
     idleClipIndex?: number
     mode?: CharacterMode
     modeTime?: number
+    poseUp?: Vec3
   },
   characterPoseJoints: string[],
   characterPoseJointSet: Set<string>,
@@ -164,13 +165,13 @@ export function sampleCharacterPose(
         placedPose)
 
       return placeCharacterPose(blended, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-        characterScale, placedPose, 0)
+        characterScale, placedPose, 0, player.poseUp)
     }
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
       characterScale, placedPose,
       clipStartGround(rig, rig.clips.breakdance, characterPoseJoints, characterPoseJointSet,
-        characterGroundJointIndices))
+        characterGroundJointIndices), player.poseUp)
   }
 
   if (player.mode === 'manSitting' || player.mode === 'womanSitting') {
@@ -178,7 +179,7 @@ export function sampleCharacterPose(
       characterPoseJointSet, blendCache, cacheFrame, placedPose)
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-      characterScale, placedPose)
+      characterScale, placedPose, undefined, player.poseUp)
   }
 
   const waveMode = player.mode === 'wave' || player.mode === 'waveOut'
@@ -189,7 +190,7 @@ export function sampleCharacterPose(
 
   if (cached) {
     return placeCharacterPose(cached, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-      characterScale, placedPose)
+      characterScale, placedPose, undefined, player.poseUp)
   }
 
   const base = basePose
@@ -206,12 +207,12 @@ export function sampleCharacterPose(
     blendUpperPose(pose, wave, characterPoseJoints)
 
     return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-      characterScale, placedPose)
+      characterScale, placedPose, undefined, player.poseUp)
   }
 
   if (blend === 0) {
     return placeCharacterPose(stand, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-      characterScale, placedPose)
+      characterScale, placedPose, undefined, player.poseUp)
   }
 
   const run = base.run ?? sampleClipPose(rig, rig.clips.run, time, characterPoseJoints, characterPoseJointSet)
@@ -226,7 +227,7 @@ export function sampleCharacterPose(
   blendCache?.set(blendKey, pose)
 
   return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
-    characterScale, placedPose)
+    characterScale, placedPose, undefined, player.poseUp)
 }
 
 function sampleDirectClipPose(
@@ -749,9 +750,48 @@ export function placeCharacterPose(
   characterScale: number,
   target = createPose(characterPoseJoints.length),
   ground = poseGround(pose, characterGroundJointIndices),
+  poseUp?: Vec3,
 ) {
   const sin = Math.sin(turn)
   const cos = Math.cos(turn)
+  let sideX = cos
+  let sideY = 0
+  let sideZ = -sin
+  let upX = 0
+  let upY = 1
+  let upZ = 0
+
+  if (poseUp) {
+    const upLength = Math.sqrt(poseUp[0] * poseUp[0] + poseUp[1] * poseUp[1] + poseUp[2] * poseUp[2])
+
+    if (upLength === 0) {
+      throw new Error('Cannot place character pose with zero up vector')
+    }
+
+    upX = poseUp[0] / upLength
+    upY = poseUp[1] / upLength
+    upZ = poseUp[2] / upLength
+
+    const dot = sideX * upX + sideY * upY + sideZ * upZ
+
+    sideX -= upX * dot
+    sideY -= upY * dot
+    sideZ -= upZ * dot
+
+    const sideLength = Math.sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ)
+
+    if (sideLength === 0) {
+      throw new Error('Cannot place character pose with parallel turn and up')
+    }
+
+    sideX /= sideLength
+    sideY /= sideLength
+    sideZ /= sideLength
+  }
+
+  const forwardX = sideY * upZ - sideZ * upY
+  const forwardY = sideZ * upX - sideX * upZ
+  const forwardZ = sideX * upY - sideY * upX
 
   for (let i = 0; i < characterPoseJoints.length; i++) {
     const point = pose[i]!
@@ -760,9 +800,9 @@ export function placeCharacterPose(
     const z = point[2] * characterScale
 
     const next = target[i]
-    const px = position[0] + x * cos + z * sin
-    const py = position[1] + y
-    const pz = position[2] - x * sin + z * cos
+    const px = position[0] + x * sideX + y * upX + z * forwardX
+    const py = position[1] + x * sideY + y * upY + z * forwardY
+    const pz = position[2] + x * sideZ + y * upZ + z * forwardZ
 
     next[0] = px
     next[1] = py

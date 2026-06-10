@@ -12,6 +12,7 @@ import {
 } from './scene-data.ts'
 import { collideRoom, isOutside, seatAt, seatById, seats, walkHeight } from './scene.ts'
 import { createObjectTurnBasisCache } from './turn-basis.ts'
+import { treeSwing } from './tree-swing.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const npcConfig = {
@@ -735,7 +736,7 @@ function playerDestination(
   }
 
   if (pick < weights.lounge) {
-    return seatDestination(seed, step, occupiedSeats, 'lounge') ?? treeDestination(seed, step, outsideTree)
+    return seatDestination(seed, step, occupiedSeats, 'lounge') ?? treeDestination(seed, step, outsideTree, occupiedSeats)
   }
 
   if (pick < weights.stool) {
@@ -743,7 +744,7 @@ function playerDestination(
   }
 
   if (pick < weights.tree) {
-    return treeDestination(seed, step, outsideTree)
+    return treeDestination(seed, step, outsideTree, occupiedSeats)
   }
 
   if (pick < weights.kiosk) {
@@ -843,7 +844,22 @@ function seatDestination(
   }
 }
 
-function treeDestination(seed: number, step: number, outsideTree: CircleBounds): PlayerDestination {
+function treeDestination(
+  seed: number,
+  step: number,
+  outsideTree: CircleBounds,
+  occupiedSeats: Set<string>,
+): PlayerDestination {
+  if (!occupiedSeats.has(treeSwing.seat.id) && seededRandom(seed, step + 118) < 0.45) {
+    return {
+      kind: 'tree',
+      outside: true,
+      position: [treeSwing.seat.position[0], characterFloor, treeSwing.seat.position[2]],
+      lookAt: [outsideTree.x, characterFloor, outsideTree.z],
+      linger: [npcConfig.destination.linger[0], npcConfig.destination.linger[1]],
+    }
+  }
+
   const spot = Math.floor(seededRange(seed, step + 106, 0, npcConfig.destination.treeSpots))
   const spread = Math.PI / npcConfig.destination.treeSpots
   const angle = spot / npcConfig.destination.treeSpots * Math.PI * 2 + seededRange(seed, step + 109, -spread, spread)

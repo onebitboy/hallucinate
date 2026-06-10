@@ -75,6 +75,9 @@ export function createLocalCharacter(keys: Set<string>) {
     get mode() {
       return mode
     },
+    get seat() {
+      return seated ? seat : ''
+    },
     get jumping() {
       return jumpTime > 0
     },

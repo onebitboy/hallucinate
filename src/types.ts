@@ -194,6 +194,7 @@ export type Player = {
   motionBlend: number
   mode?: CharacterMode
   modeTime?: number
+  poseUp?: Vec3
   idleClipIndex: number
   input: Vec3
   nextDecision: number

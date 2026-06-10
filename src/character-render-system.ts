@@ -47,6 +47,7 @@ export function createCharacterRenderSystem(options: {
   idleClipIndex: () => number
   light: CharacterLight
   localCharacter: ReturnType<typeof createLocalCharacter>
+  localPoseUp?: () => Vec3 | undefined
   players: Player[]
   styleController: ReturnType<typeof createCharacterStyleController>
   sunglasses: () => boolean
@@ -154,6 +155,7 @@ export function createCharacterRenderSystem(options: {
         motionBlend: options.localCharacter.motionBlend,
         mode: options.localCharacter.mode,
         modeTime: options.localCharacter.modeTime,
+        poseUp: options.localPoseUp?.(),
         sunglasses: options.sunglasses(),
         idleClipIndex: options.idleClipIndex(),
         style: {

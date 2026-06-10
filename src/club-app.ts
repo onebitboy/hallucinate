@@ -1597,7 +1597,7 @@ let forcedBloomScale: number | undefined
 let lastIntroProgress = -1
 let lastIntroStartReady = false
 
-updateTreeSwing(1, 0, outsideTree, false)
+updateTreeSwing(1, outsideTree, false)
 let lastChatFormIdentity = ''
 let lastChatFormSelfId = -1
 let lastChatFormColor = ''
@@ -3816,7 +3816,7 @@ const draw = (stamp: number) => {
   const inLoft = appSpace.kind === 'loft'
 
   if (!inLoft) {
-    updateTreeSwing(delta, stamp * 0.001, outsideTree, occupiedSeats.has(treeSwing.seat.id))
+    updateTreeSwing(delta, outsideTree, occupiedSeats.has(treeSwing.seat.id), treeSwingControl())
   }
 
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
@@ -3906,6 +3906,7 @@ const draw = (stamp: number) => {
   renderPlayers.length = 0
   if (!inLoft) {
     for (const player of npcPlayers) {
+      player.poseUp = player.seat === treeSwing.seat.id ? treeSwing.normal : undefined
       renderPlayers.push(player)
     }
   }
@@ -3914,7 +3915,7 @@ const draw = (stamp: number) => {
   }
   const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
-    || dancing, localCharacter.jumping, inLoft)
+    || dancing, localCharacter.jumping, inLoft, localPoseUp())
   if (!inLoft) {
     saveTimer.update(delta, () => saveCurrentClubState(characterRenderSystem.assetsLoaded))
   }
@@ -4101,6 +4102,18 @@ function mainFloorAt(x: number, y: number, z: number) {
 
 function loftFloorAt(x: number, y: number, z: number) {
   return walkLoftHeight(x, y, z)
+}
+
+function localPoseUp() {
+  return localCharacter.seat === treeSwing.seat.id ? treeSwing.normal : undefined
+}
+
+function treeSwingControl() {
+  if (localCharacter.seat === treeSwing.seat.id) {
+    return localCharacter.readInput()[0]
+  }
+
+  return 0
 }
 
 function updateFoamBuffer() {
@@ -4524,6 +4537,7 @@ const characterRenderSystem = createCharacterRenderSystem({
   idleClipIndex: () => idleClipIndex,
   light: addLocalReflection,
   localCharacter,
+  localPoseUp,
   players: renderPlayers,
   styleController,
   sunglasses: () => sunglasses,
