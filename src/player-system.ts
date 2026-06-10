@@ -601,11 +601,15 @@ function travelTarget(player: Player, time: number) {
   const angle = seededRange(player.seed, Math.floor(time * 2.9), -Math.PI, Math.PI)
   const radius = seededRange(player.seed, Math.floor(time * 3.7), 0, npcConfig.travel.targetJitter)
 
-  player.travelTarget = [
+  const target: Vec3 = [
     player.destination.position[0] + Math.sin(angle) * radius,
     characterFloor,
     player.destination.position[2] + Math.cos(angle) * radius,
   ]
+
+  player.travelTarget = isOutside(target) === player.destination.outside
+    ? target
+    : player.destination.position
   player.nextTravelTargetAt = time
     + seededRange(player.seed, Math.floor(time * 4.1), npcConfig.travel.targetJitterTime[0],
       npcConfig.travel.targetJitterTime[1])

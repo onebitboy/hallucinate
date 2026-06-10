@@ -635,7 +635,7 @@ async function createAiNpcChatMessage(space: SpaceState): Promise<MessagePacket>
             'Return only JSON shaped exactly like {"nick":"nickname","text":"message"}.',
             'The nickname should feel random, human, and short.',
             'The message should be casual, brief, playful, and naturally continue the transcript. Make the characters besides simple statements also ask questions to each other and answer, like "where r u from" "sup" ? "all cool" "chillin".',
-            'When someone asks something, have another character answer.',
+            'When someone asks something some character, have them answer.',
             'Be diverse, unique, and funny. Make contradictions.',
             'Do not include stage directions, markdown, quotes around the JSON, hate, slurs, threats, or explicit sexual content.',
           ].join(' '),
