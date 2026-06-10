@@ -294,7 +294,6 @@ const occupiedSeats = new Set<string>()
 const remoteSeats = new Set<string>()
 const maxNpcPlayers = 300
 const npcPopulationInterval = 60_000
-const publicOnlineCountMin = 20
 let idleClipIndex = 0
 let alternativeInput = true
 let onlineCountValue = 0
@@ -1257,12 +1256,11 @@ function syncOnlineSelf() {
   lastOnlineCountValue = onlineCountValue
   lastOnlineAdminView = adminView
 
-  const visible = adminView || onlineCountValue >= publicOnlineCountMin
   const label = nicknameLabel(name)
   const color = identityColor(name)
   const text = ` ${onlineCountValue} online`
 
-  onlineCount.hidden = !visible
+  onlineCount.hidden = !adminView
 
   if (label !== lastOnlineSelfLabel) {
     onlineSelf.textContent = label
