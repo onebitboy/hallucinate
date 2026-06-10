@@ -2,7 +2,7 @@ import { createDomWallProjection } from './dom-wall.ts'
 import type { DomWall } from './dom-wall.ts'
 import type { WallProjector } from './projection.ts'
 import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
-import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall, videoPlaylists,
+import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall, videoPlaylists, videoStartTimes,
   videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
 import { createStyleSetter } from './style-setter.ts'
@@ -153,6 +153,9 @@ export function createDjVideoUi(
 
       return id ? { id, zone: area } : undefined
     },
+    canPlay() {
+      return ready[zone] === true
+    },
     load() {
       const youtube = window as YouTubeWindow
 
@@ -262,6 +265,9 @@ export function createDjVideoUi(
       if (states[zone]) {
         loadSyncedTrack(zone)
       }
+      else {
+        playFallbackTrack(zone)
+      }
       pauseOtherVideos(zone, players, ready)
 
       return true
@@ -303,6 +309,21 @@ export function createDjVideoUi(
       player.cueVideoById({ videoId: state.currentId, startSeconds: time })
       player.pauseVideo()
     }
+  }
+
+  function playFallbackTrack(area: VideoZone) {
+    const player = players[area]!
+    const id = videoTracks[area]
+    const time = videoStartTimes[area]
+
+    if (player.getVideoData()?.video_id === id) {
+      player.seekTo(time, true)
+      player.playVideo()
+      return
+    }
+
+    player.loadVideoById({ videoId: id, startSeconds: time })
+    player.playVideo()
   }
 
   function syncZoneTime(area: VideoZone) {

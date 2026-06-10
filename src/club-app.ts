@@ -1631,21 +1631,26 @@ function setIntroEffectPointer(event: PointerEvent) {
 }
 
 function startIntro() {
-  if (!introReadyToEnter() || !submitIntroProfile()) {
+  if (!introReadyToEnter()) {
     return
   }
 
+  if (!djVideoUi.play()) {
+    throw new Error('Video player was not ready on enter')
+  }
+  if (!submitIntroProfile()) {
+    throw new Error('Intro profile was not ready on enter')
+  }
   if (!introWaveSent) {
     introWaveSent = true
     sendChatMessage('👋')
   }
-  djVideoUi.play()
   introStart.dataset.playing = 'true'
   enterIntro()
 }
 
 function introReadyToEnter() {
-  return characterRenderSystem.assetsLoaded && introNicknameInput.validity.valid
+  return characterRenderSystem.assetsLoaded && introNicknameInput.validity.valid && djVideoUi.canPlay()
 }
 
 function submitIntroProfile() {
