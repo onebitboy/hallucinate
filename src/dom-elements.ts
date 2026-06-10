@@ -70,7 +70,7 @@ function createDomElements() {
   chatInput.maxLength = 120
   chatInput.placeholder = 'message...'
   chatInput.autocomplete = 'off'
-  chatInput.enterKeyHint = 'done'
+  chatInput.enterKeyHint = 'send'
 
   chatSubmit.type = 'submit'
   chatSubmit.hidden = true
