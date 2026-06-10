@@ -7,9 +7,22 @@ export type SmokePuff = {
   position: Vec3
   velocity: Vec3
   baseRadius: number
+  growth: number
   radius: number
   life: number
   maxLife: number
+}
+
+export type SmokeEmitOptions = {
+  count: number
+  exhale?: boolean
+  growthScale?: number
+  lifeScale?: number
+  originSpread?: number
+  radiusScale?: number
+  rise?: number
+  speed?: number
+  velocitySpread?: number
 }
 
 const rise = 0.32
@@ -17,6 +30,7 @@ const riseDamp = 0.6
 const drift = 0.1
 const damp = 1.4
 const growth = 1.6
+const originSpread = 0.06
 const fadeFraction = 0.4
 const wispRadius = 0.035
 const puffRadius = 0.07
@@ -32,6 +46,7 @@ function createPuff(): SmokePuff {
     position: [0, 0, 0],
     velocity: [0, 0, 0],
     baseRadius: 0,
+    growth: 0,
     radius: 0,
     life: 0,
     maxLife: 0,
@@ -42,20 +57,29 @@ export function createSmokeSystem() {
   const puffs: SmokePuff[] = []
   const pool: SmokePuff[] = []
 
-  function emit(origin: Vec3, forward: Vec3, count: number, exhale: boolean, radiusScale = 1) {
-    for (let i = 0; i < count; i++) {
-      const puff = pool.pop() ?? createPuff()
-      const push = exhale ? 0.9 : 0.2
+  function emit(origin: Vec3, forward: Vec3, options: SmokeEmitOptions) {
+    const exhale = options.exhale ?? false
+    const spread = options.originSpread ?? originSpread
+    const velocitySpread = options.velocitySpread ?? drift
+    const push = options.speed ?? (exhale ? 0.9 : 0.2)
+    const radiusScale = options.radiusScale ?? 1
+    const lift = options.rise ?? rise
+    const lifeScale = options.lifeScale ?? 1
+    const growthScale = options.growthScale ?? 1
 
-      puff.position[0] = origin[0] + (random() - 0.5) * 0.06
-      puff.position[1] = origin[1] + (random() - 0.5) * 0.06
-      puff.position[2] = origin[2] + (random() - 0.5) * 0.06
-      puff.velocity[0] = forward[0] * push + (random() - 0.5) * drift
-      puff.velocity[1] = rise * (0.7 + random() * 0.6)
-      puff.velocity[2] = forward[2] * push + (random() - 0.5) * drift
+    for (let i = 0; i < options.count; i++) {
+      const puff = pool.pop() ?? createPuff()
+
+      puff.position[0] = origin[0] + (random() - 0.5) * spread
+      puff.position[1] = origin[1] + (random() - 0.5) * spread
+      puff.position[2] = origin[2] + (random() - 0.5) * spread
+      puff.velocity[0] = forward[0] * push + (random() - 0.5) * velocitySpread
+      puff.velocity[1] = lift * (0.7 + random() * 0.6)
+      puff.velocity[2] = forward[2] * push + (random() - 0.5) * velocitySpread
       puff.baseRadius = (exhale ? puffRadius : wispRadius) * radiusScale
+      puff.growth = growth * growthScale
       puff.radius = puff.baseRadius
-      puff.maxLife = minLife + random() * (maxLife - minLife)
+      puff.maxLife = (minLife + random() * (maxLife - minLife)) * lifeScale
       puff.life = puff.maxLife
       puffs.push(puff)
     }
@@ -89,7 +113,7 @@ export function createSmokeSystem() {
       const age = 1 - puff.life / puff.maxLife
       const fade = Math.min(1, puff.life / (puff.maxLife * fadeFraction))
 
-      puff.radius = puff.baseRadius * (1 + growth * age) * fade
+      puff.radius = puff.baseRadius * (1 + puff.growth * age) * fade
     }
   }
 

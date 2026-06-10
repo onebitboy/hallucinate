@@ -38,6 +38,7 @@ import type { GraffitiSnapshot, MessagePacket, VideoEndedEntry } from './protoco
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
+  djBooth,
   insideArcade,
   insideArcadeScreenWall,
   loftBounds,
@@ -48,6 +49,7 @@ import {
   loftVideoWall,
   outsideBounds,
   outsideBuddha,
+  outsideDjBooth,
   outsideFoodTruck,
   outsideFoodTruckFoodWall,
   outsideFoodTruckTurn,
@@ -2211,6 +2213,18 @@ const smokeForward: Vec3 = [0, 0, 0]
 const smokeInterval = 900
 const smokeHeldInterval = 80
 const smokeExhaleInterval = 45
+const smokeMachineIntervalMin = 120_000
+const smokeMachineIntervalMax = 420_000
+const smokeMachineBurstDuration = 5800
+const smokeMachineEmitInterval = 120
+const smokeMachineEmitCount = 5
+const smokeMachines = [
+  ...createSmokeMachines(djBooth, 1),
+  ...createSmokeMachines(outsideDjBooth, -1),
+]
+let nextSmokeMachineBurstAt = 0
+let smokeMachineBurstUntil = 0
+let nextSmokeMachineEmitAt = 0
 type ParticleTimers = { bubble: number; foam: number; smokeWisp: number; smokeHeld: number; smokeExhale: number }
 type ParticlePlayer = {
   position: Vec3
@@ -3943,6 +3957,7 @@ const draw = (stamp: number) => {
     emitPlayerParticles(id, player, stamp, player.bubbling ?? false, player.foaming ?? false,
       resolveAccessoryKind(player.style.accessoryIndex) === 'cigarette')
   }
+  updateSmokeMachines(stamp)
   bubbleSystem.update(delta)
   foamSystem.update(delta, inLoft ? loftFloorAt : mainFloorAt)
   smokeSystem.update(delta)
@@ -4152,23 +4167,68 @@ function emitPlayerParticles(
       && characterRenderSystem.setCigaretteTip(player, time, smokeTip, smokeForward))
     {
       timers.smokeWisp = stamp + smokeInterval
-      smokeSystem.emit(smokeTip, smokeForward, 1, false)
+      smokeSystem.emit(smokeTip, smokeForward, { count: 1 })
     }
 
     if (heldSmoke > 0 && stamp >= timers.smokeHeld
       && characterRenderSystem.setCigaretteTip(player, time, smokeTip, smokeForward))
     {
       timers.smokeHeld = stamp + smokeHeldInterval
-      smokeSystem.emit(smokeTip, smokeForward, 2, false, 0.55)
+      smokeSystem.emit(smokeTip, smokeForward, { count: 2, radiusScale: 0.55 })
     }
 
     if (exhale > 0 && stamp >= timers.smokeExhale
       && characterRenderSystem.setCigaretteMouth(player, time, smokeMouth, smokeForward))
     {
       timers.smokeExhale = stamp + smokeExhaleInterval
-      smokeSystem.emit(smokeMouth, smokeForward, 1 + Math.floor(exhale * 3), true)
+      smokeSystem.emit(smokeMouth, smokeForward, { count: 1 + Math.floor(exhale * 3), exhale: true })
     }
   }
+}
+
+function updateSmokeMachines(stamp: number) {
+  if (nextSmokeMachineBurstAt === 0) {
+    nextSmokeMachineBurstAt = stamp + nextSmokeMachineInterval()
+  }
+
+  if (stamp >= nextSmokeMachineBurstAt) {
+    smokeMachineBurstUntil = stamp + smokeMachineBurstDuration
+    nextSmokeMachineEmitAt = stamp
+    nextSmokeMachineBurstAt = stamp + nextSmokeMachineInterval()
+  }
+
+  if (appSpace.kind === 'main' && stamp < smokeMachineBurstUntil && stamp >= nextSmokeMachineEmitAt) {
+    nextSmokeMachineEmitAt = stamp + smokeMachineEmitInterval
+
+    for (const machine of smokeMachines) {
+      smokeSystem.emit(machine.origin, machine.forward, {
+        count: smokeMachineEmitCount,
+        exhale: true,
+        growthScale: 3.4,
+        lifeScale: 4.2,
+        originSpread: 0.9,
+        radiusScale: 2.6,
+        rise: 0.55,
+        speed: 2.75,
+        velocitySpread: 4.8,
+      })
+    }
+  }
+}
+
+function createSmokeMachines(booth: typeof djBooth, direction: number) {
+  return [-1, 1].map(side => ({
+    forward: [side * 0.68, 0, direction * 0.74] as Vec3,
+    origin: [
+      booth.x + side * (booth.width / 2 - 0.32),
+      characterFloor + 0.18,
+      booth.z + direction * (booth.depth / 2 + 0.18),
+    ] as Vec3,
+  }))
+}
+
+function nextSmokeMachineInterval() {
+  return smokeMachineIntervalMin + Math.random() * (smokeMachineIntervalMax - smokeMachineIntervalMin)
 }
 
 function updateBubbleBuffer() {
