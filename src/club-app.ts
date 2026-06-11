@@ -2172,6 +2172,7 @@ const smokeHeldInterval = 80
 const smokeExhaleInterval = 45
 const smokeMachineIntervalMin = 120_000
 const smokeMachineIntervalMax = 420_000
+const smokeMachineSchedulePeriod = 604_800_000
 const smokeMachineBurstDuration = 5800
 const smokeMachineEmitInterval = 120
 const smokeMachineEmitCount = 5
@@ -2179,9 +2180,10 @@ const smokeMachines = [
   ...createSmokeMachines(djBooth, 1),
   ...createSmokeMachines(outsideDjBooth, -1),
 ]
+let smokeMachineScheduleAnchor = 0
 let nextSmokeMachineBurstAt = 0
 let smokeMachineBurstUntil = 0
-let nextSmokeMachineEmitAt = 0
+let nextSmokeMachineEmitStamp = 0
 type ParticleTimers = { bubble: number; foam: number; smokeWisp: number; smokeHeld: number; smokeExhale: number }
 type ParticlePlayer = {
   position: Vec3
@@ -4142,18 +4144,20 @@ function emitPlayerParticles(
 }
 
 function updateSmokeMachines(stamp: number) {
-  if (nextSmokeMachineBurstAt === 0) {
-    nextSmokeMachineBurstAt = stamp + nextSmokeMachineInterval()
+  const now = Date.now()
+  const anchor = smokeMachineScheduleAnchorAt(now)
+
+  if (nextSmokeMachineBurstAt === 0 || anchor !== smokeMachineScheduleAnchor) {
+    syncSmokeMachineSchedule(now, stamp, anchor)
   }
 
-  if (stamp >= nextSmokeMachineBurstAt) {
-    smokeMachineBurstUntil = stamp + smokeMachineBurstDuration
-    nextSmokeMachineEmitAt = stamp
-    nextSmokeMachineBurstAt = stamp + nextSmokeMachineInterval()
+  while (now >= nextSmokeMachineBurstAt) {
+    startSmokeMachineBurst(nextSmokeMachineBurstAt, stamp)
+    nextSmokeMachineBurstAt += smokeMachineInterval(nextSmokeMachineBurstAt)
   }
 
-  if (appSpace.kind === 'main' && stamp < smokeMachineBurstUntil && stamp >= nextSmokeMachineEmitAt) {
-    nextSmokeMachineEmitAt = stamp + smokeMachineEmitInterval
+  if (appSpace.kind === 'main' && now < smokeMachineBurstUntil && stamp >= nextSmokeMachineEmitStamp) {
+    nextSmokeMachineEmitStamp = stamp + smokeMachineEmitInterval
 
     for (const machine of smokeMachines) {
       smokeSystem.emit(machine.origin, machine.forward, {
@@ -4171,6 +4175,28 @@ function updateSmokeMachines(stamp: number) {
   }
 }
 
+function syncSmokeMachineSchedule(now: number, stamp: number, anchor: number) {
+  smokeMachineScheduleAnchor = anchor
+  let start = anchor - smokeMachineBurstDuration
+  let next = anchor + smokeMachineInterval(anchor)
+
+  while (next <= now) {
+    start = next
+    next = start + smokeMachineInterval(start)
+  }
+
+  nextSmokeMachineBurstAt = next
+  smokeMachineBurstUntil = 0
+  if (now < start + smokeMachineBurstDuration) {
+    startSmokeMachineBurst(start, stamp)
+  }
+}
+
+function startSmokeMachineBurst(start: number, stamp: number) {
+  smokeMachineBurstUntil = start + smokeMachineBurstDuration
+  nextSmokeMachineEmitStamp = stamp
+}
+
 function createSmokeMachines(booth: typeof djBooth, direction: number) {
   return [-1, 1].map(side => ({
     forward: [side * 0.68, 0, direction * 0.74] as Vec3,
@@ -4182,8 +4208,25 @@ function createSmokeMachines(booth: typeof djBooth, direction: number) {
   }))
 }
 
-function nextSmokeMachineInterval() {
-  return smokeMachineIntervalMin + Math.random() * (smokeMachineIntervalMax - smokeMachineIntervalMin)
+function smokeMachineScheduleAnchorAt(now: number) {
+  return Math.floor(now / smokeMachineSchedulePeriod) * smokeMachineSchedulePeriod
+}
+
+function smokeMachineInterval(start: number) {
+  return Math.floor(smokeMachineIntervalMin
+    + smokeMachineRandom(start) * (smokeMachineIntervalMax - smokeMachineIntervalMin))
+}
+
+function smokeMachineRandom(seed: number) {
+  let value = Math.floor(seed / 1000) | 0
+
+  value ^= value >>> 16
+  value = Math.imul(value, 0x7feb352d)
+  value ^= value >>> 15
+  value = Math.imul(value, 0x846ca68b)
+  value ^= value >>> 16
+
+  return (value >>> 0) / 4294967296
 }
 
 function updateBubbleBuffer() {
