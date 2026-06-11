@@ -452,10 +452,14 @@ void main() {
 
   float white = step(0.3, min(shade.r, min(shade.g, shade.b)));
   float trailAlpha = strobeId < 0.0 ? clamp(-strobeId, 0.0, 1.0) : 1.0;
-  float random = fract(sin(max(strobeId, 0.0) * 17.13 + time * 9.27) * 43758.5453);
-  float strobe = strobeId < 0.0 ? 1.0 : mix(1.0, step(0.82, random), white);
-  float receiverShadow = texture(treeShadowMap, patternUv).a;
+  float strobe = 1.0;
   vec4 glowPixel = vec4(0.0);
+
+  if (strobeId >= 0.0 && white > 0.0) {
+    float random = fract(sin(strobeId * 17.13 + time * 9.27) * 43758.5453);
+
+    strobe = step(0.82, random);
+  }
 
   if (nightUplightSurface()) {
     glowPixel = vec4(nightUplightColor() * 0.5, trailAlpha);
@@ -504,6 +508,7 @@ void main() {
   }
 
   if (hazeAmount > 4.5) {
+    float receiverShadow = texture(treeShadowMap, patternUv).a;
     float shadowAlpha = receiverShadow * 0.42 * (1.0 - outsideNight);
 
     if (shadowAlpha < 0.01) {
@@ -887,6 +892,60 @@ void main() {
 }
 `
 
+const postBloomGlsl = `
+vec3 bright(vec4 texel) {
+  float redGlow = texel.a * smoothstep(0.58, 1.0, texel.r);
+  float greenGlow = texel.a * smoothstep(0.035, 0.18, texel.g) * step(texel.r * 2.6, texel.g)
+    * step(texel.b * 1.8, texel.g);
+  float blueGlow = texel.a * smoothstep(0.045, 0.24, texel.b) * step(texel.r * 1.4, texel.b);
+
+  return redGlow * vec3(1.0, 0.035, 0.012) + greenGlow * vec3(0.04, 0.65, 0.08)
+    + blueGlow * vec3(0.0, 0.067, 1.0);
+}
+
+vec3 bloomGlow(vec2 point) {
+  vec2 texel = 1.0 / bloomResolution;
+  vec2 near = texel * 3.2;
+  vec2 far = texel * 7.0;
+  vec3 glow = bright(texture(bloom, point)) * 0.72;
+
+  glow += bright(texture(bloom, point + vec2(near.x, 0.0))) * 0.18;
+  glow += bright(texture(bloom, point - vec2(near.x, 0.0))) * 0.18;
+  glow += bright(texture(bloom, point + vec2(0.0, near.y))) * 0.15;
+  glow += bright(texture(bloom, point - vec2(0.0, near.y))) * 0.15;
+  glow += bright(texture(bloom, point + vec2(far.x, 0.0))) * 0.09;
+  glow += bright(texture(bloom, point - vec2(far.x, 0.0))) * 0.09;
+  glow += bright(texture(bloom, point + vec2(0.0, far.y))) * 0.07;
+  glow += bright(texture(bloom, point - vec2(0.0, far.y))) * 0.07;
+
+  return glow;
+}
+`
+
+export const postPlainFragment = `#version 300 es
+precision highp float;
+
+uniform sampler2D scene;
+uniform sampler2D bloom;
+uniform vec2 bloomResolution;
+
+in vec2 uv;
+
+out vec4 pixel;
+
+${postBloomGlsl}
+
+void main() {
+  vec3 base = texture(scene, uv).rgb;
+  vec3 color = base + bloomGlow(uv) * 4.4;
+
+  color = vec3(1.0) - exp(-color * 1.05);
+  color *= vec3(1.02, 0.98, 0.96);
+
+  pixel = vec4(pow(color, vec3(0.9)), 1.0);
+}
+`
+
 export const postFragment = `#version 300 es
 precision highp float;
 
@@ -911,15 +970,7 @@ in vec2 uv;
 
 out vec4 pixel;
 
-vec3 bright(vec4 texel) {
-  float redGlow = texel.a * smoothstep(0.58, 1.0, texel.r);
-  float greenGlow = texel.a * smoothstep(0.035, 0.18, texel.g) * step(texel.r * 2.6, texel.g)
-    * step(texel.b * 1.8, texel.g);
-  float blueGlow = texel.a * smoothstep(0.045, 0.24, texel.b) * step(texel.r * 1.4, texel.b);
-
-  return redGlow * vec3(1.0, 0.035, 0.012) + greenGlow * vec3(0.04, 0.65, 0.08)
-    + blueGlow * vec3(0.0, 0.067, 1.0);
-}
+${postBloomGlsl}
 
 float tripSfract(float n) {
   return smoothstep(0.0, 1.0, fract(n));
@@ -1255,10 +1306,7 @@ vec3 sceneWithSky(vec2 point) {
 void main() {
   vec4 source = texture(scene, uv);
   vec3 base = source.rgb;
-  vec2 texel = 1.0 / bloomResolution;
-  vec2 near = texel * 3.2;
-  vec2 far = texel * 7.0;
-  vec3 glow = bright(texture(bloom, uv)) * 0.72;
+  vec3 glow = bloomGlow(uv);
   float skyMask = 0.0;
 
   if (renderSky == 1) {
@@ -1276,15 +1324,6 @@ void main() {
 
     base = mix(skyline, base, source.a);
   }
-
-  glow += bright(texture(bloom, uv + vec2(near.x, 0.0))) * 0.18;
-  glow += bright(texture(bloom, uv - vec2(near.x, 0.0))) * 0.18;
-  glow += bright(texture(bloom, uv + vec2(0.0, near.y))) * 0.15;
-  glow += bright(texture(bloom, uv - vec2(0.0, near.y))) * 0.15;
-  glow += bright(texture(bloom, uv + vec2(far.x, 0.0))) * 0.09;
-  glow += bright(texture(bloom, uv - vec2(far.x, 0.0))) * 0.09;
-  glow += bright(texture(bloom, uv + vec2(0.0, far.y))) * 0.07;
-  glow += bright(texture(bloom, uv - vec2(0.0, far.y))) * 0.07;
 
   vec3 color = base + glow * 4.4;
   color = vec3(1.0) - exp(-color * 1.05);

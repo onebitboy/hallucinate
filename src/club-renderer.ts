@@ -128,6 +128,12 @@ export function renderClubFrame(options: {
     feedback: WebGLUniformLocation
     feedbackAmount: WebGLUniformLocation
     moonDirection: WebGLUniformLocation
+    plain: {
+      bloom: WebGLUniformLocation
+      bloomResolution: WebGLUniformLocation
+      program: WebGLProgram
+      scene: WebGLUniformLocation
+    }
     program: WebGLProgram
     renderSky: WebGLUniformLocation
     scene: WebGLUniformLocation
@@ -228,7 +234,7 @@ export function renderClubFrame(options: {
   })
   gl.enable(gl.BLEND)
   gl.depthMask(false)
-  if (!options.outside) {
+  if (!options.outside && options.smoke.points.length > 0) {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     useRoomSmokeProgram({
       camera: options.camera,
@@ -250,41 +256,55 @@ export function renderClubFrame(options: {
   gl.disable(gl.BLEND)
 
   const feedbackActive = options.feedback.amount > feedbackActiveThreshold
+  const plainPost = !feedbackActive && !options.sky && !options.skyline
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, feedbackActive ? options.feedback.next.frame : null)
   gl.drawBuffers([feedbackActive ? gl.COLOR_ATTACHMENT0 : gl.BACK])
   gl.viewport(0, 0, options.width, options.height)
   gl.disable(gl.DEPTH_TEST)
   gl.disable(gl.BLEND)
-  gl.useProgram(options.post.program)
-  gl.activeTexture(gl.TEXTURE0)
-  gl.bindTexture(gl.TEXTURE_2D, options.target.color)
-  gl.uniform1i(options.post.scene, 0)
-  gl.activeTexture(gl.TEXTURE1)
-  gl.bindTexture(gl.TEXTURE_2D, options.target.bloom)
-  gl.uniform1i(options.post.bloom, 1)
-  if (feedbackActive) {
-    gl.activeTexture(gl.TEXTURE2)
-    gl.bindTexture(gl.TEXTURE_2D, options.feedback.current.color)
-    gl.uniform1i(options.post.feedback, 2)
+  if (plainPost) {
+    gl.useProgram(options.post.plain.program)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, options.target.color)
+    gl.uniform1i(options.post.plain.scene, 0)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, options.target.bloom)
+    gl.uniform1i(options.post.plain.bloom, 1)
+    gl.uniform2f(options.post.plain.bloomResolution, options.target.width, options.target.height)
   }
-  gl.uniform1f(options.post.feedbackAmount, options.feedback.amount)
-  gl.uniform1f(options.post.time, options.time)
-  gl.uniform1i(options.post.tripKind, options.feedback.tripKind)
-  gl.uniform1f(options.post.daylight, options.dayCycle.daylight)
-  gl.uniform1f(options.post.moonProgress, options.dayCycle.moonProgress)
-  gl.uniform1f(options.post.sunProgress, options.dayCycle.progress)
-  gl.uniform3f(options.post.moonDirection, options.dayCycle.moonDirection[0], options.dayCycle.moonDirection[1],
-    options.dayCycle.moonDirection[2])
-  gl.uniform3f(options.post.sunDirection, options.dayCycle.sunDirection[0], options.dayCycle.sunDirection[1],
-    options.dayCycle.sunDirection[2])
-  gl.uniform2f(options.post.bloomResolution, options.target.width, options.target.height)
-  gl.uniform1i(options.post.renderSky, options.sky ? 1 : options.skyline ? 2 : 0)
-  if (options.sky || options.skyline) {
-    gl.uniform3f(options.post.skyForward, mainCameraMatrix.forward[0], mainCameraMatrix.forward[1],
-      mainCameraMatrix.forward[2])
-    gl.uniform3f(options.post.skyRight, mainCameraMatrix.right[0], mainCameraMatrix.right[1], mainCameraMatrix.right[2])
-    gl.uniform3f(options.post.skyUp, mainCameraMatrix.up[0], mainCameraMatrix.up[1], mainCameraMatrix.up[2])
+  else {
+    gl.useProgram(options.post.program)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, options.target.color)
+    gl.uniform1i(options.post.scene, 0)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, options.target.bloom)
+    gl.uniform1i(options.post.bloom, 1)
+    if (feedbackActive) {
+      gl.activeTexture(gl.TEXTURE2)
+      gl.bindTexture(gl.TEXTURE_2D, options.feedback.current.color)
+      gl.uniform1i(options.post.feedback, 2)
+    }
+    gl.uniform1f(options.post.feedbackAmount, options.feedback.amount)
+    gl.uniform1f(options.post.time, options.time)
+    gl.uniform1i(options.post.tripKind, options.feedback.tripKind)
+    gl.uniform1f(options.post.daylight, options.dayCycle.daylight)
+    gl.uniform1f(options.post.moonProgress, options.dayCycle.moonProgress)
+    gl.uniform1f(options.post.sunProgress, options.dayCycle.progress)
+    gl.uniform3f(options.post.moonDirection, options.dayCycle.moonDirection[0], options.dayCycle.moonDirection[1],
+      options.dayCycle.moonDirection[2])
+    gl.uniform3f(options.post.sunDirection, options.dayCycle.sunDirection[0], options.dayCycle.sunDirection[1],
+      options.dayCycle.sunDirection[2])
+    gl.uniform2f(options.post.bloomResolution, options.target.width, options.target.height)
+    gl.uniform1i(options.post.renderSky, options.sky ? 1 : options.skyline ? 2 : 0)
+    if (options.sky || options.skyline) {
+      gl.uniform3f(options.post.skyForward, mainCameraMatrix.forward[0], mainCameraMatrix.forward[1],
+        mainCameraMatrix.forward[2])
+      gl.uniform3f(options.post.skyRight, mainCameraMatrix.right[0], mainCameraMatrix.right[1],
+        mainCameraMatrix.right[2])
+      gl.uniform3f(options.post.skyUp, mainCameraMatrix.up[0], mainCameraMatrix.up[1], mainCameraMatrix.up[2])
+    }
   }
   gl.bindVertexArray(options.arrays.post)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
@@ -415,20 +435,22 @@ function drawCharacters(options: Parameters<typeof renderClubFrame>[0], width: n
 }
 
 function drawLights(options: Parameters<typeof renderClubFrame>[0], width: number, height: number, frame: number) {
-  useLightProgram({
-    camera: options.camera,
-    cameraMatrix: mainCameraMatrix,
-    characterPosition: options.characterPosition,
-    frame,
-    gl: options.gl,
-    height,
-    program: options.light.program,
-    renderZone: options.renderZone,
-    smokeMap: options.smoke.map,
-    uniforms: options.light.uniforms,
-    width,
-  })
-  options.gl.bindVertexArray(options.arrays.light)
-  options.gl.drawArrays(options.gl.TRIANGLES, 0, options.light.count)
+  if (options.light.count > 0) {
+    useLightProgram({
+      camera: options.camera,
+      cameraMatrix: mainCameraMatrix,
+      characterPosition: options.characterPosition,
+      frame,
+      gl: options.gl,
+      height,
+      program: options.light.program,
+      renderZone: options.renderZone,
+      smokeMap: options.smoke.map,
+      uniforms: options.light.uniforms,
+      width,
+    })
+    options.gl.bindVertexArray(options.arrays.light)
+    options.gl.drawArrays(options.gl.TRIANGLES, 0, options.light.count)
+  }
   options.strobeController.draw(frame, mainCameraMatrix)
 }

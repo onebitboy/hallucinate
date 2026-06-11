@@ -22,11 +22,13 @@ export function drawRoomDepth(options: {
   options.gl.uniformMatrix4fv(options.uniforms.viewProjection, false, options.cameraMatrix.viewProjection)
   options.gl.uniform1i(options.uniforms.renderZone, options.renderZone)
   options.gl.uniform1i(options.uniforms.doorCoverVisible, options.doorCoverVisible ? 1 : 0)
+  options.gl.drawBuffers([options.gl.NONE, options.gl.NONE])
   options.gl.colorMask(false, false, false, false)
   options.gl.depthMask(true)
   options.gl.bindVertexArray(options.array)
   options.gl.drawArrays(options.gl.TRIANGLES, 0, options.count)
   options.gl.colorMask(true, true, true, true)
+  options.gl.drawBuffers([options.gl.COLOR_ATTACHMENT0, options.gl.COLOR_ATTACHMENT1])
 }
 
 export function useRoomSmokeProgram(options: {

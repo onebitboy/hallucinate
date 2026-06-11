@@ -85,6 +85,7 @@ import {
   hairVertex,
   lightFragment,
   postFragment,
+  postPlainFragment,
   postVertex,
   roomDepthFragment,
   smokeFragment,
@@ -1868,6 +1869,7 @@ const characterBoxProgram = createProgram(gl, characterBoxVertex, characterBoxFr
 const hairProgram = createProgram(gl, hairVertex, hairFragment)
 const smokeProgram = createProgram(gl, smokeVertex, smokeFragment)
 const postProgram = createProgram(gl, postVertex, postFragment)
+const postPlainProgram = createProgram(gl, postVertex, postPlainFragment)
 const smokeMap = createSmokeMap(gl)
 const treeShadowMap = createTreeShadowMap(gl)
 const buddhaTexture = createImageTexture(gl, '/buddha.webp')
@@ -1926,6 +1928,9 @@ const postSunProgress = gl.getUniformLocation(postProgram, 'sunProgress')
 const postDaylight = gl.getUniformLocation(postProgram, 'daylight')
 const postTime = gl.getUniformLocation(postProgram, 'time')!
 const postTripKind = gl.getUniformLocation(postProgram, 'tripKind')!
+const postPlainScene = gl.getUniformLocation(postPlainProgram, 'scene')
+const postPlainBloom = gl.getUniformLocation(postPlainProgram, 'bloom')
+const postPlainBloomResolution = gl.getUniformLocation(postPlainProgram, 'bloomResolution')
 const array = gl.createVertexArray()
 const buffer = gl.createBuffer()
 const lightArray = gl.createVertexArray()
@@ -1981,7 +1986,7 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !bloomWrite ||
   || !roomSmokeCameraUp || !postScene || !postBloom || !postFeedback || !postBloomResolution || !postFeedbackAmount
   || !postRenderSky
   || !postSkyForward || !postSkyRight || !postSkyUp || !postMoonDirection || !postMoonProgress || !postSunDirection
-  || !postSunProgress || !postDaylight || !array
+  || !postSunProgress || !postDaylight || !postPlainScene || !postPlainBloom || !postPlainBloomResolution || !array
   || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
@@ -3775,6 +3780,12 @@ function renderCurrentSceneFrame(options: {
       feedbackAmount: postFeedbackAmount!,
       moonDirection: postMoonDirection!,
       moonProgress: postMoonProgress!,
+      plain: {
+        bloom: postPlainBloom!,
+        bloomResolution: postPlainBloomResolution!,
+        program: postPlainProgram,
+        scene: postPlainScene!,
+      },
       program: postProgram,
       renderSky: postRenderSky!,
       scene: postScene!,
