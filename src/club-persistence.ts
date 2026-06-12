@@ -5,6 +5,7 @@ import { readClubState, writeClubState } from './club-state.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { normalizeIndex, setVec3 } from './math.ts'
 import type { DuckPose } from './duck-position.ts'
+import type { InputLayout } from './input.ts'
 import type { Vec3 } from './types.ts'
 
 export function restoreClubState(options: {
@@ -17,7 +18,7 @@ export function restoreClubState(options: {
   duckTurn: number
   setDuckPose: (pose: DuckPose) => void
   hairController: ReturnType<typeof createCharacterHairController>
-  setAlternativeInput: (value: boolean) => void
+  setInputLayout: (value: InputLayout) => void
   idleClipIndex: {
     set(value: number): void
   }
@@ -55,7 +56,7 @@ export function restoreClubState(options: {
       ?? options.styleController.topStyleIndex, jewelPalette.length * 2 + 2)
     options.styleController.bottomStyleIndex = normalizeIndex(state.bottomStyleIndex ?? state.pantsColorIndex
       ?? options.styleController.bottomStyleIndex, jewelPalette.length * 2)
-    options.setAlternativeInput(state.alternativeInput ?? true)
+    options.setInputLayout(state.inputLayout ?? (state.alternativeInput ?? true ? 'wasd' : 'ijkl'))
     options.styleController.setTopStyle()
     options.styleController.setBottomStyle()
   }
@@ -72,7 +73,7 @@ export function saveClubState(options: {
   duckPosition: Vec3
   duckTurn: number
   hairController: ReturnType<typeof createCharacterHairController>
-  alternativeInput: boolean
+  inputLayout: InputLayout
   idleClipIndex: number
   instagram: string
   key: string
@@ -104,7 +105,8 @@ export function saveClubState(options: {
     pantsColorIndex: options.styleController.pantsColorIndex,
     bottomStyleIndex: options.styleController.bottomStyleIndex,
     accessoryIndex: options.styleController.accessoryIndex,
-    alternativeInput: options.alternativeInput,
+    alternativeInput: options.inputLayout !== 'ijkl',
+    inputLayout: options.inputLayout,
     sunglasses: options.sunglasses,
     instagram: options.instagram,
     nickname: options.nickname,

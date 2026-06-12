@@ -1,3 +1,5 @@
+import type { InputLayout } from './input.ts'
+
 type HelpKey = {
   keys: string[]
   label: string
@@ -47,7 +49,7 @@ const actionRow: HelpKey[] = [
 ]
 const alternativeActionRow: HelpKey[] = [
   { keys: ['g'], label: 'sunglasses' },
-  { keys: ['t'], label: 'view' },
+  { keys: ['t'], label: 'free mouse' },
   { keys: ['y'], label: 'breakdance' },
 ]
 
@@ -64,6 +66,14 @@ const alternativeMoveRows: HelpKey[][] = [
   [{ keys: ['↑', 'w'], label: 'forward' }],
   [
     { keys: ['←', 'a'], label: 'left' },
+    { keys: ['↓', 's'], label: 'back' },
+    { keys: ['→', 'd'], label: 'right' },
+  ],
+]
+const azertyMoveRows: HelpKey[][] = [
+  [{ keys: ['↑', 'z'], label: 'forward' }],
+  [
+    { keys: ['←', 'q'], label: 'left' },
     { keys: ['↓', 's'], label: 'back' },
     { keys: ['→', 'd'], label: 'right' },
   ],
@@ -114,11 +124,15 @@ export function createHelpUi() {
       return open
     },
     dismissVideoHint,
-    setAlternativeInput(value: boolean) {
-      renderCluster(left, value ? alternativeLeftRows : leftRows)
-      renderCluster(move, value ? alternativeMoveRows : moveRows)
+    setInputLayout(value: InputLayout) {
+      renderCluster(left, value === 'ijkl' ? leftRows : alternativeLeftRows)
+      renderCluster(move, moveRowsForLayout(value))
     },
   }
+}
+
+function moveRowsForLayout(value: InputLayout) {
+  return value === 'ijkl' ? moveRows : value === 'wasd' ? alternativeMoveRows : azertyMoveRows
 }
 
 function dismissVideoHint() {

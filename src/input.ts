@@ -1,14 +1,19 @@
 import type { Vec3 } from './types.ts'
 
-let alternativeInput = true
+export type InputLayout = 'wasd' | 'ijkl' | 'zqsd'
+
+const inputLayouts: InputLayout[] = ['wasd', 'ijkl', 'zqsd']
+const moveKeys: Record<InputLayout, { back: string; forward: string; left: string; right: string }> = {
+  ijkl: { back: 'k', forward: 'i', left: 'j', right: 'l' },
+  wasd: { back: 's', forward: 'w', left: 'a', right: 'd' },
+  zqsd: { back: 's', forward: 'z', left: 'q', right: 'd' },
+}
+let inputLayout: InputLayout = 'wasd'
 let touchMoveX = 0
 let touchMoveZ = 0
 
 export function readMoveInput(keys: Set<string>, target: Vec3) {
-  const left = alternativeInput ? 'a' : 'j'
-  const right = alternativeInput ? 'd' : 'l'
-  const forward = alternativeInput ? 'w' : 'i'
-  const back = alternativeInput ? 's' : 'k'
+  const { back, forward, left, right } = moveKeys[inputLayout]
 
   target[0] = Number(keys.has(right) || keys.has('arrowright')) - Number(keys.has(left) || keys.has('arrowleft'))
     + touchMoveX
@@ -19,8 +24,8 @@ export function readMoveInput(keys: Set<string>, target: Vec3) {
   return target
 }
 
-export function setAlternativeInput(value: boolean) {
-  alternativeInput = value
+export function setInputLayout(value: InputLayout) {
+  inputLayout = value
 }
 
 export function setTouchMoveInput(x: number, z: number) {
@@ -36,7 +41,7 @@ export function bindKeyboardInput(options: {
   activeInputs: HTMLInputElement[]
   keys: Set<string>
   openChatInput: () => void
-  setAlternativeInput: (value: boolean) => void
+  setInputLayout: (value: InputLayout) => void
   toggleHelp: () => void
   startJumping: () => void
   stopJumping: () => void
@@ -55,7 +60,7 @@ export function bindKeyboardInput(options: {
   cyclePants: (direction: number) => void
   cycleAccessory: (direction: number) => void
   toggleSunglasses: () => void
-  togglePerspective: () => void
+  toggleFreeMouse: () => void
 }) {
   window.addEventListener('keydown', event => {
     if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
@@ -70,13 +75,14 @@ export function bindKeyboardInput(options: {
 
     if (event.code === 'Tab') {
       event.preventDefault()
-      alternativeInput = !alternativeInput
+      inputLayout = inputLayouts[(inputLayouts.indexOf(inputLayout) + 1) % inputLayouts.length]!
       options.keys.clear()
-      options.setAlternativeInput(alternativeInput)
+      options.setInputLayout(inputLayout)
       return
     }
 
     const key = event.key.toLowerCase()
+    const alternativeStyleInput = inputLayout !== 'ijkl'
 
     if (key === '?' || key === 'h') {
       options.toggleHelp()
@@ -124,7 +130,7 @@ export function bindKeyboardInput(options: {
       }
 
       options.keys.add(key)
-      options.togglePerspective()
+      options.toggleFreeMouse()
       return
     }
 
@@ -138,72 +144,72 @@ export function bindKeyboardInput(options: {
       return
     }
 
-    if ((!alternativeInput && key === 'q') || (alternativeInput && key === 'u')) {
+    if ((!alternativeStyleInput && key === 'q') || (alternativeStyleInput && key === 'u')) {
       options.cycleHair(-1)
       return
     }
 
-    if ((!alternativeInput && key === 'w') || (alternativeInput && key === 'i')) {
+    if ((!alternativeStyleInput && key === 'w') || (alternativeStyleInput && key === 'i')) {
       options.cycleHair(1)
       return
     }
 
-    if ((!alternativeInput && key === 'd') || (alternativeInput && key === 'l')) {
+    if ((!alternativeStyleInput && key === 'd') || (alternativeStyleInput && key === 'l')) {
       options.cycleIdle(-1)
       return
     }
 
-    if ((!alternativeInput && key === 'f') || (alternativeInput && key === ';')) {
+    if ((!alternativeStyleInput && key === 'f') || (alternativeStyleInput && key === ';')) {
       options.cycleIdle(1)
       return
     }
 
-    if ((!alternativeInput && event.key === '1') || (alternativeInput && event.key === '7')) {
+    if ((!alternativeStyleInput && event.key === '1') || (alternativeStyleInput && event.key === '7')) {
       options.cycleHairColor(-1)
       return
     }
 
-    if ((!alternativeInput && event.key === '2') || (alternativeInput && event.key === '8')) {
+    if ((!alternativeStyleInput && event.key === '2') || (alternativeStyleInput && event.key === '8')) {
       options.cycleHairColor(1)
       return
     }
 
-    if ((!alternativeInput && event.key === '3') || (alternativeInput && event.key === '9')) {
+    if ((!alternativeStyleInput && event.key === '3') || (alternativeStyleInput && event.key === '9')) {
       options.cycleSkin(-1)
       return
     }
 
-    if ((!alternativeInput && event.key === '4') || (alternativeInput && event.key === '0')) {
+    if ((!alternativeStyleInput && event.key === '4') || (alternativeStyleInput && event.key === '0')) {
       options.cycleSkin(1)
       return
     }
 
-    if ((!alternativeInput && key === 'a') || (alternativeInput && key === 'j')) {
+    if ((!alternativeStyleInput && key === 'a') || (alternativeStyleInput && key === 'j')) {
       options.cycleShirt(-1)
       return
     }
 
-    if ((!alternativeInput && key === 's') || (alternativeInput && key === 'k')) {
+    if ((!alternativeStyleInput && key === 's') || (alternativeStyleInput && key === 'k')) {
       options.cycleShirt(1)
       return
     }
 
-    if ((!alternativeInput && key === 'z') || (alternativeInput && key === 'm')) {
+    if ((!alternativeStyleInput && key === 'z') || (alternativeStyleInput && key === 'm')) {
       options.cyclePants(-1)
       return
     }
 
-    if ((!alternativeInput && key === 'x') || (alternativeInput && key === ',')) {
+    if ((!alternativeStyleInput && key === 'x') || (alternativeStyleInput && key === ',')) {
       options.cyclePants(1)
       return
     }
 
-    if ((!alternativeInput && key === 'e') || (alternativeInput && key === 'o')) {
+    if ((!alternativeStyleInput && key === 'e') || (alternativeStyleInput && key === 'o')) {
       options.cycleAccessory(-1)
       return
     }
 
-    if ((!alternativeInput && key === 'r') || (alternativeInput && key === 'p')) {
+    if ((!alternativeStyleInput && key === 'r') || (alternativeStyleInput && key === 'p')) {
       options.cycleAccessory(1)
       return
     }

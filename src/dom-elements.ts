@@ -105,7 +105,7 @@ function createDomElements() {
   perspectiveButton.id = 'perspective-button'
   perspectiveButton.type = 'button'
   perspectiveButton.textContent = '👀'
-  perspectiveButton.setAttribute('aria-label', 'first person view')
+  perspectiveButton.setAttribute('aria-label', 'free mouse camera')
   perspectiveButton.setAttribute('aria-pressed', 'false')
   breakdanceButton.id = 'breakdance-button'
   breakdanceButton.type = 'button'

@@ -8,6 +8,7 @@ import {
   photoWallSurface,
 } from './photo-wall-data.ts'
 import { projectedQuadTransform, type WallProjector } from './projection.ts'
+import type { InputLayout } from './input.ts'
 import type { Vec3 } from './types.ts'
 
 type Camera = {
@@ -54,7 +55,7 @@ const viewerSlideDuration = 420
 
 export function createPhotoWallUi(element: HTMLElement, options: {
   admin: () => { enabled: boolean; pass: string }
-  alternativeInput: () => boolean
+  inputLayout: () => InputLayout
   onLike?: (photo: Photo) => void
   recoverFocus?: () => void
 }) {
@@ -176,8 +177,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   })
   viewer.addEventListener('keydown', event => {
     const key = event.key.toLowerCase()
-    const previousKey = options.alternativeInput() ? 'a' : 'j'
-    const nextKey = options.alternativeInput() ? 'd' : 'l'
+    const [previousKey, nextKey] = viewerNavigationKeys(options.inputLayout())
 
     event.stopPropagation()
     if (event.key === 'Escape' || key === 'x') {
@@ -1039,6 +1039,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     })
     viewerAnimation.addEventListener('finish', closeViewerNow, { once: true })
   }
+}
+
+function viewerNavigationKeys(inputLayout: InputLayout) {
+  return inputLayout === 'ijkl' ? ['j', 'l'] : inputLayout === 'wasd' ? ['a', 'd'] : ['q', 'd']
 }
 
 function photoTilt(photo: Photo) {

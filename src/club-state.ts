@@ -1,3 +1,4 @@
+import type { InputLayout } from './input.ts'
 import type { Vec3 } from './types.ts'
 
 export type ClubState = {
@@ -19,6 +20,7 @@ export type ClubState = {
   bottomStyleIndex?: number
   accessoryIndex?: number
   alternativeInput?: boolean
+  inputLayout?: InputLayout
   sunglasses?: boolean
   instagram?: string
   nickname?: string

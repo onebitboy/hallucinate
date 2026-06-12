@@ -10,6 +10,8 @@ const outsideCameraFront = outsideStage.z - outsideStage.depth / 2 - 0.35
 const manualCameraHoldTime = 5000
 const cameraBouncePauseTime = 2500
 const dragMoveThreshold = 3
+const cameraTurnSensitivity = 0.005
+const cameraPitchSensitivity = 0.018
 const firstPersonEyeLift = 0.07
 const firstPersonFaceOffset = 0.18
 const firstPersonLookDistance = 1.4
@@ -44,6 +46,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   const target: Vec3 = [-2.2, -0.75, -6.8]
   const viewUp: Vec3 = [0, 1, 0]
   let firstPerson = false
+  let freeMouse = false
   let turn = 0
   let dragX = 0
   let dragY = 0
@@ -59,12 +62,67 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
 
   function setFirstPerson(value: boolean) {
     firstPerson = value
+    if (firstPerson) {
+      exitFreeMouse()
+    }
     holdingManualCamera = false
     returning = false
     pitch = 0
   }
 
+  function setFreeMouse(value: boolean) {
+    freeMouse = value
+    dragging = false
+    dragMoved = false
+    dragTouchId = -1
+    if (freeMouse) {
+      firstPerson = false
+      holdingManualCamera = true
+      returning = false
+      cameraBouncePausedUntil = performance.now() + cameraBouncePauseTime
+    }
+    else {
+      holdingManualCamera = true
+      manualCameraHoldUntil = performance.now() + manualCameraHoldTime
+    }
+  }
+
+  function enterFreeMouse() {
+    firstPerson = false
+    dragging = false
+    dragMoved = false
+    dragTouchId = -1
+    returning = false
+    canvas.focus()
+    const request = canvas.requestPointerLock()
+
+    request.catch((e: unknown) => console.error(e))
+  }
+
+  function exitFreeMouse() {
+    if (document.pointerLockElement === canvas) {
+      document.exitPointerLock()
+      return
+    }
+
+    if (freeMouse) {
+      setFreeMouse(false)
+    }
+  }
+
+  function syncFreeMouseLock() {
+    const locked = document.pointerLockElement === canvas
+
+    if (freeMouse !== locked) {
+      setFreeMouse(locked)
+    }
+  }
+
   function startDrag(x: number, y: number) {
+    if (freeMouse) {
+      return
+    }
+
     dragging = true
     dragMoved = false
     returning = false
@@ -84,8 +142,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     dragX = x
     dragY = y
 
-    turn -= dx * 0.005
-    pitch = clamp(pitch + dy * 0.018, -2.4, 4.2)
+    moveCamera(dx, dy)
+  }
+
+  function moveCamera(dx: number, dy: number) {
+    turn -= dx * cameraTurnSensitivity
+    pitch = clamp(pitch + dy * cameraPitchSensitivity, -2.4, 4.2)
     holdingManualCamera = true
     manualCameraHoldUntil = performance.now() + manualCameraHoldTime
     cameraBouncePausedUntil = performance.now() + cameraBouncePauseTime
@@ -162,7 +224,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   })
 
   document.addEventListener('mousedown', event => {
-    if (event.button !== 0 || interactiveTarget(event.target)) {
+    if (freeMouse || event.button !== 0 || interactiveTarget(event.target)) {
       return
     }
 
@@ -171,6 +233,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   }, { capture: true })
 
   document.addEventListener('mousemove', event => {
+    if (freeMouse) {
+      event.preventDefault()
+      moveCamera(event.movementX, event.movementY)
+      return
+    }
+
     if (!dragging) {
       return
     }
@@ -182,6 +250,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
   document.addEventListener('mouseup', () => {
     dragging = false
   }, { capture: true })
+  document.addEventListener('pointerlockchange', syncFreeMouseLock)
 
   return {
     position,
@@ -191,6 +260,12 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
     },
     set firstPerson(value: boolean) {
       setFirstPerson(value)
+    },
+    get freeMouse() {
+      return freeMouse
+    },
+    set freeMouse(value: boolean) {
+      value ? enterFreeMouse() : exitFreeMouse()
     },
     get turn() {
       return turn
@@ -205,6 +280,10 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         turn = characterTurn
       }
     },
+    toggleFreeMouse() {
+      freeMouse ? exitFreeMouse() : enterFreeMouse()
+    },
+    exitFreeMouse,
     get() {
       return {
         eye: [position[0], position[1], position[2]] as Vec3,
@@ -230,42 +309,43 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         : cameraBasis(characterTurn, cameraUp)
       const followTurn = firstPerson ? cameraBasisTurn(faceBasis) : characterTurn
       const sideViewTurn = options.sideViewTurn
+      const manualCameraActive = dragging || freeMouse
 
       if (dragging && !dragMoved) {
         wasMoving = moving
         return
       }
 
-      if (!firstPerson && holdingManualCamera && !dragging && !manualHold
+      if (!firstPerson && holdingManualCamera && !manualCameraActive && !manualHold
         && performance.now() > manualCameraHoldUntil)
       {
         holdingManualCamera = false
       }
 
-      if (!firstPerson && lookDown && !dragging) {
+      if (!firstPerson && lookDown && !manualCameraActive) {
         pitch = mix(pitch, 0.9, 1 - Math.exp(-7 * delta))
       }
 
-      if (!firstPerson && sideViewTurn !== undefined && !dragging && !holdingManualCamera) {
+      if (!firstPerson && sideViewTurn !== undefined && !manualCameraActive && !holdingManualCamera) {
         returning = false
         turn = smoothAngle(turn, sideViewTurn, 5, delta)
         pitch = mix(pitch, 0.05, 1 - Math.exp(-5 * delta))
       }
 
-      if (holdingManualCamera && moving) {
+      if (!freeMouse && holdingManualCamera && moving) {
         holdingManualCamera = false
         returning = true
       }
 
-      if (!dragging && wasMoving && !moving) {
+      if (!manualCameraActive && wasMoving && !moving) {
         returning = true
       }
 
-      if (!dragging && movingBack) {
+      if (!manualCameraActive && movingBack) {
         returning = false
       }
 
-      if (sideViewTurn === undefined && !dragging && ((moving && input[2] >= 0) || returning)) {
+      if (sideViewTurn === undefined && !manualCameraActive && ((moving && input[2] >= 0) || returning)) {
         const turnSpeed = returning ? 5 : mix(0.8, 2.2, input[2])
         const targetPitch = firstPerson ? 0 : lookDown ? 0.9 : 0
 
@@ -281,14 +361,14 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
         }
       }
 
-      if (firstPerson && !dragging && !holdingManualCamera && !returning) {
+      if (firstPerson && !manualCameraActive && !holdingManualCamera && !returning) {
         turn = followTurn
         pitch = 0
       }
 
       wasMoving = moving
 
-      const basis = firstPerson && !dragging && !holdingManualCamera && !returning
+      const basis = firstPerson && !manualCameraActive && !holdingManualCamera && !returning
         ? faceBasis
         : cameraBasis(turn, firstPerson ? options.face?.up ?? cameraUp : cameraUp)
 
@@ -335,7 +415,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       }
       const zone = loft ? 'loft' : roomAt(characterPosition)
 
-      if (holdingManualCamera && !dragging) {
+      if (holdingManualCamera && !manualCameraActive) {
         clampCameraToZone(position, zone, characterPosition)
         wasMoving = moving
         return
@@ -346,7 +426,7 @@ export function createCameraController(canvas: HTMLCanvasElement, characterPosit
       const crossingOutside = outside && !cameraOutside
       const elevatedOutside = outside && characterPosition[1] > characterFloor + 0.8
       const time = performance.now() * 0.001
-      const bouncePaused = dragging || performance.now() < cameraBouncePausedUntil
+      const bouncePaused = manualCameraActive || performance.now() < cameraBouncePausedUntil
       const bounceAllowed = bounceActive && !bouncePaused
       const distance = bounceAllowed && !outside ? cameraDanceDistance(time) : 2.2
       const bounce = bounceAllowed ? cameraDanceBounce(time) : 0
