@@ -556,6 +556,7 @@ body[data-arcade-open="true"] #online-indicator,
 body[data-arcade-open="true"] #reaction-buttons,
 body[data-arcade-open="true"] #sunglasses-button,
 body[data-arcade-open="true"] #perspective-button,
+body[data-arcade-open="true"] #camera-button,
 body[data-arcade-open="true"] #breakdance-button,
 body[data-arcade-open="true"] #wave-button,
 body[data-arcade-open="true"] #bubble-button,
@@ -976,6 +977,7 @@ body[data-intro-visible="true"] #online-indicator,
 body[data-intro-visible="true"] #reaction-buttons,
 body[data-intro-visible="true"] #sunglasses-button,
 body[data-intro-visible="true"] #perspective-button,
+body[data-intro-visible="true"] #camera-button,
 body[data-intro-visible="true"] #wave-button,
 body[data-intro-visible="true"] #bubble-button,
 body[data-intro-visible="true"] #foam-button,
@@ -1116,6 +1118,7 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 #breakdance-button,
 #sunglasses-button,
 #perspective-button,
+#camera-button,
 #wave-button,
 #bubble-button,
 #foam-button,
@@ -1139,6 +1142,7 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 #breakdance-button,
 #sunglasses-button,
 #perspective-button,
+#camera-button,
 #wave-button,
 #bubble-button,
 #foam-button,
@@ -1168,7 +1172,7 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 }
 
 #sunglasses-button {
-  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 8);
+  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 9);
 }
 
 #sunglasses-button[data-active="true"] {
@@ -1185,6 +1189,16 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
   text-shadow:
     0 0 8px rgb(0 245 255 / 0.82),
     0 0 18px rgb(45 120 255 / 0.9);
+}
+
+#camera-button {
+  bottom: calc(12px + var(--app-bottom) + (var(--action-size) + var(--action-gap)) * 8);
+}
+
+#camera-button[data-active="true"] {
+  text-shadow:
+    0 0 8px rgb(255 255 255 / 0.82),
+    0 0 18px rgb(0 245 255 / 0.9);
 }
 
 #photo-button {
@@ -1214,6 +1228,7 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 #breakdance-button[data-hidden="true"],
 #sunglasses-button[data-hidden="true"],
 #perspective-button[data-hidden="true"],
+#camera-button[data-hidden="true"],
 #wave-button[data-hidden="true"],
 #bubble-button[data-hidden="true"],
 #foam-button[data-hidden="true"],
@@ -1226,6 +1241,7 @@ html[data-touch-controls="true"] #reaction-buttons[data-hidden="true"] {
 html[data-touch-controls="true"] #breakdance-button[data-hidden="true"],
 html[data-touch-controls="true"] #sunglasses-button[data-hidden="true"],
 html[data-touch-controls="true"] #perspective-button[data-hidden="true"],
+html[data-touch-controls="true"] #camera-button[data-hidden="true"],
 html[data-touch-controls="true"] #wave-button[data-hidden="true"],
 html[data-touch-controls="true"] #bubble-button[data-hidden="true"],
 html[data-touch-controls="true"] #foam-button[data-hidden="true"],
@@ -1239,6 +1255,7 @@ html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #r
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #breakdance-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #sunglasses-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #perspective-button,
+html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #camera-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #wave-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #bubble-button,
 html[data-touch-controls="true"] body:has(#mobile-controls[data-open="true"]) #foam-button,
@@ -1256,6 +1273,7 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #online-indicat
 html[data-touch-controls="true"] body[data-intro-visible="true"] #breakdance-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #sunglasses-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #perspective-button,
+html[data-touch-controls="true"] body[data-intro-visible="true"] #camera-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #wave-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #bubble-button,
 html[data-touch-controls="true"] body[data-intro-visible="true"] #foam-button,

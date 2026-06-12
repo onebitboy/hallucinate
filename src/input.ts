@@ -60,7 +60,8 @@ export function bindKeyboardInput(options: {
   cyclePants: (direction: number) => void
   cycleAccessory: (direction: number) => void
   toggleSunglasses: () => void
-  toggleFreeMouse: () => void
+  toggleCameraControl: () => void
+  toggleView: () => void
 }) {
   window.addEventListener('keydown', event => {
     if (options.activeInputs.includes(document.activeElement as HTMLInputElement)) {
@@ -130,7 +131,17 @@ export function bindKeyboardInput(options: {
       }
 
       options.keys.add(key)
-      options.toggleFreeMouse()
+      options.toggleView()
+      return
+    }
+
+    if (key === 'f') {
+      if (options.keys.has(key)) {
+        return
+      }
+
+      options.keys.add(key)
+      options.toggleCameraControl()
       return
     }
 

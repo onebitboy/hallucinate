@@ -25,6 +25,7 @@ function createDomElements() {
   const photoButton = document.createElement('button')
   const sunglassesButton = document.createElement('button')
   const perspectiveButton = document.createElement('button')
+  const cameraButton = document.createElement('button')
   const breakdanceButton = document.createElement('button')
   const waveButton = document.createElement('button')
   const bubbleButton = document.createElement('button')
@@ -105,8 +106,13 @@ function createDomElements() {
   perspectiveButton.id = 'perspective-button'
   perspectiveButton.type = 'button'
   perspectiveButton.textContent = '👀'
-  perspectiveButton.setAttribute('aria-label', 'free mouse camera')
+  perspectiveButton.setAttribute('aria-label', 'view mode')
   perspectiveButton.setAttribute('aria-pressed', 'false')
+  cameraButton.id = 'camera-button'
+  cameraButton.type = 'button'
+  cameraButton.textContent = '🖱️'
+  cameraButton.setAttribute('aria-label', 'camera control')
+  cameraButton.setAttribute('aria-pressed', 'false')
   breakdanceButton.id = 'breakdance-button'
   breakdanceButton.type = 'button'
   breakdanceButton.textContent = '🤸'
@@ -211,7 +217,7 @@ function createDomElements() {
   intro.append(introEffect, introPanel, introGithub)
   document.body.prepend(canvas, djVideo, photoWall, scheduleWall, sunglassesOverlay, chatForm, chatBubble,
     onlineIndicator, reactionButtons, waveButton, bubbleButton, foamButton, breakdanceButton, sunglassesButton,
-    perspectiveButton, photoButton, roomsButton, supportLink, merchCards, intro)
+    perspectiveButton, cameraButton, photoButton, roomsButton, supportLink, merchCards, intro)
 
   return {
     canvas,
@@ -230,6 +236,7 @@ function createDomElements() {
     sunglassesOverlay,
     sunglassesButton,
     perspectiveButton,
+    cameraButton,
     breakdanceButton,
     waveButton,
     bubbleButton,

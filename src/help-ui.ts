@@ -49,7 +49,8 @@ const actionRow: HelpKey[] = [
 ]
 const alternativeActionRow: HelpKey[] = [
   { keys: ['g'], label: 'sunglasses' },
-  { keys: ['t'], label: 'free mouse' },
+  { keys: ['t'], label: 'view' },
+  { keys: ['f'], label: 'camera' },
   { keys: ['y'], label: 'breakdance' },
 ]
 

@@ -189,6 +189,7 @@ const {
   sunglassesOverlay,
   sunglassesButton,
   perspectiveButton,
+  cameraButton,
   breakdanceButton,
   waveButton,
   bubbleButton,
@@ -482,6 +483,7 @@ function syncOnlineIndicator() {
   reactionButtons.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   sunglassesButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   perspectiveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
+  cameraButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   breakdanceButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   waveButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
   bubbleButton.dataset.hidden = String(helpUi.root.dataset.open === 'true')
@@ -1456,17 +1458,34 @@ function toggleSunglasses() {
   setSunglasses(!sunglasses)
 }
 
-function syncFreeMouseButton() {
-  perspectiveButton.dataset.active = String(cameraController.freeMouse)
-  perspectiveButton.setAttribute('aria-pressed', String(cameraController.freeMouse))
+function syncViewButton() {
+  const active = cameraController.firstPerson
+
+  perspectiveButton.dataset.active = String(active)
+  perspectiveButton.setAttribute('aria-pressed', String(active))
 }
 
-function toggleFreeMouse() {
+function syncCameraButton() {
+  const active = cameraController.freeMouse
+
+  cameraButton.dataset.active = String(active)
+  cameraButton.setAttribute('aria-pressed', String(active))
+}
+
+function toggleView() {
+  cameraController.togglePerspective(localCharacter.turn)
+  syncViewButton()
+  syncCameraButton()
+  saveCurrentClubState(true)
+}
+
+function toggleCameraControl() {
   cameraController.toggleFreeMouse()
-  syncFreeMouseButton()
+  syncCameraButton()
+  syncViewButton()
 }
 
-document.addEventListener('pointerlockchange', syncFreeMouseButton)
+document.addEventListener('pointerlockchange', syncCameraButton)
 
 function palmTreeMeshColor(index: number): [number, number, number] {
   return index === 0 ? [0.42, 0.24, 0.1] : [0.02, 0.72 + (index % 3) * 0.08, 0.16]
@@ -2318,7 +2337,8 @@ restoreClubState({
   setInputLayout: useInputLayout,
   styleController,
 })
-syncFreeMouseButton()
+syncViewButton()
+syncCameraButton()
 djVideoUi.setZoneFromPosition()
 djVideoUi.load()
 
@@ -3327,7 +3347,8 @@ bindKeyboardInput({
   },
   startBreakdance: () => localCharacter.startBreakdance(),
   toggleSunglasses,
-  toggleFreeMouse,
+  toggleCameraControl,
+  toggleView,
   openChatInput: () => openChatInput(),
   setInputLayout: useInputLayout,
   toggleHelp: () => {
@@ -3582,7 +3603,12 @@ sunglassesButton.addEventListener('click', () => {
 })
 
 perspectiveButton.addEventListener('click', () => {
-  toggleFreeMouse()
+  toggleView()
+  canvas.focus()
+})
+
+cameraButton.addEventListener('click', () => {
+  toggleCameraControl()
   canvas.focus()
 })
 
@@ -3637,7 +3663,8 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && cameraController.freeMouse) {
     event.preventDefault()
     cameraController.exitFreeMouse()
-    syncFreeMouseButton()
+    syncViewButton()
+    syncCameraButton()
     canvas.focus()
     return
   }
