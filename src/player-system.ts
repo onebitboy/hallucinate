@@ -1083,7 +1083,13 @@ function onUpstairsStairPath(position: Vec3) {
 function travelPathTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
   if (!player.travelPathTarget || !samePoint(player.travelPathTarget, target) || duckBlocksTravelPath(player, target))
   {
-    player.travelPath = findPath(player.position, target, outsideTree, npcPathOptions)
+    try {
+      player.travelPath = findPath(player.position, target, outsideTree, npcPathOptions)
+    }
+    catch (e) {
+      console.error(e)
+      player.travelPath = []
+    }
     player.travelPathTarget = target
   }
 

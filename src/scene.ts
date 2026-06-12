@@ -499,6 +499,7 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   position[0] = clamp(position[0], outsideBounds.left + radius, outsideBounds.right - radius)
   position[2] = clamp(position[2], outsideBounds.back + radius, outsideBounds.front - radius)
   collideBuildingWalls(position, radius)
+  collideSphereUnderOutsideRooftopStairs(position, radius)
 
   if (sphereOverlapsHeight(position, radius, characterFloor + tent.wallHeight)) {
     collideTentWalls(position, radius)
@@ -1302,6 +1303,34 @@ function collideUnderOutsideRooftopStairs(position: Vec3, previous?: Vec3) {
   }
 
   collidePaddedBoundsSides(position, paddedBounds(stairs, 0.12), ['left', 'front'])
+}
+
+function collideSphereUnderOutsideRooftopStairs(position: Vec3, radius: number) {
+  if (onOutsideRooftopPath(position)) {
+    return
+  }
+
+  collidePaddedBounds(position, paddedBounds(outsideRooftopLanding, 0.12 + radius))
+
+  const stairs = outsideRooftopStairs
+  const front = stairs.z + stairs.depth / 2
+  const bottomOpeningBack = front - 1.1
+  const padding = 0.12 + radius
+
+  if (position[0] < stairs.x - stairs.width / 2 - padding
+    || position[0] > stairs.x + stairs.width / 2 + padding
+    || position[2] < stairs.z - stairs.depth / 2 - padding
+    || position[2] > bottomOpeningBack + padding)
+  {
+    return
+  }
+
+  collidePaddedBounds(position, {
+    back: stairs.z - stairs.depth / 2 - padding,
+    front: bottomOpeningBack + padding,
+    left: stairs.x - stairs.width / 2 - padding,
+    right: stairs.x + stairs.width / 2 + padding,
+  })
 }
 
 function inOutsideRooftopStairWall(position: Vec3, clearance = 0) {
