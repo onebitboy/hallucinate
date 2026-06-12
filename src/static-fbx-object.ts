@@ -29,6 +29,7 @@ type StaticObjectOptions = {
   lightBounds: SceneLightBounds
   meshIndex?: number
   nodeTransforms?: boolean
+  onVertices?: (range: { end: number; start: number }) => void
   path: string
   position: Vec3
   sourceUp: 'y' | 'z'
@@ -102,6 +103,7 @@ function addStaticFbxObject(
 ) {
   const meshes = createStaticMeshes(scene, options, pose)
   const triangleAreaSquaredMin = options.triangleAreaSquaredMin ?? 0.00000001
+  const start = target.length
 
   for (const mesh of meshes) {
     for (const face of mesh.faces) {
@@ -120,6 +122,8 @@ function addStaticFbxObject(
       }
     }
   }
+
+  options.onVertices?.({ start, end: target.length })
 }
 
 function addTrianglePattern(target: Vertex[], index: number, pattern: [number, number][] | undefined, haze: number) {

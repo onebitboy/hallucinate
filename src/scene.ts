@@ -58,6 +58,7 @@ import { treeSwingSeatAt, treeSwingSeats } from './tree-swing.ts'
 import type { Bounds, CircleBounds, Vec3, VideoZone } from './types.ts'
 
 import { characterFloor } from './character-data.ts'
+import { duckBoundsAt, duckPlatformTop, duckPosition, onDuckPlatform } from './duck-position.ts'
 import { clamp } from './math.ts'
 
 export type Seat = {
@@ -84,6 +85,7 @@ type OrientedBounds = {
 }
 type CollisionOptions = {
   couches?: boolean
+  duck?: boolean
 }
 type HeightOptions = {
   couches?: boolean
@@ -177,10 +179,6 @@ const outsideRooftopStairSideInset = 0.24
 const outsideRooftopStairWalkLift = 0.12
 const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outsideRooftopLanding.width / 2
   - (outsideRooftop.x - outsideRooftop.width / 2) + 0.05
-const outsideStagePropCollisions: PaddedPlatform[] = outsideStageProps.map(prop => ({
-  bounds: paddedBounds(prop, 0.18),
-  top: characterFloor + ('platformHeight' in prop ? prop.platformHeight : prop.height - 0.1),
-}))
 const emptySeats = new Set<string>()
 
 export function walkHeight(x: number, y: number, z: number) {
@@ -200,6 +198,12 @@ export function walkHeight(x: number, y: number, z: number) {
 
   if (stairs !== undefined && y > stairs - platformStep) {
     return stairs
+  }
+
+  const duckTop = duckPlatformHeight(x, z)
+
+  if (duckTop !== undefined && y > duckTop - platformStep) {
+    return duckTop
   }
 
   const platform = platformHeight(x, z, isOutside([x, y, z]))
@@ -276,6 +280,7 @@ export function collideRoom(
 ) {
   if (isUpstairs(position) || (previous !== undefined && isUpstairs(previous))) {
     collideUpstairsRoom(position)
+    collideDuck(position)
     return
   }
 
@@ -286,6 +291,7 @@ export function collideRoom(
     position[2] = clamp(position[2], outsideBounds.back, outsideBounds.front)
     collideOutsideRooftopPath(position, previous)
     if (onOutsideRooftopPath(position)) {
+      collideDuck(position)
       return
     }
     collideBuildingWalls(position, 0.45)
@@ -316,11 +322,12 @@ export function collideRoom(
         collidePaddedBounds(position, speaker)
       }
     }
-    for (const prop of outsideStagePropCollisions) {
+    for (const prop of outsideStageRockCollisions()) {
       if (!onPaddedPlatform(position, prop.bounds, prop.top)) {
         collidePaddedBounds(position, prop.bounds)
       }
     }
+    collideDuck(position)
     for (const speaker of tentDjSpeakerCollisions) {
       if (!onPaddedPlatform(position, speaker, speakerTop)) {
         collidePaddedBounds(position, speaker)
@@ -365,6 +372,7 @@ export function collideRoom(
   if (!onPaddedPlatform(position, bartenderBarCollision, barTop)) {
     collidePaddedBounds(position, bartenderBarCollision)
   }
+  collideDuck(position)
   collideOrientedBounds(position, insideArcadeCollision, 0.28)
 
   for (const stool of bartenderStoolCollisions) {
@@ -487,7 +495,7 @@ export function collideLoftRoom(position: Vec3, options?: CollisionOptions) {
   }
 }
 
-export function collideSphereRoom(position: Vec3, radius: number, outsideTree: CircleBounds) {
+export function collideSphereRoom(position: Vec3, radius: number, outsideTree: CircleBounds, options?: CollisionOptions) {
   position[0] = clamp(position[0], outsideBounds.left + radius, outsideBounds.right - radius)
   position[2] = clamp(position[2], outsideBounds.back + radius, outsideBounds.front - radius)
   collideBuildingWalls(position, radius)
@@ -520,8 +528,12 @@ export function collideSphereRoom(position: Vec3, radius: number, outsideTree: C
   for (const speaker of outsideDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
   }
-  for (const prop of outsideStagePropCollisions) {
+  for (const prop of outsideStageRockCollisions()) {
     collideSpherePaddedBounds(position, radius, prop.bounds, prop.top)
+  }
+  if (options?.duck !== false) {
+    const duck = duckCollision()
+    collideSpherePaddedBounds(position, radius, duck.bounds, duck.top)
   }
   for (const speaker of tentDjSpeakerCollisions) {
     collideSpherePaddedBounds(position, radius, speaker, speakerTop)
@@ -561,6 +573,7 @@ export function isWalkable(
       && !inPaddedBounds(x, z, upstairsBarDrinkCounterCollision, clearance)
       && upstairsBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && upstairsCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
+      && duckWalkable(x, z, y, clearance)
   }
 
   if (isOutside(point)) {
@@ -584,7 +597,8 @@ export function isWalkable(
       && !inPaddedBounds(x, z, outsidePhotoWallCollision, clearance)
       && !inPaddedBounds(x, z, outsideScheduleWallCollision, clearance)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
-      && outsideStagePropCollisions.every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
+      && outsideStageRockCollisions().every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
+      && duckWalkable(x, z, y, clearance)
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
@@ -599,12 +613,22 @@ export function isWalkable(
     && !inPaddedBounds(x, z, djBoothCollision, clearance)
     && !inPaddedBounds(x, z, bartenderBarCollision, clearance)
     && !inOrientedBounds(x, z, insideArcadeCollision, 0.28 + clearance)
+    && duckWalkable(x, z, y, clearance)
     && bartenderStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
     && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
 }
 
 export function nearInsideArcade(position: Vec3, padding = 0.44) {
   return roomAt(position) === 'inside' && inOrientedBounds(position[0], position[2], insideArcadeCollision, padding)
+}
+
+export function resolveDuckPosition(position: Vec3, outsideTree: CircleBounds): Vec3 {
+  const radius = duckCollisionRadius()
+  const sphere: Vec3 = [position[0], position[1] + radius, position[2]]
+
+  collideSphereRoom(sphere, radius, outsideTree, { duck: false })
+
+  return [sphere[0], position[1], sphere[2]]
 }
 
 function inTent(x: number, z: number) {
@@ -1356,7 +1380,7 @@ function platformHeight(x: number, z: number, outside: boolean) {
       return speakerTop
     }
 
-    const stageProp = outsideStagePropCollisions.find(prop => inPaddedBounds(x, z, prop.bounds))
+    const stageProp = outsideStageRockCollisions().find(prop => inPaddedBounds(x, z, prop.bounds))
 
     if (stageProp) {
       return stageProp.top
@@ -1402,6 +1426,56 @@ function loftPlatformHeight(x: number, z: number, options?: HeightOptions) {
 
 function onPaddedPlatform(position: Vec3, bounds: PaddedBounds, height: number) {
   return position[1] > height - platformStep && inPaddedBounds(position[0], position[2], bounds)
+}
+
+export function onOutsideDuckPlatform(position: Vec3, duck?: Vec3) {
+  return onDuckPlatform(position, duck)
+}
+
+function duckCollision(): PaddedPlatform {
+  return {
+    bounds: paddedBounds(duckBoundsAt(), 0.18),
+    top: duckPlatformTop(),
+  }
+}
+
+function duckCollisionRadius() {
+  const bounds = duckBoundsAt()
+
+  return Math.hypot(bounds.width, bounds.depth) * 0.5 + 0.18
+}
+
+function duckPlatformHeight(x: number, z: number) {
+  const duck = duckCollision()
+
+  return inPaddedBounds(x, z, duck.bounds) ? duck.top : undefined
+}
+
+function duckWalkable(x: number, z: number, y: number, clearance: number) {
+  const duck = duckCollision()
+
+  return !duckBlocksHeight(y) || !inPaddedBounds(x, z, duck.bounds, clearance)
+}
+
+function duckBlocksHeight(y: number) {
+  return y > duckPosition[1] - platformStep && y < duckPlatformTop() + platformStep
+}
+
+function collideDuck(position: Vec3) {
+  const duck = duckCollision()
+
+  if (!onPaddedPlatform(position, duck.bounds, duck.top)) {
+    collidePaddedBounds(position, duck.bounds)
+  }
+}
+
+function outsideStageRockCollisions(): PaddedPlatform[] {
+  return outsideStageProps.flatMap(prop => prop.kind === 'rock'
+    ? [{
+        bounds: paddedBounds(prop, 0.18),
+        top: characterFloor + prop.height - 0.1,
+      }]
+    : [])
 }
 
 function inPaddedBounds(x: number, z: number, bounds: PaddedBounds, clearance = 0) {

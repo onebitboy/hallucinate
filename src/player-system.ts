@@ -1,6 +1,7 @@
 import { characterFloor, hairPalette, jewelPalette, skinPalette } from './character-data.ts'
 import { resolvePlayerStyle } from './character-style.ts'
 import { characterView, characterVisibilityInto } from './character-visibility.ts'
+import { duckPaddedBoundsAt, duckPlatformTop, duckPosition } from './duck-position.ts'
 import { clamp, lengthSq, smoothAngle } from './math.ts'
 import { findPath } from './pathfinding.ts'
 import {
@@ -92,6 +93,9 @@ const npcConfig = {
   },
 }
 const npcPathClearance = 0.18
+const npcDuckClearance = npcPathClearance + 0.52
+const npcDuckProbeDistance = 1.35
+const npcDuckVerticalClearance = 0.55
 const doorCrossLaneRange = backDoor.width * 0.5 - npcPathClearance - 0.06
 const doorFlowWidth = backDoor.width * 0.5 + 0.75
 const doorApproachLaneRange = doorFlowWidth - 0.28
@@ -155,11 +159,11 @@ export function createPlayers(count: number, outsideTree: CircleBounds, occupied
   for (let i = 0; i < count; i++) {
     const seed = i + 1
     const destination = playerDestination(seed, 0, outsideTree, occupiedSeats)
-    const position: Vec3 = [
+    const position = duckClearedPoint([
       destination.position[0] + seededRange(seed, 10, -0.45, 0.45),
       destination.position[1],
       destination.position[2] + seededRange(seed, 11, -0.45, 0.45),
-    ]
+    ])
     const style: PlayerStyle = {
       topStyleIndex: Math.floor(seededRange(seed, 14, 0, jewelPalette.length * 2 + 2)),
       bottomStyleIndex: Math.floor(seededRange(seed, 15, 0, jewelPalette.length * 2)),
@@ -262,6 +266,8 @@ export function updatePlayers(
       leaveSeat(player, time)
       choosePlayerDestination(player, time, outsideTree, occupiedSeats)
     }
+
+    refreshDuckAvoidanceDestination(player)
 
     if (player.leavingSeatUntil && time < player.leavingSeatUntil) {
       player.input[0] = 0
@@ -571,6 +577,189 @@ function stopPlayerInput(player: Player) {
   player.input[2] = 0
 }
 
+function refreshDuckAvoidanceDestination(player: Player) {
+  const destination = duckSafeDestination(player.destination)
+
+  if (destination === player.destination) {
+    return
+  }
+
+  player.destination = destination
+  player.travelTarget = undefined
+  player.travelPath = undefined
+  player.travelPathTarget = undefined
+  player.nextTravelTargetAt = undefined
+  player.doorTarget = undefined
+}
+
+function duckSafeDestination(destination: PlayerDestination) {
+  if (destination.kind === 'random') {
+    return destination
+  }
+
+  const position = duckClearedPoint(destination.position)
+
+  return position === destination.position ? destination : { ...destination, position }
+}
+
+function duckAvoidedTravelTarget(player: Player, target: Vec3): Vec3 {
+  const position = duckClearedPoint(player.position)
+
+  if (position !== player.position) {
+    return position
+  }
+
+  const clearedTarget = duckClearedPoint(target)
+
+  if (clearedTarget !== target) {
+    return clearedTarget
+  }
+
+  return segmentIntersectsDuckAvoidance(player.position, target)
+    ? duckCornerWaypoint(player.position, target)
+    : target
+}
+
+function duckBlocksTravelPath(player: Player, target: Vec3) {
+  if (!player.travelPath) {
+    return false
+  }
+
+  let from = player.position
+
+  for (const waypoint of player.travelPath) {
+    if (segmentIntersectsDuckAvoidance(from, waypoint)) {
+      return true
+    }
+
+    from = waypoint
+  }
+
+  return segmentIntersectsDuckAvoidance(from, target)
+}
+
+function duckAvoidedAngle(player: Player, angle: number) {
+  const probe: Vec3 = [
+    player.position[0] + Math.sin(angle) * npcDuckProbeDistance,
+    player.position[1],
+    player.position[2] + Math.cos(angle) * npcDuckProbeDistance,
+  ]
+
+  if (!npcDuckBlocksLevel(player.position[1]) || (!inDuckAvoidance(player.position) && !inDuckAvoidance(probe))) {
+    return angle
+  }
+
+  const awayX = player.position[0] - duckPosition[0]
+  const awayZ = player.position[2] - duckPosition[2]
+
+  return awayX !== 0 || awayZ !== 0 ? Math.atan2(awayX, awayZ) : angle + Math.PI
+}
+
+function duckClearedPoint(point: Vec3): Vec3 {
+  if (!npcDuckBlocksLevel(point[1]) || !inDuckAvoidance(point)) {
+    return point
+  }
+
+  const bounds = duckPaddedBoundsAt(duckPosition, npcDuckClearance)
+  const pushLeft = Math.abs(point[0] - bounds.left)
+  const pushRight = Math.abs(bounds.right - point[0])
+  const pushBack = Math.abs(point[2] - bounds.back)
+  const pushFront = Math.abs(bounds.front - point[2])
+  const push = Math.min(pushLeft, pushRight, pushBack, pushFront)
+  const next: Vec3 = [point[0], point[1], point[2]]
+
+  if (push === pushLeft) {
+    next[0] = bounds.left
+  }
+  else if (push === pushRight) {
+    next[0] = bounds.right
+  }
+  else if (push === pushBack) {
+    next[2] = bounds.back
+  }
+  else {
+    next[2] = bounds.front
+  }
+
+  return next
+}
+
+function inDuckAvoidance(point: Vec3) {
+  const bounds = duckPaddedBoundsAt(duckPosition, npcDuckClearance)
+
+  return point[0] > bounds.left
+    && point[0] < bounds.right
+    && point[2] > bounds.back
+    && point[2] < bounds.front
+}
+
+function npcDuckBlocksLevel(y: number) {
+  return y > duckPosition[1] - npcDuckVerticalClearance && y < duckPlatformTop() + npcDuckVerticalClearance
+}
+
+function segmentIntersectsDuckAvoidance(from: Vec3, to: Vec3) {
+  if (!npcDuckBlocksLevel(from[1]) || !npcDuckBlocksLevel(to[1])) {
+    return false
+  }
+
+  const bounds = duckPaddedBoundsAt(duckPosition, npcDuckClearance)
+  const dx = to[0] - from[0]
+  const dz = to[2] - from[2]
+  const xClip = clippedSegmentAxis(from[0], dx, bounds.left, bounds.right, 0, 1)
+
+  if (!xClip) {
+    return false
+  }
+
+  const zClip = clippedSegmentAxis(from[2], dz, bounds.back, bounds.front, xClip[0], xClip[1])
+
+  return zClip !== undefined
+}
+
+function clippedSegmentAxis(
+  start: number,
+  delta: number,
+  min: number,
+  max: number,
+  enter: number,
+  exit: number,
+): [number, number] | undefined {
+  if (delta === 0) {
+    return start > min && start < max ? [enter, exit] : undefined
+  }
+
+  const first = (min - start) / delta
+  const second = (max - start) / delta
+  const nextEnter = Math.max(enter, Math.min(first, second))
+  const nextExit = Math.min(exit, Math.max(first, second))
+
+  return nextEnter <= nextExit ? [nextEnter, nextExit] : undefined
+}
+
+function duckCornerWaypoint(from: Vec3, to: Vec3): Vec3 {
+  const bounds = duckPaddedBoundsAt(duckPosition, npcDuckClearance)
+  const corners: Vec3[] = [
+    [bounds.left, to[1], bounds.back],
+    [bounds.left, to[1], bounds.front],
+    [bounds.right, to[1], bounds.back],
+    [bounds.right, to[1], bounds.front],
+  ]
+  let waypoint = corners[0]!
+  let score = distanceSq(from, waypoint) + distanceSq(waypoint, to)
+
+  for (let i = 1; i < corners.length; i++) {
+    const corner = corners[i]!
+    const nextScore = distanceSq(from, corner) + distanceSq(corner, to)
+
+    if (nextScore < score) {
+      waypoint = corner
+      score = nextScore
+    }
+  }
+
+  return waypoint
+}
+
 function settlePlayerPosition(player: Player, outsideTree: CircleBounds) {
   collideRoom(player.position, outsideTree, isOutside(player.position))
   player.position[1] = walkHeight(player.position[0], player.position[1], player.position[2])
@@ -651,20 +840,22 @@ function turnTowardDestination(player: Player, delta: number) {
 
 function activePlayerTarget(player: Player, time: number, outsideTree: CircleBounds) {
   const zone = roomAt(player.position)
+  let target: Vec3
 
   if (player.destination.zone === 'upstairs') {
-    return upstairsTravelTarget(player, time, outsideTree)
+    target = upstairsTravelTarget(player, time, outsideTree)
+  }
+  else if (zone === 'upstairs' || onUpstairsExitPath(player.position)) {
+    target = downstairsTravelTarget(player, time, outsideTree)
+  }
+  else if (doorFlow(player)) {
+    target = travelPathTarget(player, doorTarget(player), outsideTree)
+  }
+  else {
+    target = activeTravelTarget(player, travelTarget(player, time), outsideTree)
   }
 
-  if (zone === 'upstairs' || onUpstairsExitPath(player.position)) {
-    return downstairsTravelTarget(player, time, outsideTree)
-  }
-
-  if (doorFlow(player)) {
-    return travelPathTarget(player, doorTarget(player), outsideTree)
-  }
-
-  return activeTravelTarget(player, travelTarget(player, time), outsideTree)
+  return duckAvoidedTravelTarget(player, target)
 }
 
 function doorFlow(player: Player) {
@@ -754,9 +945,9 @@ function travelTarget(player: Player, time: number) {
     player.destination.position[2] + Math.cos(angle) * radius,
   ]
 
-  player.travelTarget = roomAt(target) === player.destination.zone
+  player.travelTarget = duckClearedPoint(roomAt(target) === player.destination.zone
     ? target
-    : player.destination.position
+    : player.destination.position)
   player.nextTravelTargetAt = time
     + seededRange(player.seed, Math.floor(time * 4.1), npcConfig.travel.targetJitterTime[0],
       npcConfig.travel.targetJitterTime[1])
@@ -890,7 +1081,8 @@ function onUpstairsStairPath(position: Vec3) {
 }
 
 function travelPathTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
-  if (!player.travelPathTarget || !samePoint(player.travelPathTarget, target)) {
+  if (!player.travelPathTarget || !samePoint(player.travelPathTarget, target) || duckBlocksTravelPath(player, target))
+  {
     player.travelPath = findPath(player.position, target, outsideTree, npcPathOptions)
     player.travelPathTarget = target
   }
@@ -973,7 +1165,7 @@ function chooseRandomInput(player: Player, delta: number, time: number) {
     return
   }
 
-  const angle = seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI)
+  const angle = duckAvoidedAngle(player, seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI))
   const turnDistance = Math.abs(Math.atan2(Math.sin(angle - player.turn), Math.cos(angle - player.turn)))
   const lateral = travelLateralInput(player, time)
 
@@ -993,7 +1185,7 @@ function chooseDestinationJitter(player: Player, delta: number, time: number) {
     return
   }
 
-  const angle = seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI)
+  const angle = duckAvoidedAngle(player, seededRange(player.seed, Math.floor(time * 5.3), -Math.PI, Math.PI))
   const turnDistance = Math.abs(Math.atan2(Math.sin(angle - player.turn), Math.cos(angle - player.turn)))
 
   player.turn = smoothAngle(player.turn, angle, 4.5, delta)
@@ -1003,6 +1195,15 @@ function chooseDestinationJitter(player: Player, delta: number, time: number) {
 }
 
 function playerDestination(
+  seed: number,
+  step: number,
+  outsideTree: CircleBounds,
+  occupiedSeats: Set<string>,
+): PlayerDestination {
+  return duckSafeDestination(rawPlayerDestination(seed, step, outsideTree, occupiedSeats))
+}
+
+function rawPlayerDestination(
   seed: number,
   step: number,
   outsideTree: CircleBounds,

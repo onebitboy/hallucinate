@@ -3,6 +3,8 @@ import type { Vec3 } from './types.ts'
 export type ClubState = {
   character: Vec3
   camera: Vec3
+  duckPosition?: Vec3
+  duckTurn?: number
   cameraTurn: number
   cameraFirstPerson?: boolean
   characterTurn: number

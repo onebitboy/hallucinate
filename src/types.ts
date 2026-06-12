@@ -330,4 +330,5 @@ export type ClubGlobal = typeof globalThis & {
   clubPixelRatio?: number
   clubMultiplayerClose?: () => void
   clubCharacterRigLoad?: Promise<CharacterRig>
+  clubSetDuckPosition?: (x: number, z: number, y?: number) => void
 }

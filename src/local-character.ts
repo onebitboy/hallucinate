@@ -364,7 +364,7 @@ export function createLocalCharacter(keys: Set<string>) {
       }
 
       const jumping = wasJumping || jumpTime > 0
-      const collisionOptions = jumping ? { couches: false } : undefined
+      const collisionOptions = jumping ? { couches: false, duck: false } : { duck: false }
       const previousPosition: Vec3 = [position[0], position[1], position[2]]
 
       if (jumping) {

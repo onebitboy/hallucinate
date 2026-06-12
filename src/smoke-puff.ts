@@ -38,7 +38,7 @@ const minLife = 1.6
 const maxLife = 2.8
 const puffGlow = 0.18
 const smokeColor: Vec3 = [0.72, 0.72, 0.76]
-const unitSphere = createUnitSphere(5, 7)
+const unitSphere = createUnitSphere(8, 12)
 const random = createRandomPool()
 
 function createPuff(): SmokePuff {

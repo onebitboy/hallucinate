@@ -9,6 +9,7 @@ import {
   BEACH_BALLS,
   type ClientMessagePacket,
   decodeBeachBalls,
+  decodeDuckPosition,
   decodeGraffiti,
   decodeKeys,
   decodeLeave,
@@ -26,6 +27,7 @@ import {
   encodeAdminMessage,
   encodeBeachBalls,
   encodeClientActions,
+  encodeDuckPosition,
   encodeClientMessage,
   encodeClientMotion,
   encodeClientProfile,
@@ -38,6 +40,7 @@ import {
   encodeVideoPlaylist,
   encodeVideoProgress,
   GRAFFITI,
+  DUCK_POSITION,
   type GraffitiPacket,
   MESSAGE,
   type MessagePacket,
@@ -68,6 +71,7 @@ import {
   type VideoProgressRequestPacket,
   type VideoSyncEntry,
 } from './protocol.ts'
+import type { DuckPose } from './duck-position.ts'
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
 import type { BeachBall, CharacterMode, CircleBounds, GraffitiSplat, Player, Vec3 } from './types.ts'
 
@@ -107,6 +111,7 @@ export function createMultiplayer(options: {
   onVideoPlaylistRequest: (zones: VideoPlaylistRequestPacket['zones']) => void
   onVideoSync: (entries: VideoSyncEntry[]) => void
   onBeachBalls: (balls: BeachBall[]) => void
+  onDuckPosition: (pose: DuckPose) => void
   onGraffiti: (packet: GraffitiPacket) => void
   videoProgress: () => VideoProgressEntry | undefined
 }) {
@@ -283,6 +288,11 @@ export function createMultiplayer(options: {
 
     if (type === BEACH_BALLS) {
       options.onBeachBalls(decodeBeachBalls(view).balls)
+      return
+    }
+
+    if (type === DUCK_POSITION) {
+      options.onDuckPosition(decodeDuckPosition(view))
       return
     }
 
@@ -507,6 +517,9 @@ export function createMultiplayer(options: {
     sendVideoPlaylist,
     sendBeachBalls(balls: BeachBall[]) {
       send(encodeBeachBalls({ balls }))
+    },
+    sendDuckPosition(pose: DuckPose) {
+      send(encodeDuckPosition(pose))
     },
     sendGraffiti(splats: GraffitiSplat[]) {
       send(encodeGraffiti({ splats }))

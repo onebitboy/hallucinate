@@ -4,6 +4,7 @@ import { createCharacterStyleController } from './character-style.ts'
 import { readClubState, writeClubState } from './club-state.ts'
 import { createLocalCharacter } from './local-character.ts'
 import { normalizeIndex, setVec3 } from './math.ts'
+import type { DuckPose } from './duck-position.ts'
 import type { Vec3 } from './types.ts'
 
 export function restoreClubState(options: {
@@ -13,6 +14,8 @@ export function restoreClubState(options: {
     turn: number
   }
   characterPosition: Vec3
+  duckTurn: number
+  setDuckPose: (pose: DuckPose) => void
   hairController: ReturnType<typeof createCharacterHairController>
   setAlternativeInput: (value: boolean) => void
   idleClipIndex: {
@@ -40,6 +43,9 @@ export function restoreClubState(options: {
     options.localCharacter.turn = state.characterTurn ?? options.localCharacter.turn
     options.camera.firstPerson = state.cameraFirstPerson ?? options.camera.firstPerson
     options.localCharacter.velocityY = state.velocityY ?? options.localCharacter.velocityY
+    if (state.duckPosition) {
+      options.setDuckPose({ position: state.duckPosition, turn: state.duckTurn ?? options.duckTurn })
+    }
     options.hairController.index = state.characterHairIndex ?? options.hairController.index
     options.hairController.colorIndex = state.characterHairColorIndex ?? options.hairController.colorIndex
     options.styleController.skinColorIndex = state.characterSkinColorIndex ?? options.styleController.skinColorIndex
@@ -63,6 +69,8 @@ export function saveClubState(options: {
   }
   characterAssetsLoaded: boolean
   characterPosition: Vec3
+  duckPosition: Vec3
+  duckTurn: number
   hairController: ReturnType<typeof createCharacterHairController>
   alternativeInput: boolean
   idleClipIndex: number
@@ -81,6 +89,8 @@ export function saveClubState(options: {
   writeClubState(options.key, {
     character: options.characterPosition,
     camera: options.camera.position,
+    duckPosition: options.duckPosition,
+    duckTurn: options.duckTurn,
     cameraTurn: options.camera.turn,
     cameraFirstPerson: options.camera.firstPerson,
     characterTurn: options.localCharacter.turn,

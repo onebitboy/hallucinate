@@ -23,7 +23,7 @@ const maxRadius = 0.12
 const minLife = 4
 const maxLife = 6
 const bubbleGlow = 1
-const unitSphere = createUnitSphere(5, 8)
+const unitSphere = createUnitSphere(8, 14)
 const color: Vec3 = [0, 0, 0]
 const random = createRandomPool()
 

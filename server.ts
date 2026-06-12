@@ -33,12 +33,14 @@ import {
   decodeClientMessage,
   decodeClientMotion,
   decodeClientProfile,
+  decodeDuckPosition,
   decodeGraffiti,
   decodeRoomChange,
   decodeVideoEnded,
   decodeVideoPlaylist,
   decodeVideoProgress,
   encodeBeachBalls,
+  encodeDuckPosition,
   encodeGraffiti,
   encodeLeave,
   encodeModerationMessage,
@@ -52,6 +54,7 @@ import {
   encodeVideoPlaylistRequest,
   encodeVideoProgressRequest,
   encodeVideoSync,
+  DUCK_POSITION,
   GRAFFITI,
   type GraffitiSnapshot,
   instagramMaxLength,
@@ -62,9 +65,11 @@ import {
   NICKNAME,
   nicknameMaxLength,
   positionScale,
+  protocolToMode,
   protocolToScene,
   protocolVersion,
   roomCount,
+  sceneToProtocol,
   type SpawnPacket,
   truncateMessage,
   VIDEO_ENDED,
@@ -75,9 +80,11 @@ import {
   type VideoProgressEntry,
   type VideoSyncEntry,
 } from './src/protocol.ts'
-import { outsideBounds, outsideRooftop, roomBounds, upstairsWallHeight, videoPlaylists } from './src/scene-data.ts'
-import { roomAt, seatAt } from './src/scene.ts'
-import type { GraffitiSplat, VideoZone } from './src/types.ts'
+import { defaultDuckPosition, duckTurn as defaultDuckTurn, onDuckPlatform, validateDuckPosition } from './src/duck-position.ts'
+import type { DuckPose } from './src/duck-position.ts'
+import { outsideBounds, outsideRooftop, outsideTreeStart, roomBounds, upstairsWallHeight, videoPlaylists } from './src/scene-data.ts'
+import { resolveDuckPosition, roomAt, seatAt } from './src/scene.ts'
+import type { GraffitiSplat, Vec3, VideoZone } from './src/types.ts'
 
 type Client = {
   id: number
@@ -163,6 +170,9 @@ type SpaceState = {
   videoPlaylistRequests: Partial<Record<VideoZone, number>>
   beachBalls: ReturnType<typeof createBeachBalls>
   beachBallAuthorities: { client: number; until: number }[]
+  duckPosition: Vec3
+  duckSavedAt: number
+  duckTurn: number
   slug?: string
   musicKind?: 'playlist' | 'video'
   musicSource?: string
@@ -427,6 +437,7 @@ const server = Bun.serve<SocketData>({
       clients.set(socket, client)
       addToRoom(client, 0)
       sendRoomStateWithProfiles(client)
+      sendDuckPosition(client)
       sendChatHistory(client)
       sendVideoSync(client)
       sendBeachBalls(client)
@@ -556,6 +567,12 @@ const server = Bun.serve<SocketData>({
             broadcastBeachBalls(clientSpace(client), appliedBalls)
           }
 
+          return
+        }
+
+        if (type === DUCK_POSITION) {
+          touchInteraction(client)
+          applyDuckPosition(client, decodeDuckPosition(view))
           return
         }
 
@@ -1850,6 +1867,69 @@ function sendRoomStateWithProfiles(client: Client) {
   sendProfiles(client)
 }
 
+function sendDuckPosition(client: Client) {
+  const space = clientSpace(client)
+
+  client.socket.send(encodeDuckPosition({ position: space.duckPosition, turn: space.duckTurn }))
+}
+
+function applyDuckPosition(client: Client, pose: DuckPose) {
+  if (client.spaceKey !== mainSpace.key) {
+    throw new Error(`Invalid duck space ${client.spaceKey}`)
+  }
+
+  const resolved = resolveDuckPosition(pose.position, outsideTreeStart)
+
+  validateDuckPosition(resolved)
+  const space = clientSpace(client)
+  const previous: Vec3 = [...space.duckPosition]
+  const delta: Vec3 = [
+    resolved[0] - previous[0],
+    resolved[1] - previous[1],
+    resolved[2] - previous[2],
+  ]
+
+  if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0 && space.duckTurn === pose.turn) {
+    return
+  }
+
+  if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
+    translateDuckRiders(space, previous, delta)
+  }
+  space.duckPosition = [...resolved]
+  space.duckTurn = pose.turn
+  saveDuckPositionSoon(space)
+  broadcastDuckPosition(space)
+}
+
+function translateDuckRiders(space: SpaceState, previous: Vec3, delta: Vec3) {
+  for (const client of spaceClients(space)) {
+    if (protocolToMode(client.pose.mode) === 'jump') {
+      continue
+    }
+
+    const position: Vec3 = [
+      protocolToScene(client.pose.x),
+      protocolToScene(client.pose.height),
+      protocolToScene(client.pose.y),
+    ]
+
+    if (onDuckPlatform(position, previous)) {
+      client.pose.x = sceneToProtocol(position[0] + delta[0])
+      client.pose.height = sceneToProtocol(position[1] + delta[1])
+      client.pose.y = sceneToProtocol(position[2] + delta[2])
+    }
+  }
+}
+
+function broadcastDuckPosition(space: SpaceState) {
+  const data = encodeDuckPosition({ position: space.duckPosition, turn: space.duckTurn })
+
+  for (const client of spaceClients(space)) {
+    client.socket.send(data)
+  }
+}
+
 function sendProfiles(client: Client) {
   for (const next of spaceClients(clientSpace(client))) {
     if (next.nickname) {
@@ -2126,7 +2206,30 @@ function createSpace(key: string, kind: SpaceState['kind'], count: number, slug?
     videoPlaylistRequests: {},
     beachBalls: balls,
     beachBallAuthorities: balls.map(() => ({ client: 0, until: 0 })),
+    duckSavedAt: 0,
+    ...loadDuckPose(key),
     slug,
+  }
+}
+
+function loadDuckPose(spaceKey: string): { duckPosition: Vec3; duckTurn: number } {
+  const saved = loadJson<{ position: Vec3; turn?: number }>(spaceKeyStorageKey(spaceKey, 'duck-position'))
+  const position = resolveDuckPosition(saved?.position ?? [...defaultDuckPosition], outsideTreeStart)
+
+  return {
+    duckPosition: position,
+    duckTurn: saved?.turn ?? defaultDuckTurn,
+  }
+}
+
+function saveDuckPosition(space: SpaceState) {
+  saveJson(spaceStorageKey(space, 'duck-position'), { position: space.duckPosition, turn: space.duckTurn })
+  space.duckSavedAt = Date.now()
+}
+
+function saveDuckPositionSoon(space: SpaceState) {
+  if (Date.now() >= space.duckSavedAt + 1000) {
+    saveDuckPosition(space)
   }
 }
 

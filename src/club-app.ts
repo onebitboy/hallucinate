@@ -12,6 +12,8 @@ import { cigaretteExhale, cigaretteHeldSmoke, cigaretteTipSmoke } from './cigare
 import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
+import { duckBoundsAt, duckPose, duckPosition, duckTurn, setDuckPose } from './duck-position.ts'
+import type { DuckPose } from './duck-position.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { createFoamSystem, writeFoamGeometry } from './foam.ts'
 import {
@@ -70,6 +72,8 @@ import {
 import {
   isOutside,
   nearInsideArcade,
+  onOutsideDuckPlatform,
+  resolveDuckPosition,
   roomAt,
   seatAt,
   seatById,
@@ -240,6 +244,7 @@ const vertices: Vertex[] = []
 const lights: Vertex[] = []
 const smoke: Vertex[] = []
 const vertexSize = 11
+let duckRiderPlayers: Player[] = []
 let frameId = 0
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
@@ -1530,11 +1535,159 @@ type OutsideStaticPropPlacement = {
   height: number
   meshIndex?: number
   nodeTransforms?: boolean
+  onVertices?: (range: { end: number; start: number }) => void
   path: string
   position: [number, number, number]
   sourceUp: 'y' | 'z'
   triangleAreaSquaredMin?: number
   turn: number
+}
+
+let duckVertexRange: { end: number; start: number } | undefined
+const duckPushPlayerRadius = 0.42
+const duckPushStep = 0.11
+const duckPushTurnStep = 0.075
+const duckPushSyncInterval = 90
+const duckLocalAuthorityDuration = 2000
+let lastDuckPushSyncStamp = 0
+let duckLocalAuthorityUntil = 0
+
+function rememberDuckVertices(range: { end: number; start: number }) {
+  duckVertexRange = range
+}
+
+function applyDuckPose(pose: DuckPose, sync = false, save = true) {
+  const previous = duckPose()
+  const next = {
+    position: resolveDuckPosition(pose.position, outsideTree),
+    turn: pose.turn,
+  }
+  const localOnDuck = !localCharacter.jumping && onOutsideDuckPlatform(characterPosition, previous.position)
+  const riders = duckRiders(previous)
+
+  setDuckPose(next)
+
+  const delta: Vec3 = [
+    duckPosition[0] - previous.position[0],
+    duckPosition[1] - previous.position[1],
+    duckPosition[2] - previous.position[2],
+  ]
+  const turnDelta = duckTurn - previous.turn
+
+  if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0 && turnDelta === 0) {
+    return
+  }
+
+  transformDuckVertices(previous, delta, turnDelta)
+  if (localOnDuck) {
+    translatePoint(characterPosition, delta)
+    translatePoint(cameraController.position, delta)
+    localCharacter.velocityY = 0
+  }
+  for (const player of riders) {
+    translatePoint(player.position, delta)
+  }
+  if (sync && hasMultiplayer) {
+    multiplayer.sendDuckPosition(duckPose())
+  }
+  if (save) {
+    saveCurrentClubState(true)
+  }
+}
+
+function applyDuckPosition(position: Vec3, sync = false, save = true) {
+  applyDuckPose({ position, turn: duckTurn }, sync, save)
+}
+
+function duckRiders(pose: DuckPose) {
+  const riders = new Set<Player>()
+
+  for (const player of duckRiderPlayers) {
+    if (player.mode !== 'jump' && onOutsideDuckPlatform(player.position, pose.position)) {
+      riders.add(player)
+    }
+  }
+  if (hasMultiplayer) {
+    for (const player of multiplayer.players.values()) {
+      if (player.mode !== 'jump' && onOutsideDuckPlatform(player.position, pose.position)) {
+        riders.add(player)
+      }
+    }
+  }
+
+  return riders
+}
+
+function transformDuckVertices(previous: DuckPose, delta: Vec3, turnDelta: number) {
+  if (!duckVertexRange) {
+    return
+  }
+
+  const sin = Math.sin(turnDelta)
+  const cos = Math.cos(turnDelta)
+
+  for (let i = duckVertexRange.start; i < duckVertexRange.end; i++) {
+    transformVertex(vertices[i]!, previous.position, delta, sin, cos)
+  }
+
+  refreshDuckBuffer()
+}
+
+function transformVertex(vertex: Vertex, center: Vec3, delta: Vec3, sin: number, cos: number) {
+  const x = vertex[0] - center[0]
+  const z = vertex[2] - center[2]
+
+  vertex[0] = center[0] + delta[0] + x * cos - z * sin
+  vertex[1] += delta[1]
+  vertex[2] = center[2] + delta[2] + x * sin + z * cos
+}
+
+function translatePoint(position: Vec3, delta: Vec3) {
+  position[0] += delta[0]
+  position[1] += delta[1]
+  position[2] += delta[2]
+}
+
+function pushDuckByCharacter(stamp: number, sync = true) {
+  const dx = duckPosition[0] - characterPosition[0]
+  const dz = duckPosition[2] - characterPosition[2]
+  const radius = Math.max(duckStageRadius(), 0.01) + duckPushPlayerRadius
+  const distanceSq = dx * dx + dz * dz
+
+  if (distanceSq >= radius * radius || Math.abs(characterPosition[1] - duckPosition[1]) > 1.35
+    || lengthSq(localCharacter.input) === 0)
+  {
+    return false
+  }
+
+  const angle = localMoveAngle()
+  const pushX = Math.sin(angle)
+  const pushZ = Math.cos(angle)
+  const contactX = characterPosition[0] - duckPosition[0]
+  const contactZ = characterPosition[2] - duckPosition[2]
+  const torque = contactX * pushZ - contactZ * pushX
+  const turn = duckTurn + Math.max(-duckPushTurnStep, Math.min(duckPushTurnStep, torque * duckPushTurnStep))
+  const position: Vec3 = [
+    duckPosition[0] + pushX * duckPushStep,
+    duckPosition[1],
+    duckPosition[2] + pushZ * duckPushStep,
+  ]
+
+  const shouldSync = sync && hasMultiplayer && stamp >= lastDuckPushSyncStamp + duckPushSyncInterval
+
+  duckLocalAuthorityUntil = stamp + duckLocalAuthorityDuration
+  applyDuckPose({ position, turn }, shouldSync, false)
+  if (shouldSync) {
+    lastDuckPushSyncStamp = stamp
+  }
+
+  return true
+}
+
+function duckStageRadius() {
+  const bounds = duckBoundsAt()
+
+  return Math.hypot(bounds.width, bounds.depth) * 0.5
 }
 
 function outsideStaticPropPlacements() {
@@ -1544,11 +1697,12 @@ function outsideStaticPropPlacements() {
         color: duckMeshColor,
         height: prop.height,
         nodeTransforms: true,
+        onVertices: rememberDuckVertices,
         path: '/packed/duck.json',
-        position: [prop.x, characterFloor, prop.z],
+        position: [duckPosition[0], duckPosition[1], duckPosition[2]],
         sourceUp: 'y',
         triangleAreaSquaredMin: 0.0000000001,
-        turn: prop.turn,
+        turn: duckTurn,
       }
     }
 
@@ -2086,6 +2240,23 @@ function refreshRoomBuffer() {
   }
 }
 
+function refreshDuckBuffer() {
+  if (!duckVertexRange) {
+    return
+  }
+
+  for (let i = duckVertexRange.start; i < duckVertexRange.end; i++) {
+    mainPoints.set(vertices[i]!, i * vertexSize)
+  }
+  if (appSpace.kind === 'main') {
+    const start = duckVertexRange.start * vertexSize
+    const end = duckVertexRange.end * vertexSize
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+    gl.bufferSubData(gl.ARRAY_BUFFER, start * Float32Array.BYTES_PER_ELEMENT, mainPoints.subarray(start, end))
+  }
+}
+
 setupVertexArray({ array: lightArray, buffer: lightBuffer, data: lightPoints, gl, stride, usage: gl.DYNAMIC_DRAW })
 setupStrobeArray({
   array: strobeArray,
@@ -2125,6 +2296,8 @@ const photoWallRenderer = createPhotoWallRenderer(gl)
 restoreClubState({
   camera: cameraController,
   characterPosition,
+  duckTurn,
+  setDuckPose: pose => setDuckPose({ position: resolveDuckPosition(pose.position, outsideTree), turn: pose.turn }),
   hairController,
   idleClipCount: idleClipNames.length,
   idleClipIndex: idleClipState,
@@ -2228,6 +2401,9 @@ function localMoveAngle() {
 
 let multiplayer: ReturnType<typeof createMultiplayer>
 let hasMultiplayer = false
+clubGlobal.clubSetDuckPosition = (x, z, y = duckPosition[1]) => {
+  applyDuckPosition([x, y, z], true)
+}
 const predictedMessages = new Map<string, number>()
 const playerInstagrams = new Map<number, string>()
 const playerNicknames = new Map<number, string>()
@@ -2454,6 +2630,13 @@ function connectMultiplayer(spaceSlug?: string) {
         target.velocity[2] = ball.velocity[2]
         beachBallGeometryDirty = true
       }
+    },
+    onDuckPosition: pose => {
+      if (performance.now() < duckLocalAuthorityUntil) {
+        return
+      }
+
+      applyDuckPose(pose, false, false)
     },
     onGraffiti: packet => {
       if (packet.reset) {
@@ -3083,6 +3266,8 @@ function saveCurrentClubState(characterAssetsLoaded: boolean, room = currentRoom
     camera: cameraController,
     characterAssetsLoaded,
     characterPosition,
+    duckPosition,
+    duckTurn,
     alternativeInput,
     hairController,
     idleClipIndex,
@@ -4048,6 +4233,7 @@ const draw = (stamp: number) => {
   foamSystem.update(delta, inLoft ? loftFloorAt : mainFloorAt)
   smokeSystem.update(delta)
   const hits = inLoft ? [] : hitBeachBalls(beachBalls, characterPosition)
+  !inLoft && pushDuckByCharacter(stamp)
 
   for (const id of hits) {
     beachBallAuthorityUntil.set(id, stamp + beachBallAuthorityDuration)
@@ -4823,6 +5009,7 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
 const npcPlayerPool = createPlayers(maxNpcPlayers, outsideTree, occupiedSeats)
 const npcPlayers = [...npcPlayerPool]
 const renderPlayers: Player[] = [...npcPlayers]
+duckRiderPlayers = renderPlayers
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
   boxInstanceSize: characterBoxInstanceSize,

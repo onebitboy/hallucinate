@@ -1,3 +1,4 @@
+import type { DuckPose } from './duck-position.ts'
 import type { BeachBall, GraffitiSplat, Vec3 } from './types.ts'
 import type { CharacterMode, PlayerStyle, VideoZone } from './types.ts'
 
@@ -23,6 +24,7 @@ export const NICKNAME = 20
 export const ACTIONS = 21
 export const VIDEO_PROGRESS_REQUEST = 22
 export const C_ENTER = 23
+export const DUCK_POSITION = 24
 
 export const ACTION_BUBBLING = 1
 export const ACTION_FOAMING = 2
@@ -32,7 +34,7 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 51
+export const protocolVersion = 53
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -137,6 +139,8 @@ export type VideoPlaylistPacket = {
 export type BeachBallPacket = {
   balls: BeachBall[]
 }
+
+export type DuckPositionPacket = DuckPose
 
 export type GraffitiPacket = {
   snapshot?: GraffitiSnapshot
@@ -538,6 +542,32 @@ export function decodeBeachBalls(view: DataView): BeachBallPacket {
   }
 
   return { balls }
+}
+
+export function encodeDuckPosition(packet: DuckPositionPacket) {
+  const data = new ArrayBuffer(9)
+  const view = new DataView(data)
+
+  view.setUint8(0, DUCK_POSITION)
+  view.setInt16(1, sceneToProtocol(packet.position[0]))
+  view.setInt16(3, sceneToProtocol(packet.position[1]))
+  view.setInt16(5, sceneToProtocol(packet.position[2]))
+  view.setInt16(7, sceneToProtocol(packet.turn))
+
+  return data
+}
+
+export function decodeDuckPosition(view: DataView): DuckPositionPacket {
+  expectSize(view, 9)
+
+  return {
+    position: [
+      protocolToScene(view.getInt16(1)),
+      protocolToScene(view.getInt16(3)),
+      protocolToScene(view.getInt16(5)),
+    ],
+    turn: protocolToScene(view.getInt16(7)),
+  }
 }
 
 export function encodeGraffiti(packet: GraffitiPacket) {

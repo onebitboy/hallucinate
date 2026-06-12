@@ -23,7 +23,7 @@ const maxLife = 7
 const fadeTime = 1.6
 const foamGlow = 0.8
 const foamColor: Vec3 = [0.95, 0.97, 1]
-const unitSphere = createUnitSphere(5, 8)
+const unitSphere = createUnitSphere(8, 14)
 const random = createRandomPool()
 
 export type FloorAt = (x: number, y: number, z: number) => number
