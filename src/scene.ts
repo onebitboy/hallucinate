@@ -73,6 +73,7 @@ type PaddedBounds = {
   left: number
   right: number
 }
+type PaddedBoundsSide = keyof PaddedBounds
 type OrientedBounds = {
   cos: number
   depth: number
@@ -226,6 +227,11 @@ export function walkLoftHeight(x: number, y: number, z: number, options?: Height
 
 function isAtBackDoor(position: Vec3, padding = 0) {
   return Math.abs(position[0] - backDoor.x) < backDoor.width * 0.5 + padding
+}
+
+function inBackDoorOpening(x: number, z: number, clearance = 0) {
+  return Math.abs(x - backDoor.x) < backDoor.width * 0.5 - clearance
+    && z > roomBounds.front - 0.8
 }
 
 function isAtTentDoor(position: Vec3, padding = 0) {
@@ -562,7 +568,8 @@ export function isWalkable(
       && x <= outsideBounds.right - clearance
       && z >= outsideBounds.back + clearance
       && z <= outsideBounds.front - clearance
-      && !inBuildingWall(x, z, 0.45 + clearance)
+      && !inBuildingWall(x, z, 0.45 + clearance, clearance)
+      && !inOutsideRooftopStairWall(point, clearance)
       && !inTentWall(x, z, 0.35, clearance)
       && !inCircle(x, z, tentPole, clearance)
       && !inCircle(x, z, outsideTree, clearance)
@@ -587,7 +594,7 @@ export function isWalkable(
 
   return x >= insideLeft + clearance && x <= insideRight - clearance
     && z >= insideBack + clearance
-    && (z <= insideFront - clearance || isAtBackDoor(point, clearance))
+    && (z <= insideFront - clearance || inBackDoorOpening(x, z, clearance))
     && z <= roomBounds.front + 0.45
     && !inPaddedBounds(x, z, djBoothCollision, clearance)
     && !inPaddedBounds(x, z, bartenderBarCollision, clearance)
@@ -1251,6 +1258,8 @@ function collideUnderOutsideRooftopStairs(position: Vec3, previous?: Vec3) {
     return
   }
 
+  collidePaddedBoundsSides(position, paddedBounds(outsideRooftopLanding, 0.12), ['left', 'back'])
+
   const stairs = outsideRooftopStairs
   const front = stairs.z + stairs.depth / 2
   const bottomOpeningBack = front - 1.1
@@ -1258,7 +1267,7 @@ function collideUnderOutsideRooftopStairs(position: Vec3, previous?: Vec3) {
   if (position[0] < stairs.x - stairs.width / 2 - 0.12
     || position[0] > stairs.x + stairs.width / 2 + 0.12
     || position[2] < stairs.z - stairs.depth / 2 - 0.12
-    || position[2] > bottomOpeningBack)
+    || position[2] >= bottomOpeningBack)
   {
     return
   }
@@ -1268,7 +1277,26 @@ function collideUnderOutsideRooftopStairs(position: Vec3, previous?: Vec3) {
     return
   }
 
-  collidePaddedBounds(position, paddedBounds(stairs, 0.12))
+  collidePaddedBoundsSides(position, paddedBounds(stairs, 0.12), ['left', 'front'])
+}
+
+function inOutsideRooftopStairWall(position: Vec3, clearance = 0) {
+  if (onOutsideRooftopPath(position)) {
+    return false
+  }
+
+  if (inBoundsInclusive(position[0], position[2], outsideRooftopLanding, 0.12 + clearance)) {
+    return true
+  }
+
+  const stairs = outsideRooftopStairs
+  const front = stairs.z + stairs.depth / 2
+  const bottomOpeningBack = front - 1.1
+
+  return position[0] >= stairs.x - stairs.width / 2 - 0.12 - clearance
+    && position[0] <= stairs.x + stairs.width / 2 + 0.12 + clearance
+    && position[2] >= stairs.z - stairs.depth / 2 - 0.12 - clearance
+    && position[2] <= bottomOpeningBack + clearance
 }
 
 function collideOutsideRooftopSideWall(position: Vec3, previous: Vec3, x: number, back: number, front: number) {
@@ -1387,42 +1415,67 @@ function inOrientedBounds(x: number, z: number, bounds: OrientedBounds, padding 
   return Math.abs(local[0]) < bounds.width / 2 + padding && Math.abs(local[1]) < bounds.depth / 2 + padding
 }
 
-function inBuildingWall(x: number, z: number, padding: number) {
+function inBuildingWall(x: number, z: number, padding: number, doorClearance = 0) {
   const left = roomBounds.left - padding
   const right = roomBounds.right + padding
   const back = roomBounds.back - padding
   const front = roomBounds.front + padding
 
   return x > left && x < right && z > back && z < front
-    && !(Math.abs(x - backDoor.x) < backDoor.width * 0.5 + padding && z > roomBounds.front - 0.8)
+    && !inBackDoorOpening(x, z, doorClearance)
 }
 
 function collidePaddedBounds(position: Vec3, bounds: PaddedBounds) {
+  collidePaddedBoundsSides(position, bounds, ['left', 'right', 'back', 'front'])
+}
+
+function collidePaddedBoundsSides(position: Vec3, bounds: PaddedBounds, sides: PaddedBoundsSide[]) {
   const left = bounds.left
   const right = bounds.right
   const front = bounds.front
   const back = bounds.back
 
   if (position[0] > left && position[0] < right && position[2] > back && position[2] < front) {
-    const pushLeft = Math.abs(position[0] - left)
-    const pushRight = Math.abs(right - position[0])
-    const pushBack = Math.abs(position[2] - back)
-    const pushFront = Math.abs(front - position[2])
-    const push = Math.min(pushLeft, pushRight, pushBack, pushFront)
+    let side = sides[0]!
+    let push = paddedBoundsSideDistance(position, bounds, side)
 
-    if (push === pushLeft) {
+    for (let i = 1; i < sides.length; i++) {
+      const nextSide = sides[i]!
+      const nextPush = paddedBoundsSideDistance(position, bounds, nextSide)
+
+      if (nextPush < push) {
+        side = nextSide
+        push = nextPush
+      }
+    }
+
+    if (side === 'left') {
       position[0] = left
     }
-    else if (push === pushRight) {
+    else if (side === 'right') {
       position[0] = right
     }
-    else if (push === pushBack) {
+    else if (side === 'back') {
       position[2] = back
     }
     else {
       position[2] = front
     }
   }
+}
+
+function paddedBoundsSideDistance(position: Vec3, bounds: PaddedBounds, side: PaddedBoundsSide) {
+  if (side === 'left') {
+    return Math.abs(position[0] - bounds.left)
+  }
+  if (side === 'right') {
+    return Math.abs(bounds.right - position[0])
+  }
+  if (side === 'back') {
+    return Math.abs(position[2] - bounds.back)
+  }
+
+  return Math.abs(bounds.front - position[2])
 }
 
 function collideOrientedBounds(position: Vec3, bounds: OrientedBounds, padding = 0) {
