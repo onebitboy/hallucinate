@@ -38,31 +38,30 @@ export const outsideDjSpeakers: Bounds[] = [
 const outsideStageRockWidth = 1.48
 const outsideStageRockDepth = 1.32
 const outsideStageRockZ = outsideDjBooth.z - outsideDjBooth.depth / 2 - outsideStageRockDepth / 2 + 0.28
-export const outsideStageProps: StageProp[] = outsideDjSpeakers.map((speaker, index) => {
+const outsideStageSpeakerRocks: StageRock[] = outsideDjSpeakers.map((speaker, index) => {
   const side = Math.sign(speaker.x)
-  const base: Bounds & { height: number; turn: number } = {
+  return {
     x: speaker.x + side * 1.45 + (side > 0 ? 2.5 : 0),
     z: (outsideStageRockZ + outsideTreeStart.z) * 0.45,
     width: outsideStageRockWidth,
     depth: outsideStageRockDepth,
-    height: index === 0 ? 2.16 : 1,
+    height: index === 0 ? 1.15 : 1,
+    kind: 'rock',
+    meshIndex: index === 0 ? 1 : 2,
     turn: side * 0.42,
   }
-
-  if (index === 0) {
-    return {
-      ...base,
-      kind: 'duck',
-      platformHeight: 1.08,
-    }
-  }
-
-  return {
-    ...base,
-    kind: 'rock',
-    meshIndex: 2,
-  }
 })
+export const outsideStageDuck: StageDuck = {
+  x: outsideStageSpeakerRocks[0]!.x - 2.2,
+  z: outsideStageSpeakerRocks[0]!.z - 0.85,
+  width: outsideStageRockWidth,
+  depth: outsideStageRockDepth,
+  height: 2.16,
+  kind: 'duck',
+  platformHeight: 1.08,
+  turn: -0.42,
+}
+export const outsideStageProps: StageProp[] = [outsideStageDuck, ...outsideStageSpeakerRocks]
 export const outsideBuddha: CircleBounds = { x: 11.5, z: 27.9, radius: 1.05 }
 export const outsidePalmTree: CircleBounds = { x: -11, z: 29.15, radius: 0.45 }
 export const outsideTreeSwing = {
