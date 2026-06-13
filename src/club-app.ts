@@ -58,6 +58,8 @@ import {
   outsideFoodTruckFoodWall,
   outsideFoodTruckTurn,
   outsideHutDrinkWall,
+  outsideLakePalmTree,
+  outsideLakeShore,
   outsidePalmTree,
   outsideRooftop,
   outsideStageProps,
@@ -72,6 +74,9 @@ import {
 } from './scene-data.ts'
 import {
   isOutside,
+  inLake,
+  inLakeShore,
+  inPolygon,
   nearInsideArcade,
   onOutsideDuckPlatform,
   resolveDuckPosition,
@@ -1777,7 +1782,7 @@ function outsideStaticPropPlacements() {
 }
 
 function inRockClearance(x: number, z: number) {
-  return inToiletBounds(x, z, 1.8)
+  return inToiletBounds(x, z, 1.8) || inPolygon(x, z, outsideLakeShore, 1.2)
 }
 
 function inOutsidePlantClearance(x: number, z: number) {
@@ -1795,6 +1800,7 @@ function inOutsidePlantClearance(x: number, z: number) {
     || (tentDistanceX * tentDistanceX + tentDistanceZ * tentDistanceZ) < (tent.radius + 1.6) * (tent.radius + 1.6)
     || (buddhaDistanceX * buddhaDistanceX + buddhaDistanceZ * buddhaDistanceZ) < 5.6
     || (palmDistanceX * palmDistanceX + palmDistanceZ * palmDistanceZ) < 3.2
+    || inPolygon(x, z, outsideLakeShore, 0.9)
 }
 
 function inToiletBounds(x: number, z: number, padding = 0) {
@@ -4326,7 +4332,8 @@ const draw = (stamp: number) => {
   for (const player of multiplayer.players.values()) {
     renderPlayers.push(player)
   }
-  const dancing = zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
+  const inLakeArea = !inLoft && inLakeShore(characterPosition[0], characterPosition[2])
+  const dancing = !inLakeArea && zone !== 'tent' && localCharacter.mode === 'stand' && idleClipIndex > 0
   const seatedLookAt = sitting ? seatById(localCharacter.seat).cameraTarget : undefined
 
   cameraController.update(delta, localCharacter.input, localCharacter.turn, lengthSq(localCharacter.input) > 0
@@ -5094,6 +5101,19 @@ function loadMainWorldOnce() {
           .then(() => {
             palmTreeLoaded = true
           })
+          .catch((error: unknown) => {
+            console.error(error)
+            throw error
+          }),
+        loadOutsideTree(gl, treeShadowMap, vertices, outsideLakePalmTree, addSunLitTriangle, {
+          color: palmTreeMeshColor,
+          height: 5.25,
+          name: 'palmtree',
+          nodeTransforms: true,
+          path: '/packed/palmtree.json',
+          shadow: true,
+          sourceUp: 'y',
+        })
           .catch((error: unknown) => {
             console.error(error)
             throw error

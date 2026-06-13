@@ -38,6 +38,8 @@ const coreFiles = [
   { path: packedAssimpAssetPath('jump'), name: 'jump' },
   { path: packedAssimpAssetPath('wave'), name: 'wave' },
   { path: packedAssimpAssetPath('breakdance'), name: 'breakdance' },
+  { path: packedAssimpAssetPath('swim1'), name: 'swim1' },
+  { path: packedAssimpAssetPath('swim2'), name: 'swim2' },
   { path: packedAssimpAssetPath('man-hair'), name: 'man-hair' },
   { path: packedAssimpAssetPath('woman-hair'), name: 'woman-hair' },
 ] as const
@@ -67,7 +69,7 @@ async function loadCore(request: CoreRequest): Promise<CoreLoadedResponse> {
     self.postMessage({ id: request.id, progress: (i + 1) / (coreFiles.length + 2) } satisfies CoreProgressResponse)
   }
 
-  const [stand, run, jump, wave, breakdance, manHair, womanHair] = scenes
+  const [stand, run, jump, wave, breakdance, swim1, swim2, manHair, womanHair] = scenes
   const standClip = createCharacterClip(stand!, 'stand')
   const waveClip = createCharacterClip(wave!, 'wave')
   const rig: CharacterRig = {
@@ -80,6 +82,8 @@ async function loadCore(request: CoreRequest): Promise<CoreLoadedResponse> {
       wave: waveClip,
       waveOut: waveClip,
       breakdance: createCharacterClip(breakdance!, 'breakdance'),
+      swimStand: createCharacterClip(swim1!, 'swim1'),
+      swimMove: createCharacterClip(swim2!, 'swim2'),
       manSitting: standClip,
       womanSitting: standClip,
       dances: [],
@@ -87,7 +91,10 @@ async function loadCore(request: CoreRequest): Promise<CoreLoadedResponse> {
   }
 
   validateCharacterRig(rig.root, characterBones)
-  self.postMessage({ id: request.id, progress: 8 / 9 } satisfies CoreProgressResponse)
+  self.postMessage({
+    id: request.id,
+    progress: (coreFiles.length + 1) / (coreFiles.length + 2),
+  } satisfies CoreProgressResponse)
 
   const hairMeshes = [...createHairMeshes(manHair!, 'man'), ...createHairMeshes(womanHair!, 'woman')]
 

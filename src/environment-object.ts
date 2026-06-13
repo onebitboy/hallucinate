@@ -1,12 +1,14 @@
 import { characterFloor } from './character-data.ts'
 import { electricNavy } from './constants.ts'
-import { addBox, addDisc, addGrassQuad, addQuad, addTriangle, pack, packSmoke, tShirtHaze } from './geometry.ts'
+import { addBox, addDisc, addFlatPolygon, addFlatPolygonRing, addGrassQuad, addQuad, addTriangle, pack, packSmoke,
+  polygonCenter, tShirtHaze } from './geometry.ts'
 import { tShirtLogoTextureBounds } from './graffiti.ts'
 import { add, mix, scale, subtract } from './math.ts'
 import { backDoor, bartenderBar, bartenderStools, djBooth, djSpeakers, insideSideLightZs, landscapeBounds,
   outsideBounds, outsideCouches, outsideDjBooth, outsideDjSpeakers, outsideHut, outsideHutBar, outsideHutBarStools,
   outsideHutDeckHeight, outsidePhotoWall, outsideRooftop, outsideRooftopLanding, outsideRooftopStairRiseAtZ,
-  outsideRooftopStairs, outsideScheduleWall, outsideStage, outsideToiletDoor, outsideToilets, outsideTShirtStands,
+  outsideRooftopStairs, outsideScheduleWall, outsideStage, outsideLakeIslandShore, outsideLakeSandInnerShore,
+  outsideLakeShore, outsideLakeWaterShore, outsideToiletDoor, outsideToilets, outsideTShirtStands,
   outsideVideoScreenWall, roomBounds, tent, tentCenterBench, tentDjBooth, tentDjSpeakers, tentDoor, tentDoorAngle,
   tentPole, tentVideoAngle, tentVideoWall, type TShirtStand, upstairsBar, upstairsBarCounterRail,
   upstairsBarDrinkCounter, upstairsBarStools, upstairsCouches, upstairsDjBooth, upstairsDjSpeakers, upstairsDoor,
@@ -185,6 +187,7 @@ function addOutside(target: Vertex[]) {
     [landscapeBounds.right, floor, landscapeBounds.back], [landscapeBounds.left, floor, landscapeBounds.back])
   addOutsideRooftop(target, floor)
   addOutsideRooftopStairs(target, floor)
+  addOutsideLake(target)
   addOpenAirHut(target, floor)
   addOutsideLounges(target, floor)
   addOutsideTShirtStands(target, floor)
@@ -192,6 +195,32 @@ function addOutside(target: Vertex[]) {
   addOutsideStage(target, floor)
   addDjBoothAt(target, outsideDjBooth, outsideDjSpeakers, -1, electricNavy, 3.2)
   addTent(target, floor)
+}
+
+function addOutsideLake(target: Vertex[]) {
+  const water = outsideLakeWaterShore.map(point => [point[0], point[1] + 0.012, point[2]] as Vec3)
+
+  addFlatPolygonRing(target, outsideLakeShore, outsideLakeSandInnerShore, [0.52, 0.42, 0.17], 0.02)
+  addFlatPolygonRing(target, outsideLakeSandInnerShore, outsideLakeWaterShore, [0.36, 0.32, 0.16], 0.02)
+  addFlatPolygon(target, water, [0.035, 0.42, 0.62], 0.16, 3)
+  addOutsideLakeIsland(target)
+}
+
+function addOutsideLakeIsland(target: Vertex[]) {
+  const center = polygonCenter(outsideLakeIslandShore)
+  const inner = outsideLakeIslandShore.map((point, index) => {
+    const angle = Math.PI * 2 * index / outsideLakeIslandShore.length
+    const width = 0.2 + Math.sin(angle * 4 - 0.2) * 0.035 + Math.sin(angle * 9 + 1.7) * 0.02
+
+    return [
+      point[0] + (center[0] - point[0]) * width,
+      point[1],
+      point[2] + (center[2] - point[2]) * width,
+    ] as Vec3
+  })
+
+  addFlatPolygonRing(target, outsideLakeIslandShore, inner, [0.55, 0.44, 0.18], 0.02)
+  addFlatPolygon(target, inner, [0.44, 0.36, 0.15], 0.02)
 }
 
 function addOutsideRooftop(target: Vertex[], floor: number) {

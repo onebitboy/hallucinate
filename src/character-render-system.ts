@@ -2,6 +2,7 @@ import {
   danceIdleClipLoadOrder,
   loadCharacterDance,
   loadCharacterDetails,
+  loadCharacterSwim,
 } from './character-assets.ts'
 import { loadCharacterCoreAssets } from './character-core-loader.ts'
 import { characterGroundJoints, characterScale } from './character-data.ts'
@@ -63,6 +64,7 @@ export function createCharacterRenderSystem(options: {
   let hairRenderMeshes: HairRenderMesh[] = []
   let coreLoad: Promise<CharacterRig> | undefined
   let detailLoad: Promise<void> | undefined
+  let swimLoad: Promise<void> | undefined
   let remainingDanceLoad: Promise<void> | undefined
   const danceLoads = new Map<number, Promise<void>>()
   let boxInstanceCount = 0
@@ -147,6 +149,12 @@ export function createCharacterRenderSystem(options: {
     return load
   }
 
+  function loadSwimOnce() {
+    swimLoad ??= loadCoreOnce().then(activeRig => loadCharacterSwim(activeRig))
+
+    return swimLoad
+  }
+
   function loadRemainingDancesIdle() {
     remainingDanceLoad ??= loadCoreOnce().then(async () => {
       for (const idleIndex of danceIdleClipLoadOrder) {
@@ -163,6 +171,11 @@ export function createCharacterRenderSystem(options: {
     }
 
     const activeRig = rig
+    if (needsSwimClips()) {
+      loadSwimOnce().catch((error: unknown) => {
+        console.error(error)
+      })
+    }
     const data = buildCharacterDrawData({
       cameraPosition: options.camera.position,
       cameraTarget: options.camera.target,
@@ -217,6 +230,12 @@ export function createCharacterRenderSystem(options: {
     }
 
     return data.vertices.length / options.vertexSize
+  }
+
+  function needsSwimClips() {
+    return (options.localCharacter.mode === 'swimStand' || options.localCharacter.mode === 'swimMove'
+      || options.players.some(player => player.mode === 'swimStand' || player.mode === 'swimMove'))
+      && (!rig?.clips.swimStand || !rig.clips.swimMove)
   }
 
   function setCigaretteTip(player: CigarettePoseInput, time: number, target: Vec3, forward: Vec3) {

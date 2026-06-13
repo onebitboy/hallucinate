@@ -182,6 +182,15 @@ export function sampleCharacterPose(
       characterScale, placedPose, undefined, player.poseUp)
   }
 
+  if (player.mode === 'swimStand' || player.mode === 'swimMove') {
+    const clip = rig.clips[player.mode] ?? (player.mode === 'swimMove' ? rig.clips.run : rig.clips.stand)
+    const pose = sampleDirectClipPose(rig, clip, time, characterPoseJoints, characterPoseJointSet, blendCache,
+      cacheFrame, placedPose)
+
+    return placeCharacterPose(pose, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
+      characterScale, placedPose, undefined, player.poseUp)
+  }
+
   const waveMode = player.mode === 'wave' || player.mode === 'waveOut'
   const motionBlendKey = blendCache ? Math.round(player.motionBlend * 60) : 0
   const blendKey = cacheFrame * 100 + motionBlendKey

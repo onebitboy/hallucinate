@@ -1,17 +1,27 @@
-import { characterFloor } from './character-data.ts'
 import { clearTouchMoveInput, readMoveInput } from './input.ts'
 import {
   lengthSq,
   normalizeInto,
   smoothAngle,
 } from './math.ts'
-import { findPath } from './pathfinding.ts'
 import { outsideRooftop, upstairsWallHeight } from './scene-data.ts'
-import { collideLoftRoom, collideRoom, isOutside, roomAt, seatAt, seatById, walkHeight,
-  walkLoftHeight } from './scene.ts'
+import {
+  collideLoftRoom,
+  collideRoom,
+  inLake,
+  isOutside,
+  roomAt,
+  seatAt,
+  seatById,
+  walkHeight,
+  walkLoftHeight,
+} from './scene.ts'
+import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
+
+import { characterFloor } from './character-data.ts'
+import { findPath } from './pathfinding.ts'
 import type { Seat } from './scene.ts'
 import { createTurnBasisCache } from './turn-basis.ts'
-import type { BottomMode, CharacterMode, CircleBounds, Vec3 } from './types.ts'
 
 const jumpDuration = 0.8
 const jumpHeight = 1.65
@@ -20,6 +30,9 @@ const waveDuration = 95 / 30
 const waveLoopStart = 28 / 30
 const waveLoopEnd = 62 / 30
 const breakdanceDuration = 201 / 30
+const lakeIdleHeightOffset = -0.62
+const lakeMovingHeightOffset = -0.14
+const lakeHeightBlend = 5.5
 
 export function createLocalCharacter(keys: Set<string>) {
   const position: Vec3 = [-2.2, -1.95, -6.8]
@@ -156,7 +169,7 @@ export function createLocalCharacter(keys: Set<string>) {
       hasJumpTarget = true
     },
     startWave() {
-      if (seated || jumpTime > 0 || mode === 'breakdance') {
+      if (seated || jumpTime > 0 || mode === 'breakdance' || inLake(position[0], position[2])) {
         return
       }
 
@@ -180,7 +193,7 @@ export function createLocalCharacter(keys: Set<string>) {
       waveHeld = false
     },
     startBreakdance() {
-      if (seated || jumpTime > 0 || mode === 'breakdance') {
+      if (seated || jumpTime > 0 || mode === 'breakdance' || inLake(position[0], position[2])) {
         return
       }
 
@@ -271,6 +284,18 @@ export function createLocalCharacter(keys: Set<string>) {
         }
       }
       const moving = lengthSq(input) > 0
+      const swimming = !loft && jumpTime === 0 && inLake(position[0], position[2])
+
+      if (swimming) {
+        jumpHeld = false
+        waveActive = false
+        waveHeld = false
+        waveOutElapsed = 0
+        breakdanceElapsed = 0
+        if (mode === 'jump') {
+          jumpTime = 0
+        }
+      }
 
       couchRelease = Math.max(0, couchRelease - delta)
       const wasJumping = jumpTime > 0
@@ -334,7 +359,11 @@ export function createLocalCharacter(keys: Set<string>) {
         }
       }
 
-      if (jumpTime > 0) {
+      if (swimming) {
+        mode = moving ? 'swimMove' : 'swimStand'
+        motionBlend = 0
+      }
+      else if (jumpTime > 0) {
         mode = 'jump'
         motionBlend = 0
         waveActive = false
@@ -433,12 +462,19 @@ export function createLocalCharacter(keys: Set<string>) {
         turn = smoothAngle(turn, Math.atan2(direction[0], direction[2]), 10, delta)
       }
 
-      const floorY = loft
+      let floorY = loft
         ? walkLoftHeight(position[0], position[1], position[2], collisionOptions)
         : walkHeight(position[0], position[1], position[2])
+      if (swimming) {
+        floorY += moving ? lakeMovingHeightOffset : lakeIdleHeightOffset
+      }
 
       if (jumping) {
         position[1] = jumpY(floorY, jumpElapsed, position, loft)
+        velocityY = 0
+      }
+      else if (swimming) {
+        position[1] += (floorY - position[1]) * (1 - Math.exp(-lakeHeightBlend * delta))
         velocityY = 0
       }
       else if (floorY > position[1]) {

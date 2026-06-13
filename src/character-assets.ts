@@ -42,15 +42,17 @@ const remainingDanceClipFiles = danceClipFilesBySize.slice(cheapDanceClipCount)
 export const danceIdleClipLoadOrder = [...cheapDanceClipFiles, ...remainingDanceClipFiles]
   .map(file => idleClipNames.indexOf(file.name))
 
-export const characterCoreChunkCount = 7
+export const characterCoreChunkCount = 9
 
 export async function loadCharacterAssets(onProgress?: LoadProgress) {
-  const [stand, run, jump, wave, breakdance] = await Promise.all([
+  const [stand, run, jump, wave, breakdance, swim1, swim2] = await Promise.all([
     loadCharacterAsset(packedAssimpAssetPath('stand'), 'stand', onProgress),
     loadCharacterAsset(packedAssimpAssetPath('run'), 'run', onProgress),
     loadCharacterAsset(packedAssimpAssetPath('jump'), 'jump', onProgress),
     loadCharacterAsset(packedAssimpAssetPath('wave'), 'wave', onProgress),
     loadCharacterAsset(packedAssimpAssetPath('breakdance'), 'breakdance', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('swim1'), 'swim1', onProgress),
+    loadCharacterAsset(packedAssimpAssetPath('swim2'), 'swim2', onProgress),
   ])
   const standClip = createCharacterClip(stand!, 'stand')
   const waveClip = createCharacterClip(wave!, 'wave')
@@ -64,6 +66,8 @@ export async function loadCharacterAssets(onProgress?: LoadProgress) {
       wave: waveClip,
       waveOut: waveClip,
       breakdance: createCharacterClip(breakdance!, 'breakdance'),
+      swimStand: createCharacterClip(swim1!, 'swim1'),
+      swimMove: createCharacterClip(swim2!, 'swim2'),
       manSitting: standClip,
       womanSitting: standClip,
       dances: [],
@@ -108,6 +112,17 @@ export async function loadCharacterDetails(rig: Awaited<ReturnType<typeof loadCh
   await afterNextPaint()
   rig.clips.manSitting = createCharacterClip(manSitting!, 'man-sitting')
   rig.clips.womanSitting = createCharacterClip(womanSitting!, 'woman-sitting')
+}
+
+export async function loadCharacterSwim(rig: Awaited<ReturnType<typeof loadCharacterAssets>>['rig']) {
+  const [swim1, swim2] = await loadAssimpScenes([
+    { path: packedAssimpAssetPath('swim1'), name: 'swim1' },
+    { path: packedAssimpAssetPath('swim2'), name: 'swim2' },
+  ])
+
+  await afterNextPaint()
+  rig.clips.swimStand = createCharacterClip(swim1!, 'swim1')
+  rig.clips.swimMove = createCharacterClip(swim2!, 'swim2')
 }
 
 async function loadCharacterAsset(path: string, name: string, onProgress?: LoadProgress) {

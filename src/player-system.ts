@@ -9,6 +9,8 @@ import {
   outsideDjBooth,
   outsideFoodTruckFoodWall,
   outsideHutBar,
+  outsideLakeIslandShore,
+  outsideLakeWaterShore,
   outsidePhotoWall,
   outsideRooftop,
   outsideRooftopLanding,
@@ -21,6 +23,7 @@ import {
 } from './scene-data.ts'
 import {
   collideRoomWithoutDuck,
+  inLake,
   isOutside,
   onOutsideRooftopStairPath,
   roomAt,
@@ -54,10 +57,11 @@ const npcConfig = {
       lounge: 0.68,
       stool: 0.8,
       tree: 0.88,
-      kiosk: 0.95,
-      foodTruck: 0.98,
-      restroom: 0.99,
-      photoWall: 0.995,
+      lake: 0.98,
+      kiosk: 0.988,
+      foodTruck: 0.994,
+      restroom: 0.997,
+      photoWall: 0.999,
     },
     linger: [20, 65] as const,
     shortLinger: [5, 14] as const,
@@ -79,6 +83,7 @@ const npcConfig = {
     foodTruckSpread: 2.1,
     treeRadius: [2.6, 9.5] as const,
     treeSpots: 12,
+    lakeSpots: 18,
   },
   seat: {
     linger: [35, 110] as const,
@@ -101,6 +106,9 @@ const npcConfig = {
   },
 }
 const npcPathClearance = 0.18
+const lakeIdleHeightOffset = -0.62
+const lakeMovingHeightOffset = -0.14
+const lakeHeightBlend = 5.5
 const doorCrossLaneRange = backDoor.width * 0.5 - npcPathClearance - 0.06
 const doorFlowWidth = backDoor.width * 0.5 + 0.75
 const doorApproachLaneRange = doorFlowWidth - 0.28
@@ -283,7 +291,7 @@ export function updatePlayers(
     }
     else if (!flowingDoor && !flowingStairs && updateRandomPause(player, time)) {
       player.motionBlend += (0 - player.motionBlend) * (1 - Math.exp(-7 * updateDelta))
-      player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
+      setPlayerMovementMode(player, false)
       settlePlayerPosition(player, outsideTree)
       continue
     }
@@ -302,7 +310,7 @@ export function updatePlayers(
     const moving = inputLengthSq > 0
 
     player.motionBlend += ((moving ? 1 : 0) - player.motionBlend) * (1 - Math.exp(-7 * updateDelta))
-    player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
+    setPlayerMovementMode(player, moving)
 
     if (moving) {
       const lastX = player.position[0]
@@ -330,20 +338,24 @@ export function updatePlayers(
           player.travelLateralUntil = undefined
           player.travelLateralDirection = undefined
           player.doorTarget = undefined
+          setPlayerMovementMode(player, true)
           continue
         }
 
         pauseBlockedPlayer(player, time, outsideTree, occupiedSeats)
+        setPlayerMovementMode(player, false)
         continue
       }
 
       player.turn = smoothAngle(player.turn, Math.atan2(directionX, directionZ), 8, updateDelta)
+      setPlayerMovementMode(player, true)
     }
     else {
       collideRoomWithoutDuck(player.position, outsideTree, isOutside(player.position))
+      setPlayerMovementMode(player, false)
     }
 
-    player.position[1] = walkHeightWithoutDuck(player.position[0], player.position[1], player.position[2])
+    settlePlayerHeight(player, moving, updateDelta)
   }
 }
 
@@ -458,6 +470,11 @@ function updateDestinationPlayer(
   occupiedSeats: Set<string>,
   movement: { count: number; max: number },
 ) {
+  if (player.destination.kind === 'lake') {
+    updateLakePlayer(player, delta, time, outsideTree)
+    return
+  }
+
   if (time >= player.destinationUntil!) {
     if (!travelingPlayer(player, time) && !useMovementSlot(movement)) {
       waitForMovementSlot(player, time)
@@ -540,6 +557,40 @@ function updateDestinationPlayer(
   chooseTravelInput(player, dx / distance, dz / distance, delta, time)
 }
 
+function updateLakePlayer(
+  player: Player,
+  delta: number,
+  time: number,
+  outsideTree: CircleBounds,
+) {
+  if (time >= player.destinationUntil! || (player.lingeringUntil && time >= player.lingeringUntil)) {
+    chooseLakeDestination(player, time)
+    return
+  }
+
+  if (player.lingeringUntil) {
+    chooseLakeVisitInput(player, delta, time)
+    return
+  }
+
+  const target = activeTravelTarget(player, player.destination.position, outsideTree)
+  const dx = target[0] - player.position[0]
+  const dz = target[2] - player.position[2]
+  const distanceSq = dx * dx + dz * dz
+
+  if (roomAt(player.position) === player.destination.zone && distanceSq < npcConfig.arrive.destination ** 2) {
+    player.lingeringUntil = time
+      + seededRange(player.seed, Math.floor(time * 2.9), player.destination.linger![0], player.destination.linger![1])
+    player.nextDecision = time
+    player.nextTravelTargetAt = time
+    return
+  }
+
+  const distance = Math.sqrt(distanceSq)
+
+  chooseTravelInput(player, dx / distance, dz / distance, delta, time)
+}
+
 function travelingPlayer(player: Player, time: number) {
   return !player.seat
     && (!player.pauseUntil || time >= player.pauseUntil)
@@ -582,7 +633,27 @@ function stopPlayerInput(player: Player) {
 
 function settlePlayerPosition(player: Player, outsideTree: CircleBounds) {
   collideRoomWithoutDuck(player.position, outsideTree, isOutside(player.position))
-  player.position[1] = walkHeightWithoutDuck(player.position[0], player.position[1], player.position[2])
+  settlePlayerHeight(player, false, 1)
+}
+
+function settlePlayerHeight(player: Player, moving: boolean, delta: number) {
+  let height = walkHeightWithoutDuck(player.position[0], player.position[1], player.position[2])
+
+  if (inLake(player.position[0], player.position[2])) {
+    height += moving ? lakeMovingHeightOffset : lakeIdleHeightOffset
+    player.position[1] += (height - player.position[1]) * (1 - Math.exp(-lakeHeightBlend * delta))
+    return
+  }
+
+  player.position[1] = height
+}
+
+function setPlayerMovementMode(player: Player, moving: boolean) {
+  player.mode = player.motionBlend > 0.5 ? 'run' : 'stand'
+  if (inLake(player.position[0], player.position[2])) {
+    player.mode = moving ? 'swimMove' : 'swimStand'
+    player.motionBlend = 0
+  }
 }
 
 function chooseTravelInput(player: Player, targetX: number, targetZ: number, delta: number, time: number) {
@@ -656,6 +727,43 @@ function turnTowardDestination(player: Player, delta: number) {
   const dz = player.destination.lookAt[2] - player.position[2]
 
   player.turn = smoothAngle(player.turn, Math.atan2(dx, dz), 4, delta)
+}
+
+function chooseLakeVisitInput(player: Player, delta: number, time: number) {
+  const target = lakeVisitTarget(player, time)
+  const dx = target[0] - player.position[0]
+  const dz = target[2] - player.position[2]
+  const distanceSq = dx * dx + dz * dz
+
+  if (distanceSq < 0.55 * 0.55) {
+    player.nextTravelTargetAt = time
+    stopPlayerInput(player)
+    return
+  }
+
+  const distance = Math.sqrt(distanceSq)
+
+  chooseTravelInput(player, dx / distance, dz / distance, delta, time)
+}
+
+function lakeVisitTarget(player: Player, time: number) {
+  if (player.travelTarget && time < player.nextTravelTargetAt!) {
+    return player.travelTarget
+  }
+
+  const step = Math.floor(time * 2.3 + player.seed)
+  const pick = seededRandom(player.seed, step + 39)
+
+  player.travelTarget = pick < 0.46
+    ? lakePoint(player.seed, step, outsideLakeWaterShore, 0.12, 0.38)
+    : pick < 0.74
+      ? lakeIslandPoint(player.seed, step)
+      : lakePoint(player.seed, step, outsideLakeWaterShore, -0.12, 0.05)
+  player.nextTravelTargetAt = time + seededRange(player.seed, step + 41, 2.4, 5.2)
+  player.travelPath = undefined
+  player.travelPathTarget = undefined
+
+  return player.travelTarget
 }
 
 function activePlayerTarget(player: Player, time: number, outsideTree: CircleBounds) {
@@ -749,6 +857,10 @@ function doorTargetX(player: Player, z: number) {
 
 function travelTarget(player: Player, time: number) {
   if (player.destination.kind === 'lounge' || player.destination.kind === 'stool') {
+    return player.destination.position
+  }
+
+  if (player.destination.kind === 'lake') {
     return player.destination.position
   }
 
@@ -1063,6 +1175,10 @@ function rawPlayerDestination(
     return treeDestination(seed, step, outsideTree, occupiedSeats)
   }
 
+  if (pick < weights.lake) {
+    return lakeDestination(seed, step)
+  }
+
   if (pick < weights.kiosk) {
     return kioskDestination(seed, step)
   }
@@ -1107,8 +1223,41 @@ function choosePlayerDestination(
   player.destinationUntil = time + seededRange(player.seed, Math.floor(time * 4.9), 35, 95)
 }
 
+function chooseLakeDestination(player: Player, time: number) {
+  player.destination = lakeDestination(player.seed, Math.floor(time * 2.7 + player.seed))
+  player.lingeringUntil = time
+    + seededRange(player.seed, Math.floor(time * 3.4), player.destination.linger![0], player.destination.linger![1])
+  player.nextDecision = time
+  player.pauseUntil = undefined
+  player.sidestepUntil = undefined
+  player.travelLateralUntil = undefined
+  player.travelLateralDirection = undefined
+  player.travelTarget = undefined
+  player.travelPath = undefined
+  player.travelPathTarget = undefined
+  player.nextTravelTargetAt = time
+  player.doorTarget = undefined
+  player.destinationUntil = time + seededRange(player.seed, Math.floor(time * 4.9), 45, 95)
+}
+
 function travelSpeed(seed: number, step: number) {
   return seededRange(seed, step, npcConfig.travel.speed[0], npcConfig.travel.speed[1])
+}
+
+function lakeCenter(points: Vec3[]): Vec3 {
+  const center: Vec3 = [0, 0, 0]
+
+  for (const point of points) {
+    center[0] += point[0]
+    center[1] += point[1]
+    center[2] += point[2]
+  }
+
+  center[0] /= points.length
+  center[1] /= points.length
+  center[2] /= points.length
+
+  return center
 }
 
 function djDestination(seed: number, step: number, inside: boolean) {
@@ -1208,6 +1357,50 @@ function treeDestination(
     lookAt: [outsideTree.x, characterFloor, outsideTree.z],
     linger: [npcConfig.destination.linger[0], npcConfig.destination.linger[1]],
   }
+}
+
+function lakeDestination(seed: number, step: number): PlayerDestination {
+  const center = lakeCenter(outsideLakeIslandShore)
+  const position = lakeIslandPoint(seed, step)
+
+  return {
+    kind: 'lake',
+    outside: true,
+    position,
+    zone: 'outside',
+    lookAt: [center[0], characterFloor, center[2]],
+    linger: [18, 36],
+  }
+}
+
+function lakeIslandPoint(seed: number, step: number): Vec3 {
+  const center = lakeCenter(outsideLakeIslandShore)
+  const angle = seededRange(seed, step + 135, -Math.PI, Math.PI)
+  const radiusX = seededRange(seed, step + 136, 0.2, 1.25)
+  const radiusZ = seededRange(seed, step + 137, 0.2, 1.65)
+
+  return [
+    center[0] + Math.sin(angle) * radiusX,
+    characterFloor,
+    center[2] + Math.cos(angle) * radiusZ,
+  ]
+}
+
+function lakePoint(seed: number, step: number, shore: Vec3[], inwardMin: number, inwardMax: number): Vec3 {
+  const center = lakeCenter(shore)
+  const spot = Math.floor(seededRange(seed, step + 132, 0, npcConfig.destination.lakeSpots))
+  const point = shore[spot % shore.length]!
+  const next = shore[(spot + 1) % shore.length]!
+  const along = seededRange(seed, step + 133, 0.15, 0.85)
+  const inward = seededRange(seed, step + 134, inwardMin, inwardMax)
+  const edgeX = point[0] + (next[0] - point[0]) * along
+  const edgeZ = point[2] + (next[2] - point[2]) * along
+
+  return [
+    edgeX + (center[0] - edgeX) * inward,
+    characterFloor,
+    edgeZ + (center[2] - edgeZ) * inward,
+  ]
 }
 
 function kioskDestination(seed: number, step: number): PlayerDestination {

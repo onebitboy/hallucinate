@@ -31,6 +31,10 @@ import {
   outsideRooftopStairRiseAtZ,
   outsideRooftopStairs,
   outsideScheduleWall,
+  outsideLakeIslandShore,
+  outsideLakePalmTree,
+  outsideLakeShore,
+  outsideLakeWaterShore,
   outsideStage,
   outsideStageProps,
   outsideToiletDoor,
@@ -333,6 +337,7 @@ function collideRoomWithDuck(
     collideCircle(position, tentPole)
     collideCircle(position, outsideTree)
     collideCircle(position, outsidePalmTree)
+    collideCircle(position, outsideLakePalmTree)
     collideCircle(position, outsideBuddha)
     if (!onPaddedPlatform(position, outsideDjBoothCollision, djBoothTop)) {
       collidePaddedBounds(position, outsideDjBoothCollision)
@@ -647,6 +652,7 @@ function isWalkableWithDuck(
       && !inCircle(x, z, tentPole, clearance)
       && !inCircle(x, z, outsideTree, clearance)
       && !inCircle(x, z, outsidePalmTree, clearance)
+      && !inCircle(x, z, outsideLakePalmTree, clearance)
       && !inCircle(x, z, outsideBuddha, clearance)
       && !inPaddedBounds(x, z, outsideDjBoothCollision, clearance)
       && !inPaddedBounds(x, z, outsideStageCollision, clearance)
@@ -1719,10 +1725,94 @@ function collideCircle(position: Vec3, bounds: CircleBounds, padding = 0.28) {
   }
 }
 
+function collidePolygon(position: Vec3, points: Vec3[], padding = 0) {
+  const inside = pointInPolygon(position[0], position[2], points)
+
+  if (!inside && !inPolygon(position[0], position[2], points, padding)) {
+    return
+  }
+
+  let distanceSq = Infinity
+  let closest: [number, number] = [0, 0]
+
+  for (let i = 0; i < points.length; i++) {
+    const point = closestSegmentPoint(position[0], position[2], points[i]!, points[(i + 1) % points.length]!)
+    const dx = position[0] - point[0]
+    const dz = position[2] - point[1]
+    const nextDistanceSq = dx * dx + dz * dz
+
+    if (nextDistanceSq < distanceSq) {
+      distanceSq = nextDistanceSq
+      closest = point
+    }
+  }
+
+  const dx = position[0] - closest[0]
+  const dz = position[2] - closest[1]
+  const distance = Math.sqrt(distanceSq)
+  const direction = inside ? -1 : 1
+
+  position[0] = closest[0] + dx / distance * padding * direction
+  position[2] = closest[1] + dz / distance * padding * direction
+}
+
 function inCircle(x: number, z: number, bounds: CircleBounds, clearance = 0) {
   const dx = x - bounds.x
   const dz = z - bounds.z
   const radius = bounds.radius + 0.28 + clearance
 
   return dx * dx + dz * dz < radius * radius
+}
+
+export function inLake(x: number, z: number, clearance = 0) {
+  return inPolygon(x, z, outsideLakeWaterShore, clearance) && !inPolygon(x, z, outsideLakeIslandShore, clearance)
+}
+
+export function inLakeShore(x: number, z: number, clearance = 0) {
+  return inPolygon(x, z, outsideLakeShore, clearance)
+}
+
+export function inPolygon(x: number, z: number, points: Vec3[], clearance = 0) {
+  if (clearance > 0 && polygonDistanceSq(x, z, points) < clearance * clearance) {
+    return true
+  }
+
+  return pointInPolygon(x, z, points)
+}
+
+function pointInPolygon(x: number, z: number, points: Vec3[]) {
+  let inside = false
+
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i]!
+    const b = points[j]!
+
+    if ((a[2] > z) !== (b[2] > z) && x < (b[0] - a[0]) * (z - a[2]) / (b[2] - a[2]) + a[0]) {
+      inside = !inside
+    }
+  }
+
+  return inside
+}
+
+function polygonDistanceSq(x: number, z: number, points: Vec3[]) {
+  let distanceSq = Infinity
+
+  for (let i = 0; i < points.length; i++) {
+    const point = closestSegmentPoint(x, z, points[i]!, points[(i + 1) % points.length]!)
+    const dx = x - point[0]
+    const dz = z - point[1]
+
+    distanceSq = Math.min(distanceSq, dx * dx + dz * dz)
+  }
+
+  return distanceSq
+}
+
+function closestSegmentPoint(x: number, z: number, a: Vec3, b: Vec3): [number, number] {
+  const dx = b[0] - a[0]
+  const dz = b[2] - a[2]
+  const t = clamp(((x - a[0]) * dx + (z - a[2]) * dz) / (dx * dx + dz * dz), 0, 1)
+
+  return [a[0] + dx * t, a[2] + dz * t]
 }

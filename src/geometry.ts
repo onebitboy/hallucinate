@@ -60,6 +60,43 @@ export function addDisc(
   }
 }
 
+export function addFlatPolygon(target: Vertex[], points: Vec3[], color: Vec3, glow: number, haze = 0) {
+  const center = polygonCenter(points)
+
+  for (let i = 0; i < points.length; i++) {
+    target.push(
+      pack(center, color, glow, 0, center[0] * 0.08, center[2] * 0.08, haze),
+      pack(points[i]!, color, glow, 0, points[i]![0] * 0.08, points[i]![2] * 0.08, haze),
+      pack(points[(i + 1) % points.length]!, color, glow, 0, points[(i + 1) % points.length]![0] * 0.08,
+        points[(i + 1) % points.length]![2] * 0.08, haze),
+    )
+  }
+}
+
+export function addFlatPolygonRing(target: Vertex[], outer: Vec3[], inner: Vec3[], color: Vec3, glow: number, haze = 0) {
+  for (let i = 0; i < outer.length; i++) {
+    const next = (i + 1) % outer.length
+
+    addQuad(target, outer[i]!, outer[next]!, inner[next]!, inner[i]!, color, glow, 0, haze)
+  }
+}
+
+export function polygonCenter(points: Vec3[]): Vec3 {
+  const center: Vec3 = [0, 0, 0]
+
+  for (const point of points) {
+    center[0] += point[0]
+    center[1] += point[1]
+    center[2] += point[2]
+  }
+
+  center[0] /= points.length
+  center[1] /= points.length
+  center[2] /= points.length
+
+  return center
+}
+
 export function addQuad(
   target: Vertex[],
   a: [number, number, number],

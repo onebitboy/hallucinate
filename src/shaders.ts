@@ -450,6 +450,7 @@ void main() {
     discard;
   }
 
+  bool waterSurface = hazeAmount > 2.5 && hazeAmount < 3.5;
   float white = step(0.3, min(shade.r, min(shade.g, shade.b)));
   float trailAlpha = strobeId < 0.0 ? clamp(-strobeId, 0.0, 1.0) : 1.0;
   float strobe = 1.0;
@@ -520,9 +521,9 @@ void main() {
     return;
   }
 
-  vec3 base = hazeAmount > 1.5 ? grassColor() : outsideModeColor(shade);
+  vec3 base = waterSurface ? outsideModeColor(shade) : hazeAmount > 1.5 ? grassColor() : outsideModeColor(shade);
   vec3 emissive = surfaceEmission(strobe);
-  float alpha = (hazeAmount > 3.5 ? 0.34 : 1.0) * trailAlpha;
+  float alpha = (waterSurface ? 0.46 : hazeAmount > 3.5 ? 0.34 : 1.0) * trailAlpha;
 
   pixel = vec4(base + emissive, alpha);
   bloomPixel = bloomWrite == 1 ? max(glowPixel, vec4(0.0, 0.0, 0.0, alpha)) : vec4(0.0, 0.0, 0.0, alpha);

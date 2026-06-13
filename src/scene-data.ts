@@ -148,6 +148,13 @@ export const tentDoor = {
   width: tent.doorWidth,
   height: tent.doorHeight,
 }
+export const outsideLakeShore: Vec3[] = smoothShore([25.1, characterFloor + 0.018, -7.4], 11.4, 15.8, 72)
+export const outsideLakeSandInnerShore: Vec3[] = insetShore(outsideLakeShore, (angle) =>
+  0.19 + Math.sin(angle * 3 + 0.4) * 0.035 + Math.sin(angle * 7 - 1.2) * 0.02)
+export const outsideLakeWaterShore: Vec3[] = insetShore(outsideLakeSandInnerShore, (angle) =>
+  0.09 + Math.sin(angle * 5 + 1.8) * 0.018)
+export const outsideLakeIslandShore: Vec3[] = smoothShore([25.6, characterFloor + 0.032, -7.8], 2.05, 2.75, 40)
+export const outsideLakePalmTree: CircleBounds = { x: 25.35, z: -7.95, radius: 0.38 }
 export const tentVideoWall = {
   x: tent.x + Math.sin(tentVideoAngle) * (tent.radius - 0.22),
   y: 0,
@@ -156,6 +163,55 @@ export const tentVideoWall = {
   height: 2.025,
   normal: [-1, 0, 0] as Vec3,
 }
+
+function smoothShore(center: Vec3, radiusX: number, radiusZ: number, points: number) {
+  return Array.from({ length: points }, (_, index): Vec3 => {
+    const angle = Math.PI * 2 * index / points
+    const wave = 1
+      + Math.sin(angle * 2 + 0.7) * 0.12
+      + Math.sin(angle * 3 - 1.1) * 0.08
+      + Math.sin(angle * 5 + 2.3) * 0.045
+    const inlet = 1 - Math.max(0, Math.cos(angle - Math.PI * 0.34)) * 0.18
+
+    return [
+      center[0] + Math.cos(angle) * radiusX * wave * inlet,
+      center[1],
+      center[2] + Math.sin(angle) * radiusZ * wave,
+    ]
+  })
+}
+
+function insetShore(points: Vec3[], insetAt: (angle: number) => number) {
+  const center = shoreCenter(points)
+
+  return points.map((point, index): Vec3 => {
+    const angle = Math.PI * 2 * index / points.length
+    const inset = insetAt(angle)
+
+    return [
+      point[0] + (center[0] - point[0]) * inset,
+      point[1],
+      point[2] + (center[2] - point[2]) * inset,
+    ]
+  })
+}
+
+function shoreCenter(points: Vec3[]) {
+  const center: Vec3 = [0, 0, 0]
+
+  for (const point of points) {
+    center[0] += point[0]
+    center[1] += point[1]
+    center[2] += point[2]
+  }
+
+  center[0] /= points.length
+  center[1] /= points.length
+  center[2] /= points.length
+
+  return center
+}
+
 export const loftBounds = { left: -12, right: 12, back: -12, front: 12 }
 export const loftDoor = { x: 5.8, width: 2.05, height: 2.8 }
 export const loftVideoWall = { x: 0, y: 0.35, z: loftBounds.back + 0.04, width: 5.8, height: 3.25,

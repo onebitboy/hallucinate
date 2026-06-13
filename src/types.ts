@@ -137,7 +137,8 @@ export type RigNode = {
   origin: Vec3
 }
 
-export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting' | 'wave' | 'waveOut' | 'breakdance'
+export type CharacterMode = 'stand' | 'run' | 'jump' | 'manSitting' | 'womanSitting' | 'wave' | 'waveOut'
+  | 'breakdance' | 'swimStand' | 'swimMove'
 export type BottomMode = 'pants' | 'skirt'
 export type TopMode = 'shirt' | 'sleeveless' | 'skin' | 'chest'
 export type CharacterPart = {
@@ -181,7 +182,7 @@ export type ResolvedPlayerStyle = {
 }
 
 export type PlayerDestination = {
-  kind: 'dj' | 'foodTruck' | 'kiosk' | 'lounge' | 'photoWall' | 'random' | 'restroom' | 'stool' | 'tree'
+  kind: 'dj' | 'foodTruck' | 'kiosk' | 'lake' | 'lounge' | 'photoWall' | 'random' | 'restroom' | 'stool' | 'tree'
   outside: boolean
   position: Vec3
   zone: VideoZone

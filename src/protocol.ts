@@ -177,7 +177,7 @@ export type ModerationPacket = {
 }
 
 const protocolModes: CharacterMode[] = ['stand', 'run', 'manSitting', 'womanSitting', 'jump', 'wave', 'waveOut',
-  'breakdance']
+  'breakdance', 'swimStand', 'swimMove']
 const protocolVideoZones: VideoZone[] = ['inside', 'outside', 'tent', 'loft', 'upstairs']
 export const modeCount = protocolModes.length
 

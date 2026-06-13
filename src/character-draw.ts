@@ -16,7 +16,7 @@ import { characterView, characterVisibilityInto } from './character-visibility.t
 import { raiseCigaretteArm, setCigaretteGeometry } from './cigarette.ts'
 import type { CigaretteGeometry } from './cigarette.ts'
 import { clamp, normalizeIndex } from './math.ts'
-import { roomAt } from './scene.ts'
+import { inLake, inLakeShore, roomAt } from './scene.ts'
 import { createObjectTurnBasisCache } from './turn-basis.ts'
 import type {
   CharacterLight,
@@ -122,6 +122,10 @@ const partA: Vec3 = [0, 0, 0]
 const partB: Vec3 = [0, 0, 0]
 const chestA: Vec3 = [0, 0, 0]
 const chestB: Vec3 = [0, 0, 0]
+const modestyA: Vec3 = [0, 0, 0]
+const modestyB: Vec3 = [0, 0, 0]
+const modestySide: Vec3 = [0, 0, 0]
+const modestyColor: Vec3 = [0.004, 0.003, 0.003]
 const skirtA: Vec3 = [0, 0, 0]
 const skirtB: Vec3 = [0, 0, 0]
 const skirtC: Vec3 = [0, 0, 0]
@@ -256,7 +260,7 @@ export function buildCharacterDrawData(options: BuildOptions) {
 }
 
 function npcPoseThrottle(player: Player, directClip: boolean, distanceSq: number) {
-  const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
+  const style = characterRenderStyle(player.resolvedStyle ?? resolvePlayerStyle(player.style), player)
 
   if (directClip || player.mode === 'wave' || player.mode === 'waveOut'
     || (style.accessoryKind === 'cigarette' && distanceSq <= farPoseThrottleDistanceSq))
@@ -320,7 +324,9 @@ function prunePoseCache<T>(cache: Map<number, T>, used: Set<number>, max: number
 }
 
 function idleClipIndex(character: CharacterInput) {
-  return roomAt(character.position) === 'tent' ? 0 : character.idleClipIndex
+  return roomAt(character.position) === 'tent' || inLakeShore(character.position[0], character.position[2])
+    ? 0
+    : character.idleClipIndex
 }
 
 function poseCache(poses: Vec3[][], index: number) {
@@ -336,7 +342,7 @@ function poseCache(poses: Vec3[][], index: number) {
 
 function usesDirectClip(character: CharacterInput) {
   return character.mode === 'jump' || character.mode === 'breakdance' || character.mode === 'manSitting'
-    || character.mode === 'womanSitting'
+    || character.mode === 'womanSitting' || character.mode === 'swimStand' || character.mode === 'swimMove'
 }
 
 function usesBlendedPoseCache(character: CharacterInput) {
@@ -357,8 +363,33 @@ function directClipModeKey(mode: CharacterMode | undefined) {
   if (mode === 'breakdance') {
     return 4
   }
+  if (mode === 'swimStand') {
+    return 5
+  }
+  if (mode === 'swimMove') {
+    return 6
+  }
 
   return 3
+}
+
+function characterRenderStyle(style: ResolvedPlayerStyle, player: CharacterInput): ResolvedPlayerStyle {
+  if (!inLakeShore(player.position[0], player.position[2])) {
+    return style
+  }
+
+  return {
+    ...style,
+    topMode: style.bottomMode === 'skirt' || style.topMode === 'chest' ? 'chest' : 'skin',
+    bottomMode: 'pants',
+    shirt: style.skin,
+    shirtLight: style.skin,
+    pants: style.skin,
+    pantsDark: style.skin,
+    pantsDim: style.skin,
+    pantsLight: style.skin,
+    shoe: style.skin,
+  }
 }
 
 function addRenderedCharacter(
@@ -380,7 +411,7 @@ function addRenderedCharacter(
   const pose = poseOverride
     ?? sampleCharacterPose(options.rig, time, player, characterPoseJoints, characterPoseJointSet, groundJointIndices,
       characterScale, basePose, blendCache, placedPose, cacheFrame)
-  const style = player.resolvedStyle ?? resolvePlayerStyle(player.style)
+  const style = characterRenderStyle(player.resolvedStyle ?? resolvePlayerStyle(player.style), player)
   const localReflection = detailedHair
   const turn = characterTurnBasis(player, player.turn)
   const hideHead = player.hideHead === true
@@ -401,6 +432,10 @@ function addRenderedCharacter(
 
   if (style.topMode === 'chest') {
     addCharacterChest(target, boxInstances, pose, player, turn, style, options.light, localReflection)
+  }
+
+  if (inLakeShore(player.position[0], player.position[2])) {
+    addCharacterModestyPatch(target, boxInstances, pose, player, turn, style, options.light, localReflection)
   }
 
   if (renderAccessory && style.accessory) {
@@ -916,6 +951,42 @@ function addCharacterChestSide(
 
   addCharacterBox(target, boxInstances, chestA, chestB, 0.065, 0.06, style.skin, 0.02, player.turn, localReflection,
     light, 0, turn.sin, turn.cos)
+}
+
+function addCharacterModestyPatch(
+  target: VertexWriter,
+  boxInstances: VertexWriter,
+  pose: Vec3[],
+  player: { turn: number },
+  turn: TurnBasis,
+  style: ResolvedPlayerStyle,
+  light: CharacterLight,
+  localReflection: boolean,
+) {
+  const hips = pose[hipsIndex]!
+  const leftUp = pose[leftUpLegIndex]!
+  const rightUp = pose[rightUpLegIndex]!
+  const forwardX = turn.sin
+  const forwardZ = turn.cos
+  const sideX = turn.cos
+  const sideZ = -turn.sin
+  const centerX = (hips[0] + leftUp[0] + rightUp[0]) / 3 + forwardX * 0.11
+  const centerY = (hips[1] + leftUp[1] + rightUp[1]) / 3 - 0.055
+  const centerZ = (hips[2] + leftUp[2] + rightUp[2]) / 3 + forwardZ * 0.11
+  const height = 0.08
+
+  modestyA[0] = centerX
+  modestyA[1] = centerY - height * 0.5
+  modestyA[2] = centerZ
+  modestyB[0] = centerX
+  modestyB[1] = centerY + height * 0.5
+  modestyB[2] = centerZ
+  modestySide[0] = sideX
+  modestySide[1] = 0
+  modestySide[2] = sideZ
+
+  addCharacterBox(target, boxInstances, modestyA, modestyB, 0.06, 0.032, modestyColor, 0.01, player.turn,
+    localReflection, light, 0, turn.sin, turn.cos, { side: modestySide })
 }
 
 function addCharacterSkirt(
