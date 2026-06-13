@@ -34,7 +34,7 @@ export const messageMaxLength = 120
 export const instagramMaxLength = 30
 export const nicknameMaxLength = 32
 export const positionScale = 100
-export const protocolVersion = 53
+export const protocolVersion = 54
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -93,10 +93,12 @@ export type VideoSyncEntry = {
   zone: VideoZone
   currentId: string
   nextId: string
-  time: number
+  startedAt: number
+  duration: number
 }
 
 export type VideoSyncPacket = {
+  serverTime: number
   entries: VideoSyncEntry[]
 }
 
@@ -292,20 +294,23 @@ export function encodeVideoSync(packet: VideoSyncPacket) {
     currentBytes: textEncoder.encode(entry.currentId),
     nextBytes: textEncoder.encode(entry.nextId),
   }))
-  const size = 2 + encoded.reduce((total, entry) => total + 9 + entry.currentBytes.length + entry.nextBytes.length, 0)
+  const size = 10 + encoded.reduce((total, entry) =>
+    total + 17 + entry.currentBytes.length + entry.nextBytes.length, 0)
   const data = new ArrayBuffer(size)
   const view = new DataView(data)
-  let offset = 2
+  let offset = 10
 
   view.setUint8(0, VIDEO_SYNC)
   view.setUint8(1, encoded.length)
+  view.setFloat64(2, packet.serverTime)
 
   for (const entry of encoded) {
     view.setUint8(offset, videoZoneToProtocol(entry.zone))
-    view.setUint32(offset + 1, Math.round(entry.time * 1000))
-    view.setUint16(offset + 5, entry.currentBytes.length)
-    new Uint8Array(data, offset + 7).set(entry.currentBytes)
-    offset += 7 + entry.currentBytes.length
+    view.setFloat64(offset + 1, entry.startedAt)
+    view.setUint32(offset + 9, Math.round(entry.duration * 1000))
+    view.setUint16(offset + 13, entry.currentBytes.length)
+    new Uint8Array(data, offset + 15).set(entry.currentBytes)
+    offset += 15 + entry.currentBytes.length
     view.setUint16(offset, entry.nextBytes.length)
     new Uint8Array(data, offset + 2).set(entry.nextBytes)
     offset += 2 + entry.nextBytes.length
@@ -315,32 +320,34 @@ export function encodeVideoSync(packet: VideoSyncPacket) {
 }
 
 export function decodeVideoSync(view: DataView): VideoSyncPacket {
-  expectAtLeastSize(view, 2)
+  expectAtLeastSize(view, 10)
 
   const count = view.getUint8(1)
+  const serverTime = view.getFloat64(2)
   const entries: VideoSyncEntry[] = []
-  let offset = 2
+  let offset = 10
 
   for (let i = 0; i < count; i++) {
-    expectAtLeastSize(view, offset + 7)
+    expectAtLeastSize(view, offset + 15)
     const zone = protocolToVideoZone(view.getUint8(offset))
-    const time = view.getUint32(offset + 1) / 1000
-    const currentLength = view.getUint16(offset + 5)
-    expectAtLeastSize(view, offset + 7 + currentLength + 2)
-    const currentId = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 7, currentLength))
+    const startedAt = view.getFloat64(offset + 1)
+    const duration = view.getUint32(offset + 9) / 1000
+    const currentLength = view.getUint16(offset + 13)
+    expectAtLeastSize(view, offset + 15 + currentLength + 2)
+    const currentId = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 15, currentLength))
 
-    offset += 7 + currentLength
+    offset += 15 + currentLength
     const nextLength = view.getUint16(offset)
     expectAtLeastSize(view, offset + 2 + nextLength)
     const nextId = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 2, nextLength))
 
-    entries.push({ zone, currentId, nextId, time })
+    entries.push({ zone, currentId, nextId, startedAt, duration })
     offset += 2 + nextLength
   }
 
   expectSize(view, offset)
 
-  return { entries }
+  return { serverTime, entries }
 }
 
 export function encodeVideoProgress(packet: VideoProgressPacket) {

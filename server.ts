@@ -36,9 +36,7 @@ import {
   decodeDuckPosition,
   decodeGraffiti,
   decodeRoomChange,
-  decodeVideoEnded,
   decodeVideoPlaylist,
-  decodeVideoProgress,
   encodeBeachBalls,
   encodeDuckPosition,
   encodeGraffiti,
@@ -52,7 +50,6 @@ import {
   encodeServerProfile,
   encodeSpawn,
   encodeVideoPlaylistRequest,
-  encodeVideoProgressRequest,
   encodeVideoSync,
   DUCK_POSITION,
   GRAFFITI,
@@ -75,9 +72,7 @@ import {
   VIDEO_ENDED,
   VIDEO_PLAYLIST,
   VIDEO_PROGRESS,
-  type VideoEndedEntry,
   type VideoPlaylistEntry,
-  type VideoProgressEntry,
   type VideoSyncEntry,
 } from './src/protocol.ts'
 import { defaultDuckPosition, duckTurn as defaultDuckTurn, onDuckPlatform, validateDuckPosition } from './src/duck-position.ts'
@@ -100,7 +95,6 @@ type Client = {
   spaceKey: string
   socket: Bun.ServerWebSocket<SocketData>
   pose: SpawnPacket
-  video?: StoredVideoProgressEntry
 }
 
 type StoredVideoQueues = {
@@ -113,12 +107,9 @@ type StoredVideoPlaylists = {
 
 type StoredVideoQueueEntry = VideoSyncEntry & {
   cursor?: number
+  nextDuration?: number
   nextShuffledIds?: string[]
   shuffledIds?: string[]
-  updatedAt: number
-}
-
-type StoredVideoProgressEntry = VideoProgressEntry & {
   updatedAt: number
 }
 
@@ -249,8 +240,8 @@ await migratePhotosToWebp()
 await migratePhotoThumbnails()
 await migrateGraffitiSnapshot()
 const videoPlaylistRequestInterval = 3000
-const videoProgressRequestInterval = 10_000
-const videoProgressBroadcastDelay = 600
+const videoPlaylistRequestTimeout = 3000
+const videoScheduleSyncInterval = 1000
 const videoPlaylistMaxLength = 5000
 const videoScheduleCount = 5
 const youtubePlaylistMaxPages = 80
@@ -274,7 +265,7 @@ mainSpace.videoQueues = await loadVideoQueues(mainSpace)
 mainSpace.videoPlaylistOrders = await loadVideoPlaylists(mainSpace)
 await syncVideoPlaylistsFromSources(mainSpace, Date.now()).catch((e: unknown) => console.error(e))
 spaces.set(mainSpace.key, mainSpace)
-if (initializeVideoQueuesFromPlaylists(mainSpace, Date.now())) {
+if (await initializeVideoQueuesFromPlaylists(mainSpace, Date.now())) {
   await saveVideoQueues(mainSpace)
 }
 
@@ -443,7 +434,7 @@ const server = Bun.serve<SocketData>({
       sendRoomStateWithProfiles(client)
       sendDuckPosition(client)
       sendChatHistory(client)
-      sendVideoSync(client)
+      sendVideoSync(client).catch((e: unknown) => console.error(e))
       sendBeachBalls(client)
       if (socket.data.initialState) {
         sendGraffiti(client)
@@ -537,24 +528,10 @@ const server = Bun.serve<SocketData>({
         }
 
         if (type === VIDEO_PROGRESS) {
-          const progress = validateVideoProgress(decodeVideoProgress(view).entry)
-
-          if (!client.poseSynced) {
-            return
-          }
-
-          applyVideoProgress(client, progress)
           return
         }
 
         if (type === VIDEO_ENDED) {
-          const ended = validateVideoEnded(decodeVideoEnded(view).entry)
-
-          if (!client.poseSynced) {
-            return
-          }
-
-          await applyVideoEnded(client, ended)
           return
         }
 
@@ -632,7 +609,9 @@ console.log(`[server]: ws://localhost:${server.port}`)
 console.log(`[server]: http://localhost:${server.port}`)
 
 setInterval(syncRooms, heartbeatInterval)
-setInterval(syncVideoProgress, videoProgressRequestInterval)
+setInterval(() => {
+  syncVideoSchedules().catch((e: unknown) => console.error(e))
+}, videoScheduleSyncInterval)
 setInterval(logStats, minuteMs)
 setInterval(recordOnlineAnalytics, onlineAnalyticsSampleInterval)
 
@@ -901,10 +880,15 @@ async function handleRoomApi(request: Request, url: URL) {
     saveLoftRoom(next)
     const space = refreshLoftSpace(next)
 
-    await syncVideoPlaylistsFromSources(space, Date.now()).catch((e: unknown) => console.error(e))
+    if (next.musicKind === 'video') {
+      await ensureVideoQueueFromPlaylist(space, 'loft', Date.now()).catch((e: unknown) => console.error(e))
+    }
+    else {
+      await syncVideoPlaylistsFromSources(space, Date.now()).catch((e: unknown) => console.error(e))
+    }
     saveVideoQueues(space)
     saveVideoPlaylists(space)
-    broadcastVideoSync(space, new Set(['loft']))
+    await broadcastVideoSync(space, new Set(['loft']))
 
     return jsonResponse(roomPayload(slug.normalized))
   }
@@ -1622,13 +1606,13 @@ function changeRoom(client: Client, room: number) {
 
   if (client.poseSynced && room !== clientPoseRoom(client)) {
     sendRoomStateWithProfiles(client)
-    sendVideoSync(client)
+    sendVideoSync(client).catch((e: unknown) => console.error(e))
     return
   }
 
   if (client.room === room) {
     sendRoomStateWithProfiles(client)
-    sendVideoSync(client)
+    sendVideoSync(client).catch((e: unknown) => console.error(e))
     return
   }
 
@@ -1636,13 +1620,10 @@ function changeRoom(client: Client, room: number) {
 
   removeFromRoom(client, false)
   addToRoom(client, room)
-  if (client.video?.zone !== clientVideoZone(client)) {
-    client.video = undefined
-  }
   requestMissingVideoPlaylist(space, previousZone)
   requestMissingVideoPlaylist(space, clientVideoZone(client))
   sendRoomStateWithProfiles(client)
-  sendVideoSync(client)
+  sendVideoSync(client).catch((e: unknown) => console.error(e))
   broadcast(client, encodeSpawn(client.pose))
 }
 
@@ -2021,89 +2002,57 @@ function sendGraffiti(client: Client) {
   sendGraffitiSplats(client.socket, graffitiSplats, true, graffitiSnapshotPacket())
 }
 
-function sendVideoSync(client: Client) {
-  const entries = currentVideoSync(clientSpace(client))
+async function sendVideoSync(client: Client) {
+  const now = Date.now()
+  const entries = await currentVideoSync(clientSpace(client), now)
 
   if (entries.length > 0) {
-    client.socket.send(encodeVideoSync({ entries }))
+    client.socket.send(encodeVideoSync({ serverTime: now, entries }))
   }
 }
 
-function broadcastVideoSync(space: SpaceState, zones?: Set<VideoZone>) {
-  const entries = currentVideoSync(space, zones)
+async function broadcastVideoSync(space: SpaceState, zones?: Set<VideoZone>) {
+  const now = Date.now()
+  const entries = await currentVideoSync(space, now, zones)
 
   if (entries.length === 0) {
     return
   }
 
-  const data = encodeVideoSync({ entries })
+  const data = encodeVideoSync({ serverTime: now, entries })
 
   for (const client of spaceClients(space)) {
     client.socket.send(data)
   }
 }
 
-function syncVideoProgress() {
+async function syncVideoSchedules() {
   for (const space of spaces.values()) {
-    requestVideoProgress(space)
-  }
-}
+    const zones = await normalizeVideoSchedules(space, Date.now())
 
-function requestVideoProgress(space: SpaceState) {
-  const zones = new Set<VideoZone>()
-
-  for (const queue of space.videoQueues) {
-    const client = randomVideoProgressClient(space, queue.zone)
-
-    if (client) {
-      zones.add(queue.zone)
-      client.socket.send(encodeVideoProgressRequest({ zones: [queue.zone] }))
-    }
-  }
-
-  if (zones.size > 0) {
-    setTimeout(() => broadcastPassiveVideoSync(space, zones), videoProgressBroadcastDelay)
-  }
-}
-
-function randomVideoProgressClient(space: SpaceState, zone: VideoZone) {
-  const candidates = spaceClients(space)
-    .filter(client => client.poseSynced && clientVideoZone(client) === zone)
-
-  return candidates.at(Math.floor(Math.random() * candidates.length))
-}
-
-function broadcastPassiveVideoSync(space: SpaceState, zones: Set<VideoZone>) {
-  for (const client of spaceClients(space)) {
-    const entries = currentVideoSync(space, zones, clientVideoZone(client))
-
-    if (entries.length > 0) {
-      client.socket.send(encodeVideoSync({ entries }))
+    if (zones.size > 0) {
+      saveVideoQueues(space)
+      await broadcastVideoSync(space, zones)
     }
   }
 }
 
-function currentVideoSync(space: SpaceState, zones?: Set<VideoZone>, excludedZone?: VideoZone): VideoSyncEntry[] {
+async function currentVideoSync(space: SpaceState, now: number, zones?: Set<VideoZone>): Promise<VideoSyncEntry[]> {
+  const changed = await normalizeVideoSchedules(space, now, zones)
+
+  if (changed.size > 0) {
+    saveVideoQueues(space)
+  }
+
   return space.videoQueues
-    .filter(entry => entry.zone !== excludedZone && (!zones || zones.has(entry.zone)))
+    .filter(entry => !zones || zones.has(entry.zone))
     .map(entry => ({
       zone: entry.zone,
       currentId: entry.currentId,
       nextId: entry.nextId,
-      time: videoSyncTime(space, entry),
+      startedAt: entry.startedAt,
+      duration: entry.duration,
     }))
-}
-
-function videoSyncTime(space: SpaceState, entry: StoredVideoQueueEntry) {
-  return videoProgressFromClients(space, entry.zone, entry.currentId) ?? entry.time
-}
-
-function videoProgressFromClients(space: SpaceState, zone: VideoZone, id: string) {
-  return [...spaceClients(space)]
-    .filter(client => client.video?.zone === zone && client.video.id === id)
-    .map(client => client.video!)
-    .map(entry => entry.time)
-    .sort((a, b) => b - a)[0]
 }
 
 function setupDb() {
@@ -2294,9 +2243,27 @@ function syncLoftMusic(space: SpaceState, room: LoftRoom) {
   space.musicKind = room.musicKind
   space.musicSource = room.musicSource
   if (room.musicKind === 'video') {
-    setVideoPlaylistOrder(space, 'loft', [room.musicSource], room.musicSource, 'video')
-    setVideoQueue(space, { zone: 'loft', currentId: room.musicSource, nextId: room.musicSource, time: 0,
-      updatedAt: Date.now() })
+    const order = space.videoPlaylistOrders.find(entry => entry.zone === 'loft')
+    let reset = false
+
+    if (order?.sourceIds[0] !== room.musicSource || order.sourceIds[1] !== 'video') {
+      setVideoPlaylistOrder(space, 'loft', [room.musicSource], room.musicSource, 'video')
+      space.videoQueues = space.videoQueues.filter(entry => entry.zone !== 'loft')
+      reset = true
+    }
+    const queue = videoQueue(space, 'loft')
+
+    if (reset || !queue || queue.currentId !== room.musicSource || queue.duration <= 0) {
+      ensureVideoQueueFromPlaylist(space, 'loft', Date.now())
+        .then(async changed => {
+          if (changed) {
+            saveVideoPlaylists(space)
+            saveVideoQueues(space)
+            await broadcastVideoSync(space, new Set(['loft']))
+          }
+        })
+        .catch((e: unknown) => console.error(e))
+    }
     return
   }
 
@@ -2468,7 +2435,8 @@ function loadMaxChatHistoryId() {
 function loadVideoQueues(space: SpaceState) {
   const saved = loadJson<StoredVideoQueues>(spaceStorageKey(space, 'queues'))
 
-  return saved?.entries ?? []
+  return saved?.entries.filter(entry =>
+    Number.isFinite(entry.startedAt) && Number.isFinite(entry.duration) && entry.duration > 0) ?? []
 }
 
 function saveVideoQueues(space: SpaceState) {
@@ -2493,11 +2461,17 @@ async function handleVideoScheduleApi() {
 }
 
 async function videoScheduleColumn(space: SpaceState, zone: VideoZone): Promise<VideoScheduleColumn> {
+  const now = Date.now()
+  const changed = await normalizeVideoSchedules(space, now, new Set([zone]))
+
+  if (changed.size > 0) {
+    saveVideoQueues(space)
+  }
+
   const ids = upcomingVideoIds(space, zone, videoScheduleCount)
   const metadata = await Promise.all(ids.map(id => youtubeVideoMetadata(id)))
   const queue = videoQueue(space, zone)
-  const now = Date.now()
-  let startAt = queue ? now - videoSyncTime(space, queue) * 1000 : now
+  let startAt = queue ? queue.startedAt : now
   const sets = ids.map((id, index) => {
     const data = metadata[index]!
     const set = { duration: data.duration, id, startAt, title: data.title }
@@ -2518,12 +2492,17 @@ function upcomingVideoIds(space: SpaceState, zone: VideoZone, count: number) {
     return []
   }
 
-  const ids = [
-    ...(queue.shuffledIds?.slice(queue.cursor ?? 0) ?? [queue.currentId]),
-    ...(queue.nextShuffledIds ?? []),
-  ]
+  const ids = queue.shuffledIds?.slice(queue.cursor ?? 0) ?? [queue.currentId]
+
+  if (ids.length < count) {
+    ids.push(...(queue.nextShuffledIds ?? shuffledVideoIds(videoPlaylist(space, zone).ids, queue.currentId)))
+  }
 
   return uniqueVideoIds(ids).slice(0, count)
+}
+
+async function youtubeVideoDuration(id: string) {
+  return (await youtubeVideoMetadata(id)).duration
 }
 
 async function youtubeVideoMetadata(id: string) {
@@ -2591,12 +2570,12 @@ async function syncVideoPlaylistFromSource(space: SpaceState, zone: VideoZone, n
   const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
 
   if (current?.sourceIds[0] === source && current.sourceIds[1] === 'server' && current.ids.length >= 2) {
-    return ensureVideoQueueFromPlaylist(space, zone, now)
+    return await ensureVideoQueueFromPlaylist(space, zone, now)
   }
 
   const ids = validateVideoPlaylistIds(await fetchYouTubePlaylist(source), `youtube playlist ${source}`)
 
-  return setVideoPlaylistIds(space, zone, ids, now, 'server')
+  return await setVideoPlaylistIds(space, zone, ids, now, 'server')
 }
 
 async function fetchYouTubePlaylist(source: string) {
@@ -2821,18 +2800,19 @@ function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
   }
 
   const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
+  const now = Date.now()
 
-  if (current?.sourceIds[0] === source && current.sourceIds[1] === 'server' && current.ids.length >= 2) {
-    const now = Date.now()
-
-    if (ensureVideoQueueFromPlaylist(space, zone, now)) {
-      saveVideoQueues(space)
-      broadcastVideoSync(space, new Set([zone]))
-    }
+  if (current?.sourceIds[0] === source && current.ids.length >= 2) {
+    ensureVideoQueueFromPlaylist(space, zone, now)
+      .then(async changed => {
+        if (changed) {
+          saveVideoQueues(space)
+          await broadcastVideoSync(space, new Set([zone]))
+        }
+      })
+      .catch((e: unknown) => console.error(e))
     return
   }
-
-  const now = Date.now()
 
   if (now - (space.videoPlaylistRequests[zone] ?? 0) < videoPlaylistRequestInterval) {
     return
@@ -2840,11 +2820,11 @@ function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
 
   space.videoPlaylistRequests[zone] = now
   syncVideoPlaylistFromSource(space, zone, now)
-    .then(changed => {
+    .then(async changed => {
       if (changed) {
         saveVideoPlaylists(space)
         saveVideoQueues(space)
-        broadcastVideoSync(space, new Set([zone]))
+        await broadcastVideoSync(space, new Set([zone]))
       }
     })
     .catch((e: unknown) => {
@@ -2853,60 +2833,24 @@ function requestMissingVideoPlaylist(space: SpaceState, zone: VideoZone) {
     })
 }
 
-function requestClientVideoPlaylist(space: SpaceState, zone: VideoZone) {
-  const candidate = [...spaceClients(space)]
-    .filter(client => client.poseSynced && clientVideoZone(client) === zone)
-    .sort((a, b) => a.id - b.id)[0]
+function requestClientVideoPlaylist(space: SpaceState, zone: VideoZone, excludedId = 0, retry = true) {
+  const candidate = shuffledClients(spaceClients(space).filter(client => client.poseSynced && client.id !== excludedId))[0]
 
   if (candidate) {
     candidate.socket.send(encodeVideoPlaylistRequest({ zones: [zone] }))
+    if (retry) {
+      setTimeout(() => {
+        const source = spacePlaylistSource(space, zone)
+        const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
+
+        if (current && current.sourceIds[0] === source && current.ids.length >= 2) {
+          return
+        }
+
+        requestClientVideoPlaylist(space, zone, candidate.id, false)
+      }, videoPlaylistRequestTimeout)
+    }
   }
-}
-
-function applyVideoProgress(client: Client, entry: VideoProgressEntry) {
-  const space = clientSpace(client)
-  const queue = videoQueue(space, entry.zone)
-
-  if (entry.zone !== clientVideoZone(client)) {
-    throw new Error(`Invalid video progress zone ${entry.zone}`)
-  }
-
-  if (!queue) {
-    requestMissingVideoPlaylist(space, entry.zone)
-    return
-  }
-
-  if (entry.id !== queue.currentId) {
-    sendVideoSync(client)
-    return
-  }
-
-  client.video = { ...entry, updatedAt: Date.now() }
-}
-
-async function applyVideoEnded(client: Client, entry: VideoEndedEntry) {
-  const space = clientSpace(client)
-  const queue = videoQueue(space, entry.zone)
-
-  if (entry.zone !== clientVideoZone(client)) {
-    throw new Error(`Invalid video ended zone ${entry.zone}`)
-  }
-
-  if (!queue) {
-    requestMissingVideoPlaylist(space, entry.zone)
-    return
-  }
-
-  if (entry.id !== queue.currentId) {
-    return
-  }
-
-  const now = Date.now()
-
-  advanceVideoQueue(space, entry.zone, now)
-  clearClientVideoProgress(space, entry.zone)
-  await saveVideoQueues(space)
-  broadcastVideoSync(space, new Set([entry.zone]))
 }
 
 async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[]) {
@@ -2917,7 +2861,7 @@ async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[])
   for (const entry of entries) {
     const ids = uniqueVideoIds(entry.ids)
 
-    if (setVideoPlaylistIds(space, entry.zone, ids, now, 'client')) {
+    if (await setVideoPlaylistIds(space, entry.zone, ids, now, 'client')) {
       changedZones.add(entry.zone)
     }
   }
@@ -2925,15 +2869,15 @@ async function applyVideoPlaylist(client: Client, entries: VideoPlaylistEntry[])
   if (changedZones.size > 0) {
     await saveVideoPlaylists(space)
     await saveVideoQueues(space)
-    broadcastVideoSync(space, changedZones)
+    await broadcastVideoSync(space, changedZones)
   }
 }
 
-function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
+async function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   let changed = false
 
   for (const entry of space.videoPlaylistOrders) {
-    if (ensureVideoQueueFromPlaylist(space, entry.zone, now)) {
+    if (await ensureVideoQueueFromPlaylist(space, entry.zone, now)) {
       changed = true
     }
   }
@@ -2941,7 +2885,7 @@ function initializeVideoQueuesFromPlaylists(space: SpaceState, now: number) {
   return changed
 }
 
-function setVideoPlaylistIds(
+async function setVideoPlaylistIds(
   space: SpaceState,
   zone: VideoZone,
   ids: string[],
@@ -2951,7 +2895,9 @@ function setVideoPlaylistIds(
   const current = space.videoPlaylistOrders.find(entry => entry.zone === zone)
   const sourceKey = ids.join('\n')
   const source = spacePlaylistSource(space, zone)
-  const currentId = videoQueue(space, zone)?.currentId
+  const queue = videoQueue(space, zone)
+  const currentId = queue?.currentId
+  const startedAt = queue?.startedAt ?? now
 
   if (current && current.sourceIds[0] === source && current.sourceIds[1] === 'server' && origin === 'client') {
     return false
@@ -2960,11 +2906,11 @@ function setVideoPlaylistIds(
   if (current && current.sourceIds[0] === source && current.sourceIds[1] === origin
     && current.ids.join('\n') === sourceKey)
   {
-    return ensureVideoQueueFromPlaylist(space, zone, now)
+    return await ensureVideoQueueFromPlaylist(space, zone, now)
   }
 
   setVideoPlaylistOrder(space, zone, ids, source, origin)
-  setShuffledVideoQueue(space, zone, now, currentId)
+  await setShuffledVideoQueue(space, zone, now, currentId, startedAt)
 
   return true
 }
@@ -2985,29 +2931,46 @@ function setVideoPlaylistOrder(
   console.log(`[video] playlist stored ${videoPlaylistStats(space, zone).join(' ')}`)
 }
 
-function ensureVideoQueueFromPlaylist(space: SpaceState, zone: VideoZone, now: number) {
+async function normalizeVideoSchedules(space: SpaceState, now: number, zones?: Set<VideoZone>) {
+  const changedZones = new Set<VideoZone>()
+
+  for (const queue of [...space.videoQueues]) {
+    if ((!zones || zones.has(queue.zone)) && await advanceVideoQueue(space, queue.zone, now)) {
+      changedZones.add(queue.zone)
+    }
+  }
+
+  return changedZones
+}
+
+async function ensureVideoQueueFromPlaylist(space: SpaceState, zone: VideoZone, now: number) {
   const queue = videoQueue(space, zone)
 
   if (!queue) {
-    setShuffledVideoQueue(space, zone, now)
+    await setShuffledVideoQueue(space, zone, now)
     return true
   }
 
-  if (queue.shuffledIds?.[queue.cursor ?? -1] === queue.currentId && queue.nextId) {
-    return false
+  const playlist = videoPlaylist(space, zone).ids
+
+  if (!playlist.includes(queue.currentId) || !queue.shuffledIds || queue.cursor === undefined
+    || queue.shuffledIds[queue.cursor] !== queue.currentId || !queue.nextId
+    || !Number.isFinite(queue.duration) || queue.duration <= 0
+    || !Number.isFinite(queue.nextDuration) || (queue.nextDuration ?? 0) <= 0)
+  {
+    await setShuffledVideoQueue(space, zone, now, queue.currentId, queue.startedAt)
+    return true
   }
 
-  setShuffledVideoQueue(space, zone, now, queue.currentId, queue.time, queue.updatedAt)
-  return true
+  return await advanceVideoQueue(space, zone, now)
 }
 
-function setShuffledVideoQueue(
+async function setShuffledVideoQueue(
   space: SpaceState,
   zone: VideoZone,
   now: number,
   currentId?: string,
-  time = 0,
-  updatedAt = now,
+  startedAt = now,
 ) {
   const playlist = videoPlaylist(space, zone).ids
   const shuffledIds = shuffledVideoIds(playlist)
@@ -3017,68 +2980,132 @@ function setShuffledVideoQueue(
     moveVideoIdToFront(shuffledIds, preservedId)
   }
 
-  setPreparedVideoQueue(space, {
+  await setPreparedVideoQueue(space, {
     zone,
     currentId: shuffledIds[0]!,
     nextId: '',
-    time,
-    updatedAt,
+    startedAt: preservedId ? startedAt : now,
+    duration: 0,
+    updatedAt: now,
     shuffledIds,
     cursor: 0,
   }, now)
   console.log(`[video] shuffle prepared preserved=${preservedId ?? 'none'} ${videoQueueStats(space, zone).join(' ')}`)
-  clearClientVideoProgress(space, zone)
 }
 
-function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
+async function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
   const queue = videoQueue(space, zone)!
 
   if (!queue.shuffledIds || queue.cursor === undefined) {
-    setShuffledVideoQueue(space, zone, now, queue.currentId)
+    await setShuffledVideoQueue(space, zone, now, queue.currentId)
+    return true
   }
 
+  if (queue.shuffledIds.length === 1 && now >= videoScheduleEnd(queue)) {
+    const duration = queue.duration * 1000
+    const cycles = Math.floor((now - queue.startedAt) / duration)
+
+    if (cycles > 0) {
+      setVideoQueue(space, { ...queue, startedAt: queue.startedAt + cycles * duration, updatedAt: now })
+      console.log(`[video] single loop advanced ${videoQueueStats(space, zone).join(' ')}`)
+      return true
+    }
+  }
+
+  let changed = false
+
+  while (now >= videoScheduleEnd(videoQueue(space, zone)!)) {
+    const current = videoQueue(space, zone)!
+    const startedAt = videoScheduleEnd(current)
+    const nextCursor = current.cursor! + 1
+
+    if (nextCursor < current.shuffledIds!.length) {
+      await setPreparedVideoQueue(space, { ...current, cursor: nextCursor, currentId: current.shuffledIds![nextCursor]!,
+        startedAt, duration: current.nextDuration ?? 0, nextDuration: undefined, updatedAt: now }, now)
+      console.log(`[video] cursor advanced ${videoQueueStats(space, zone).join(' ')}`)
+      changed = true
+      continue
+    }
+
+    const shuffledIds = current.nextShuffledIds ?? shuffledVideoIds(videoPlaylist(space, zone).ids, current.currentId)
+
+    await setPreparedVideoQueue(space, {
+      zone,
+      currentId: shuffledIds[0]!,
+      nextId: '',
+      startedAt,
+      duration: current.nextDuration ?? 0,
+      updatedAt: now,
+      shuffledIds,
+      cursor: 0,
+    }, now)
+    console.log(`[video] shuffle wrapped ${videoQueueStats(space, zone).join(' ')}`)
+    changed = true
+  }
+
+  return changed
+}
+
+async function skipVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
+  await ensureVideoQueueFromPlaylist(space, zone, now)
   const current = videoQueue(space, zone)!
+
+  if (current.shuffledIds!.length === 1) {
+    setVideoQueue(space, { ...current, startedAt: now, updatedAt: now })
+    console.log(`[video] single loop reset ${videoQueueStats(space, zone).join(' ')}`)
+    return
+  }
+
   const nextCursor = current.cursor! + 1
 
   if (nextCursor < current.shuffledIds!.length) {
-    setPreparedVideoQueue(space, { ...current, cursor: nextCursor, currentId: current.shuffledIds![nextCursor]!,
-      time: 0, updatedAt: now }, now)
-    console.log(`[video] cursor advanced ${videoQueueStats(space, zone).join(' ')}`)
+    await setPreparedVideoQueue(space, { ...current, cursor: nextCursor, currentId: current.shuffledIds![nextCursor]!,
+      startedAt: now, duration: current.nextDuration ?? 0, nextDuration: undefined, updatedAt: now }, now)
+    console.log(`[video] admin cursor advanced ${videoQueueStats(space, zone).join(' ')}`)
     return
   }
 
   const shuffledIds = current.nextShuffledIds ?? shuffledVideoIds(videoPlaylist(space, zone).ids, current.currentId)
 
-  setPreparedVideoQueue(space, {
+  await setPreparedVideoQueue(space, {
     zone,
     currentId: shuffledIds[0]!,
     nextId: '',
-    time: 0,
+    startedAt: now,
+    duration: current.nextDuration ?? 0,
     updatedAt: now,
     shuffledIds,
     cursor: 0,
   }, now)
-  console.log(`[video] shuffle wrapped ${videoQueueStats(space, zone).join(' ')}`)
+  console.log(`[video] admin shuffle wrapped ${videoQueueStats(space, zone).join(' ')}`)
 }
 
-function setPreparedVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry, now: number) {
+async function setPreparedVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry, now: number) {
+  const duration = entry.duration > 0 ? entry.duration : await youtubeVideoDuration(entry.currentId)
   const nextId = entry.shuffledIds![entry.cursor! + 1]
 
   if (nextId) {
+    const nextDuration = await youtubeVideoDuration(nextId)
+
     setVideoQueue(space, {
       ...entry,
+      duration,
       nextId,
+      nextDuration,
       updatedAt: entry.updatedAt || now,
     })
     console.log(`[video] queue prepared ${videoQueueStats(space, entry.zone).join(' ')}`)
     return
   }
 
-  const nextShuffledIds = shuffledVideoIds(videoPlaylist(space, entry.zone).ids, entry.currentId)
+  const nextShuffledIds = entry.nextShuffledIds ?? shuffledVideoIds(videoPlaylist(space, entry.zone).ids, entry.currentId)
+  const nextDuration = await youtubeVideoDuration(nextShuffledIds[0]!)
 
   setVideoQueue(space, {
     ...entry,
+    duration,
     nextId: nextShuffledIds[0]!,
+    nextDuration,
     nextShuffledIds,
     updatedAt: entry.updatedAt || now,
   })
@@ -3094,6 +3121,10 @@ function setVideoQueue(space: SpaceState, entry: StoredVideoQueueEntry) {
 
 function videoQueue(space: SpaceState, zone: VideoZone) {
   return space.videoQueues.find(entry => entry.zone === zone)
+}
+
+function videoScheduleEnd(queue: StoredVideoQueueEntry) {
+  return queue.startedAt + queue.duration * 1000
 }
 
 function videoPlaylist(space: SpaceState, zone: VideoZone) {
@@ -3149,26 +3180,6 @@ function validateVideoPlaylistIds(ids: string[], label: string) {
   }
 
   return ids
-}
-
-function validateVideoProgress(entry: VideoProgressEntry) {
-  if (!/^[\w-]{6,32}$/.test(entry.id)) {
-    throw new Error(`Invalid video progress id ${entry.id}`)
-  }
-
-  if (!Number.isFinite(entry.time) || entry.time < 0 || entry.time > 86400) {
-    throw new Error(`Invalid video progress time ${entry.time}`)
-  }
-
-  return entry
-}
-
-function validateVideoEnded(entry: VideoEndedEntry) {
-  if (!/^[\w-]{6,32}$/.test(entry.id)) {
-    throw new Error(`Invalid video ended id ${entry.id}`)
-  }
-
-  return entry
 }
 
 function validateBeachBalls(client: Client, balls: ReturnType<typeof createBeachBalls>) {
@@ -3534,32 +3545,17 @@ async function applyAdminMessage(client: Client, packet: ReturnType<typeof decod
 async function advanceAdminVideoTrack(space: SpaceState, zone: VideoZone) {
   const now = Date.now()
 
-  if (!spacePlaylistSource(space, zone)) {
-    console.log(`Admin next track skipped: no playlist ${zone}`)
-    return
-  }
-
   if (!space.videoPlaylistOrders.some(entry => entry.zone === zone)) {
     console.log(`Admin next track skipped: missing playlist order ${zone}`)
     return
   }
 
-  ensureVideoQueueFromPlaylist(space, zone, now)
-  advanceVideoQueue(space, zone, now)
-  clearClientVideoProgress(space, zone)
+  await skipVideoQueue(space, zone, now)
   const queue = videoQueue(space, zone)!
 
   console.log(`[video] admin next queued ${videoQueueStats(space, zone, queue).join(' ')}`)
-  await saveVideoQueues(space)
-  broadcastVideoSync(space, new Set([zone]))
-}
-
-function clearClientVideoProgress(space: SpaceState, zone: VideoZone) {
-  for (const client of spaceClients(space)) {
-    if (client.video?.zone === zone) {
-      client.video = undefined
-    }
-  }
+  saveVideoQueues(space)
+  await broadcastVideoSync(space, new Set([zone]))
 }
 
 function uniqueVideoIds(ids: string[]) {
@@ -3593,7 +3589,9 @@ function videoQueueStats(space: SpaceState, zone: VideoZone, queue = videoQueue(
     `nextShuffleTracks=${queue.nextShuffledIds?.length ?? 0}`,
     `current=${queue.currentId}`,
     `next=${queue.nextId}`,
-    `time=${queue.time}`,
+    `duration=${queue.duration}`,
+    `nextDuration=${queue.nextDuration ?? 0}`,
+    `startedAt=${queue.startedAt}`,
     `updatedAt=${queue.updatedAt}`,
     `playlistCursor=${playlist.ids.indexOf(queue.currentId) + 1}/${playlist.ids.length}`,
   ]
@@ -3623,6 +3621,20 @@ function shuffledVideoIds(ids: string[], previousId?: string) {
   }
 
   return shuffledIds
+}
+
+function shuffledClients(clients: Client[]) {
+  const shuffled = [...clients]
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const next = shuffled[i]!
+
+    shuffled[i] = shuffled[j]!
+    shuffled[j] = next
+  }
+
+  return shuffled
 }
 
 function moveVideoIdToFront(ids: string[], id: string) {

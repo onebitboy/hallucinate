@@ -22,7 +22,6 @@ import {
   decodeServerProfile,
   decodeSpawn,
   decodeVideoPlaylistRequest,
-  decodeVideoProgressRequest,
   decodeVideoSync,
   encodeAdminMessage,
   encodeBeachBalls,
@@ -36,9 +35,7 @@ import {
   encodeHeartbeat,
   encodeKeys,
   encodeRoomChange,
-  encodeVideoEnded,
   encodeVideoPlaylist,
-  encodeVideoProgress,
   GRAFFITI,
   DUCK_POSITION,
   type GraffitiPacket,
@@ -62,14 +59,10 @@ import {
   type SpawnPacket,
   truncateMessage,
   VIDEO_PLAYLIST_REQUEST,
-  VIDEO_PROGRESS_REQUEST,
   VIDEO_SYNC,
-  type VideoEndedEntry,
   type VideoPlaylistEntry,
   type VideoPlaylistRequestPacket,
-  type VideoProgressEntry,
-  type VideoProgressRequestPacket,
-  type VideoSyncEntry,
+  type VideoSyncPacket,
 } from './protocol.ts'
 import type { DuckPose } from './duck-position.ts'
 import { collideRoom, isOutside, seatAt, walkHeight } from './scene.ts'
@@ -109,20 +102,17 @@ export function createMultiplayer(options: {
   onLeave: (id: number) => void
   onOnlineCount: (online: OnlinePacket) => void
   onVideoPlaylistRequest: (zones: VideoPlaylistRequestPacket['zones']) => void
-  onVideoSync: (entries: VideoSyncEntry[]) => void
+  onVideoSync: (packet: VideoSyncPacket) => void
   onBeachBalls: (balls: BeachBall[]) => void
   onDuckPosition: (pose: DuckPose) => void
   onGraffiti: (packet: GraffitiPacket) => void
-  videoProgress: () => VideoProgressEntry | undefined
 }) {
   const players = new Map<number, Player>()
   const pendingPlayers = new Map<number, SpawnPacket>()
   const profiledPlayers = new Set<number>()
   const heartbeatInterval = 5_000
-  const videoProgressInterval = 2_000
   const reconnectDelay = 1_500
   let heartbeat: ReturnType<typeof setInterval> | undefined
-  let videoProgress: ReturnType<typeof setInterval> | undefined
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let connectedOnce = false
@@ -146,7 +136,6 @@ export function createMultiplayer(options: {
       connectedOnce = true
       clearTimeout(reconnect)
       heartbeat = setInterval(() => send(encodeHeartbeat()), heartbeatInterval)
-      videoProgress = setInterval(() => sendVideoProgress(), videoProgressInterval)
       room = options.initialRoom
       lastActions = -1
       lastActionAngle = -1
@@ -162,7 +151,6 @@ export function createMultiplayer(options: {
     })
     next.addEventListener('close', event => {
       clearInterval(heartbeat)
-      clearInterval(videoProgress)
 
       if (event.code === 1012 && event.reason === 'version') {
         location.reload()
@@ -272,17 +260,12 @@ export function createMultiplayer(options: {
     }
 
     if (type === VIDEO_SYNC) {
-      options.onVideoSync(decodeVideoSync(view).entries)
+      options.onVideoSync(decodeVideoSync(view))
       return
     }
 
     if (type === VIDEO_PLAYLIST_REQUEST) {
       options.onVideoPlaylistRequest(decodeVideoPlaylistRequest(view).zones)
-      return
-    }
-
-    if (type === VIDEO_PROGRESS_REQUEST) {
-      sendRequestedVideoProgress(decodeVideoProgressRequest(view).zones)
       return
     }
 
@@ -433,32 +416,12 @@ export function createMultiplayer(options: {
     lastHeight = height
   }
 
-  function sendVideoProgress() {
-    const entry = options.videoProgress()
-
-    if (entry) {
-      send(encodeVideoProgress({ entry }))
-    }
-  }
-
-  function sendRequestedVideoProgress(zones: VideoProgressRequestPacket['zones']) {
-    const entry = options.videoProgress()
-
-    if (entry && zones.includes(entry.zone)) {
-      send(encodeVideoProgress({ entry }))
-    }
-  }
-
   function sendEnter() {
     send(encodeEnter())
   }
 
   function sendVideoPlaylist(entries: VideoPlaylistEntry[]) {
     send(encodeVideoPlaylist({ entries }))
-  }
-
-  function sendVideoEnded(entry: VideoEndedEntry) {
-    send(encodeVideoEnded({ entry }))
   }
 
   function sendProfile() {
@@ -512,8 +475,6 @@ export function createMultiplayer(options: {
         send(encodeClientActions({ actions, angle }))
       }
     },
-    sendVideoEnded,
-    sendVideoProgress,
     sendVideoPlaylist,
     sendBeachBalls(balls: BeachBall[]) {
       send(encodeBeachBalls({ balls }))
@@ -540,7 +501,6 @@ export function createMultiplayer(options: {
     close() {
       closed = true
       clearInterval(heartbeat)
-      clearInterval(videoProgress)
       clearTimeout(reconnect)
       socket.close()
     },

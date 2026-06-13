@@ -1201,6 +1201,12 @@ function onOutsideRooftopPath(position: Vec3) {
       && position[1] > outsideRooftopTop - platformStep)
 }
 
+export function onOutsideRooftopStairPath(position: Vec3) {
+  const stairs = outsideRooftopStairPathHeight(position[0], position[2])
+
+  return stairs !== undefined && position[1] > stairs - platformStep
+}
+
 function collideOutsideRooftopPath(position: Vec3, previous?: Vec3) {
   const fromPath = previous ? onOutsideRooftopPath(previous) : onOutsideRooftopPath(position)
   const stairHeight = outsideRooftopStairHeightAtZ(position[2])

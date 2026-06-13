@@ -38,7 +38,7 @@ import { createPlayers, takeNpcSeat, updatePlayers } from './player-system.ts'
 import type { ProjectedPoint, Viewport, WallProjector } from './projection.ts'
 import { createWallProjector, projectWallPointInto, projectWallPointWithMinDepthInto } from './projection.ts'
 import { ACTION_BUBBLING, ACTION_FOAMING, instagramMaxLength } from './protocol.ts'
-import type { GraffitiSnapshot, MessagePacket, VideoEndedEntry } from './protocol.ts'
+import type { GraffitiSnapshot, MessagePacket } from './protocol.ts'
 import { emojiReactionFromMessage, pickerEmojis, reactionEmojis } from './reactions.ts'
 import {
   bartenderDrinkWall,
@@ -343,11 +343,9 @@ let instagram = normalizeInstagram(savedState?.instagram ?? '')
 introNicknameInput.value = nickname
 introInstagramInput.value = instagram
 const adminIdRoot = document.createElement('div')
-let sendVideoEndedNow = (_entry: VideoEndedEntry) => {}
 let sendVideoPlaylistNow = (_zone: VideoZone, _ids: string[]) => {}
 const djVideoUi = createDjVideoUi(djVideo, characterPosition, {
   recoverFocus: () => canvas.focus(),
-  onEnded: entry => sendVideoEndedNow(entry),
   onPlaylistDiscovered: (zone, ids) => sendVideoPlaylistNow(zone, ids),
   playlistSource: zone =>
     appSpace.kind === 'loft' && zone === 'loft' && appSpace.musicKind === 'playlist'
@@ -2630,10 +2628,10 @@ function connectMultiplayer(spaceSlug?: string) {
       syncOnlineSelf()
     },
     onVideoPlaylistRequest: zones => djVideoUi.requestPlaylists(zones),
-    onVideoSync: entries => {
-      djVideoUi.applySync(entries)
+    onVideoSync: packet => {
+      djVideoUi.applySync(packet)
       void scheduleWallUi.refresh()
-      videoPreviewRenderer.prepareAll(entries.map(entry => ({ id: entry.currentId, zone: entry.zone })))
+      videoPreviewRenderer.prepareAll(packet.entries.map(entry => ({ id: entry.currentId, zone: entry.zone })))
         .catch((error: unknown) => console.error(error))
     },
     onBeachBalls: balls => {
@@ -2709,9 +2707,7 @@ function connectMultiplayer(spaceSlug?: string) {
         scheduleGraffitiTexturePaint(appended)
       }
     },
-    videoProgress: () => djVideoUi.progress(),
   })
-  sendVideoEndedNow = entry => multiplayer.sendVideoEnded(entry)
   sendVideoPlaylistNow = (zone, ids) => multiplayer.sendVideoPlaylist([{ zone, ids }])
   clubGlobal.clubMultiplayerClose = () => multiplayer.close()
 }

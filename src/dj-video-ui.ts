@@ -1,7 +1,7 @@
 import { createDomWallProjection } from './dom-wall.ts'
 import type { DomWall } from './dom-wall.ts'
 import type { WallProjector } from './projection.ts'
-import type { VideoEndedEntry, VideoProgressEntry, VideoSyncEntry } from './protocol.ts'
+import type { VideoSyncPacket } from './protocol.ts'
 import { djVideoWall, loftVideoWall, outsideVideoScreenWall, tentVideoWall, upstairsVideoWall, videoPlaylists,
   videoStartTimes, videoTracks } from './scene-data.ts'
 import { roomAt } from './scene.ts'
@@ -11,13 +11,13 @@ import type { Vec3, VideoPreview, VideoZone, YouTubePlayer, YouTubeWindow } from
 type Camera = { eye: Vec3; center: Vec3 }
 type VideoTrackState = {
   currentId: string
-  nextId?: string
-  time: number
+  nextId: string
+  startedAt: number
+  duration: number
   updatedAt: number
 }
 
 const endedState = 0
-const endedTimeTolerance = 5
 const playlistDiscoveryDelay = 1000
 const playlistDiscoveryAttempts = 5
 const syncSeekTolerance = 2
@@ -32,7 +32,6 @@ export function createDjVideoUi(
   element: HTMLElement,
   position: Vec3,
   options: {
-    onEnded?: (entry: VideoEndedEntry) => void
     onPlaylistDiscovered?: (zone: VideoZone, ids: string[]) => void
     playlistSource?: (zone: VideoZone) => string | undefined
     recoverFocus?: () => void
@@ -60,6 +59,8 @@ export function createDjVideoUi(
   const reportedPlaylists: Partial<Record<VideoZone, string>> = {}
   let zone: VideoZone = currentZone()
   let playUnlocked = false
+  let serverTimeOffset = 0
+  let scheduleTimer: ReturnType<typeof setTimeout> | undefined
   const parkedDjVideoSizePx = `${parkedDjVideoSize}px`
   const projection = createDomWallProjection(element, {
     hidden: {
@@ -120,30 +121,25 @@ export function createDjVideoUi(
     setZoneFromPosition() {
       zone = currentZone()
     },
-    applySync(entries: VideoSyncEntry[]) {
-      for (const entry of entries) {
+    applySync(packet: VideoSyncPacket) {
+      serverTimeOffset = packet.serverTime - performance.now()
+
+      for (const entry of packet.entries) {
         states[entry.zone] = {
           currentId: entry.currentId,
           nextId: entry.nextId,
-          time: entry.time,
+          startedAt: entry.startedAt,
+          duration: entry.duration,
           updatedAt: performance.now(),
         }
 
         if (ready[entry.zone]) {
-          loadSyncedTrack(entry.zone)
+          loadScheduledTrack(entry.zone)
         }
       }
 
+      scheduleTrackBoundary()
       pauseOtherVideos(zone, players, ready)
-    },
-    progress(): VideoProgressEntry | undefined {
-      const state = states[zone]
-
-      if (!state || !syncZoneTime(zone)) {
-        return undefined
-      }
-
-      return { zone, id: state.currentId, time: state.time }
     },
     requestPlaylists(zones: VideoZone[]) {
       for (const area of zones) {
@@ -151,7 +147,7 @@ export function createDjVideoUi(
       }
     },
     preview(area = zone): VideoPreview | undefined {
-      const state = states[area]
+      const state = currentScheduledState(area)
       const id = state?.currentId || players[area]?.getVideoData()?.video_id || videoTracks[area]
 
       return id ? { id, zone: area } : undefined
@@ -177,7 +173,7 @@ export function createDjVideoUi(
                 players[area]!.setLoop(false)
 
                 if (states[area]) {
-                  loadSyncedTrack(area)
+                  loadScheduledTrack(area)
                 }
                 else {
                   cueFallbackTrack(area)
@@ -191,18 +187,15 @@ export function createDjVideoUi(
                 }
 
                 if (event.data === endedState) {
-                  if (!videoFinished(area)) {
-                    loadSyncedTrack(area)
-                    return
+                  if (states[area]) {
+                    loadScheduledTrack(area)
                   }
-
-                  playQueuedTrack(area)
                   pauseOtherVideos(area, players, ready)
                   return
                 }
 
-                if (states[area] && !syncZoneTime(area)) {
-                  loadSyncedTrack(area)
+                if (states[area]) {
+                  loadScheduledTrack(area)
                 }
               },
             },
@@ -224,7 +217,6 @@ export function createDjVideoUi(
       const nextZone: VideoZone = currentZone()
 
       if (nextZone !== zone) {
-        syncZoneTime(zone)
         if (ready[zone]) {
           players[zone]!.pauseVideo()
         }
@@ -232,8 +224,9 @@ export function createDjVideoUi(
         zone = nextZone
 
         if (ready[zone] && states[zone]) {
-          loadSyncedTrack(zone)
+          loadScheduledTrack(zone)
         }
+        scheduleTrackBoundary()
         pauseOtherVideos(zone, players, ready)
       }
 
@@ -269,7 +262,7 @@ export function createDjVideoUi(
       }
 
       if (states[zone]) {
-        loadSyncedTrack(zone)
+        loadScheduledTrack(zone)
       }
       else {
         playCurrentOrFallbackTrack(zone)
@@ -280,20 +273,18 @@ export function createDjVideoUi(
     },
   }
 
-  function loadSyncedTrack(area: VideoZone) {
-    const state = states[area]!
+  function loadScheduledTrack(area: VideoZone) {
+    const state = currentScheduledState(area)!
     const player = players[area]!
     const active = area === zone
     const shouldPlay = playUnlocked && active
     const loadedId = player.getVideoData()?.video_id
-    const now = performance.now()
-    const time = state.time
+    const time = scheduledTrackTime(state)
 
     if (loadedId === state.currentId) {
       const currentTime = player.getCurrentTime()
-      const shouldSeek = !shouldPlay || time > currentTime + syncSeekTolerance
+      const shouldSeek = !shouldPlay || Math.abs(time - currentTime) > syncSeekTolerance
 
-      setStateTime(state, shouldSeek ? time : currentTime, now)
       if (shouldSeek) {
         player.seekTo(time, true)
       }
@@ -306,7 +297,6 @@ export function createDjVideoUi(
       return
     }
 
-    setStateTime(state, time, now)
     if (shouldPlay) {
       player.loadVideoById({ videoId: state.currentId, startSeconds: time })
       player.playVideo()
@@ -314,6 +304,9 @@ export function createDjVideoUi(
     else {
       player.cueVideoById({ videoId: state.currentId, startSeconds: time })
       player.pauseVideo()
+    }
+    if (active) {
+      scheduleTrackBoundary()
     }
   }
 
@@ -354,54 +347,6 @@ export function createDjVideoUi(
     player.cueVideoById({ videoId: id, startSeconds: videoStartTimes[area] })
   }
 
-  function syncZoneTime(area: VideoZone) {
-    const state = states[area]
-
-    if (!ready[area] || !state || players[area]!.getVideoData()?.video_id !== state.currentId) {
-      return false
-    }
-
-    const player = players[area]!
-    const currentTime = player.getCurrentTime()
-    const now = performance.now()
-
-    setStateTime(state, currentTime, now)
-
-    return true
-  }
-
-  function playQueuedTrack(area: VideoZone) {
-    const state = states[area]
-
-    if (!state?.nextId) {
-      throw new Error(`Missing next video track for ${area}`)
-    }
-
-    const endedId = state.currentId
-
-    state.currentId = state.nextId
-    state.nextId = undefined
-    state.time = 0
-    state.updatedAt = performance.now()
-    players[area]!.loadVideoById({ videoId: state.currentId, startSeconds: 0 })
-    players[area]!.playVideo()
-    options.onEnded?.({ zone: area, id: endedId })
-  }
-
-  function videoFinished(area: VideoZone) {
-    const state = states[area]!
-    const player = players[area]!
-    const now = performance.now()
-    const time = player.getVideoData()?.video_id === state.currentId
-      ? Math.max(state.time, player.getCurrentTime())
-      : state.time
-    const duration = player.getDuration()
-
-    setStateTime(state, time, now)
-
-    return duration > 0 && time + endedTimeTolerance >= duration
-  }
-
   function requestPlaylist(area: VideoZone) {
     const source = playlistSource(area)
 
@@ -435,7 +380,7 @@ export function createDjVideoUi(
   function reportDiscoveredPlaylist(area: VideoZone, attempt: number) {
     if (states[area]) {
       discoveringPlaylists[area] = false
-      loadSyncedTrack(area)
+      loadScheduledTrack(area)
       return
     }
 
@@ -450,7 +395,7 @@ export function createDjVideoUi(
         options.onPlaylistDiscovered?.(area, ids)
       }
       if (states[area]) {
-        loadSyncedTrack(area)
+        loadScheduledTrack(area)
       }
       else if (!playUnlocked) {
         cueFallbackTrack(area)
@@ -476,15 +421,64 @@ export function createDjVideoUi(
     }
 
     const id = players[area]!.getVideoData()?.video_id
-    const state = states[area]
+    const state = currentScheduledState(area)
 
     return state ? id === state.currentId : Boolean(id)
   }
-}
 
-function setStateTime(state: VideoTrackState, time: number, now = performance.now()) {
-  state.time = time
-  state.updatedAt = now
+  function currentScheduledState(area: VideoZone) {
+    const state = states[area]
+
+    if (!state) {
+      return
+    }
+
+    advanceLocalSchedule(area, state)
+
+    return state
+  }
+
+  function advanceLocalSchedule(area: VideoZone, state: VideoTrackState) {
+    const end = state.startedAt + state.duration * 1000
+
+    if (!state.nextId || serverTime() < end) {
+      return
+    }
+
+    state.currentId = state.nextId
+    state.nextId = ''
+    state.startedAt = end
+    state.duration = Number.POSITIVE_INFINITY
+    state.updatedAt = performance.now()
+  }
+
+  function scheduledTrackTime(state: VideoTrackState) {
+    return Math.max(0, (serverTime() - state.startedAt) / 1000)
+  }
+
+  function serverTime() {
+    return performance.now() + serverTimeOffset
+  }
+
+  function scheduleTrackBoundary() {
+    clearTimeout(scheduleTimer)
+
+    const state = states[zone]
+
+    if (!state || !Number.isFinite(state.duration)) {
+      return
+    }
+
+    const delay = Math.max(0, state.startedAt + state.duration * 1000 - serverTime())
+
+    scheduleTimer = setTimeout(() => {
+      currentScheduledState(zone)
+      if (ready[zone]) {
+        loadScheduledTrack(zone)
+      }
+      scheduleTrackBoundary()
+    }, Math.min(delay + 25, 2_147_483_647))
+  }
 }
 
 function videoWall(zone: VideoZone): DomWall {

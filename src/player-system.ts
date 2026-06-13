@@ -20,7 +20,7 @@ import {
   upstairsDjBooth,
   upstairsDoor,
 } from './scene-data.ts'
-import { collideRoom, isOutside, roomAt, seatAt, seatById, seats, walkHeight } from './scene.ts'
+import { collideRoom, isOutside, onOutsideRooftopStairPath, roomAt, seatAt, seatById, seats, walkHeight } from './scene.ts'
 import { treeSwing } from './tree-swing.ts'
 import { createObjectTurnBasisCache } from './turn-basis.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
@@ -1074,10 +1074,7 @@ function onUpstairsExitPath(position: Vec3) {
 }
 
 function onUpstairsStairPath(position: Vec3) {
-  return position[0] >= outsideRooftopStairs.x - outsideRooftopStairs.width / 2 - 0.35
-    && position[0] <= outsideRooftopStairs.x + outsideRooftopStairs.width / 2 + 0.35
-    && position[2] >= outsideRooftopStairs.z - outsideRooftopStairs.depth / 2
-    && position[2] <= outsideRooftopStairs.z + outsideRooftopStairs.depth / 2
+  return onOutsideRooftopStairPath(position)
 }
 
 function travelPathTarget(player: Player, target: Vec3, outsideTree: CircleBounds) {
