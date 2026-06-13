@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001',
       '/analytics': 'http://localhost:3001',
+      '/gallery': 'http://localhost:3001',
       '/graffiti': 'http://localhost:3001',
       '/photos': 'http://localhost:3001',
     },

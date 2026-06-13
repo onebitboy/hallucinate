@@ -9,6 +9,7 @@ import { analyticsHtml } from './src/analytics-page.ts'
 import { createBeachBalls } from './src/beach-balls.ts'
 import { hairPalette, jewelPalette, skinPalette } from './src/character-data.ts'
 import { accessoryPalette } from './src/character-style.ts'
+import { galleryHtml } from './src/gallery-page.ts'
 import {
   graffitiColors,
   type GraffitiPaintContext,
@@ -336,6 +337,10 @@ const server = Bun.serve<SocketData>({
 
     if (url.pathname === '/analytics' || url.pathname === '/analytics/') {
       return handleAnalyticsPage(request)
+    }
+
+    if (url.pathname === '/gallery' || url.pathname === '/gallery/') {
+      return handleGalleryPage(request)
     }
 
     if (url.pathname.startsWith('/analytics/')) {
@@ -691,6 +696,17 @@ function handleAnalyticsPage(request: Request) {
   }
 
   return htmlResponse(analyticsHtml(onlineAnalyticsRanges), request.method)
+}
+
+function handleGalleryPage(request: Request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', {
+      status: 405,
+      headers: { allow: 'GET, HEAD' },
+    })
+  }
+
+  return htmlResponse(galleryHtml(), request.method)
 }
 
 async function serveAnalyticsAsset(request: Request, url: URL) {

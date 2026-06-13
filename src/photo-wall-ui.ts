@@ -982,8 +982,10 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     catch (e) {
       outgoing.remove()
       viewerPolaroid.style.visibility = ''
+      viewerPolaroid.style.transform = ''
       throw e
     }
+    viewerPolaroid.style.transform = `translateX(${incomingX}px) rotate(${nextTilt}deg)`
     viewerPolaroid.getBoundingClientRect()
     viewerPolaroid.style.visibility = ''
 
@@ -1007,6 +1009,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
       outgoing.remove()
       viewerAnimation = undefined
       viewerSlideBusy = false
+      viewerPolaroid.style.transform = ''
       viewerClose.focus()
     }, { once: true })
   }
