@@ -89,6 +89,7 @@ type CollisionOptions = {
 }
 type HeightOptions = {
   couches?: boolean
+  duck?: boolean
 }
 type WalkableOptions = {
   clearance?: number
@@ -182,6 +183,14 @@ const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outside
 const emptySeats = new Set<string>()
 
 export function walkHeight(x: number, y: number, z: number) {
+  return walkHeightWithDuck(x, y, z, true)
+}
+
+export function walkHeightWithoutDuck(x: number, y: number, z: number) {
+  return walkHeightWithDuck(x, y, z, false)
+}
+
+function walkHeightWithDuck(x: number, y: number, z: number, duckWalks: boolean) {
   const upstairsPlatform = upstairsPlatformHeight(x, z)
 
   if (upstairsPlatform !== undefined && y > upstairsPlatform - platformStep) {
@@ -200,7 +209,7 @@ export function walkHeight(x: number, y: number, z: number) {
     return stairs
   }
 
-  const duckTop = duckPlatformHeight(x, z)
+  const duckTop = duckWalks ? duckPlatformHeight(x, z) : undefined
 
   if (duckTop !== undefined && y > duckTop - platformStep) {
     return duckTop
@@ -278,9 +287,32 @@ export function collideRoom(
   previous?: Vec3,
   options?: CollisionOptions,
 ) {
+  collideRoomWithDuck(position, outsideTree, outside, previous, options, true)
+}
+
+export function collideRoomWithoutDuck(
+  position: Vec3,
+  outsideTree: CircleBounds,
+  outside = isOutside(position),
+  previous?: Vec3,
+  options?: Omit<CollisionOptions, 'duck'>,
+) {
+  collideRoomWithDuck(position, outsideTree, outside, previous, options, false)
+}
+
+function collideRoomWithDuck(
+  position: Vec3,
+  outsideTree: CircleBounds,
+  outside: boolean,
+  previous: Vec3 | undefined,
+  options: Omit<CollisionOptions, 'duck'> | undefined,
+  duckCollides: boolean,
+) {
   if (isUpstairs(position) || (previous !== undefined && isUpstairs(previous))) {
     collideUpstairsRoom(position)
-    collideDuck(position)
+    if (duckCollides) {
+      collideDuck(position)
+    }
     return
   }
 
@@ -291,7 +323,9 @@ export function collideRoom(
     position[2] = clamp(position[2], outsideBounds.back, outsideBounds.front)
     collideOutsideRooftopPath(position, previous)
     if (onOutsideRooftopPath(position)) {
-      collideDuck(position)
+      if (duckCollides) {
+        collideDuck(position)
+      }
       return
     }
     collideBuildingWalls(position, 0.45)
@@ -327,7 +361,9 @@ export function collideRoom(
         collidePaddedBounds(position, prop.bounds)
       }
     }
-    collideDuck(position)
+    if (duckCollides) {
+      collideDuck(position)
+    }
     for (const speaker of tentDjSpeakerCollisions) {
       if (!onPaddedPlatform(position, speaker, speakerTop)) {
         collidePaddedBounds(position, speaker)
@@ -372,7 +408,9 @@ export function collideRoom(
   if (!onPaddedPlatform(position, bartenderBarCollision, barTop)) {
     collidePaddedBounds(position, bartenderBarCollision)
   }
-  collideDuck(position)
+  if (duckCollides) {
+    collideDuck(position)
+  }
   collideOrientedBounds(position, insideArcadeCollision, 0.28)
 
   for (const stool of bartenderStoolCollisions) {
@@ -560,6 +598,27 @@ export function isWalkable(
   y = characterFloor,
   options?: WalkableOptions,
 ) {
+  return isWalkableWithDuck(x, z, outsideTree, y, options, true)
+}
+
+export function isWalkableWithoutDuck(
+  x: number,
+  z: number,
+  outsideTree: CircleBounds,
+  y = characterFloor,
+  options?: WalkableOptions,
+) {
+  return isWalkableWithDuck(x, z, outsideTree, y, options, false)
+}
+
+function isWalkableWithDuck(
+  x: number,
+  z: number,
+  outsideTree: CircleBounds,
+  y: number,
+  options: WalkableOptions | undefined,
+  duckWalks: boolean,
+) {
   const point: Vec3 = [x, y, z]
   const clearance = options?.clearance ?? 0
 
@@ -574,7 +633,7 @@ export function isWalkable(
       && !inPaddedBounds(x, z, upstairsBarDrinkCounterCollision, clearance)
       && upstairsBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && upstairsCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
-      && duckWalkable(x, z, y, clearance)
+      && (!duckWalks || duckWalkable(x, z, y, clearance))
   }
 
   if (isOutside(point)) {
@@ -599,7 +658,7 @@ export function isWalkable(
       && !inPaddedBounds(x, z, outsideScheduleWallCollision, clearance)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideStageRockCollisions().every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
-      && duckWalkable(x, z, y, clearance)
+      && (!duckWalks || duckWalkable(x, z, y, clearance))
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideHutBarStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
@@ -614,7 +673,7 @@ export function isWalkable(
     && !inPaddedBounds(x, z, djBoothCollision, clearance)
     && !inPaddedBounds(x, z, bartenderBarCollision, clearance)
     && !inOrientedBounds(x, z, insideArcadeCollision, 0.28 + clearance)
-    && duckWalkable(x, z, y, clearance)
+    && (!duckWalks || duckWalkable(x, z, y, clearance))
     && bartenderStoolCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
     && djSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
 }

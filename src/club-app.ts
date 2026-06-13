@@ -245,7 +245,6 @@ const vertices: Vertex[] = []
 const lights: Vertex[] = []
 const smoke: Vertex[] = []
 const vertexSize = 11
-let duckRiderPlayers: Player[] = []
 let frameId = 0
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
@@ -1420,7 +1419,9 @@ function cachedNicknameLabel(id: number, name: string, instagram: string) {
 
 function cycleIdle(direction: number) {
   idleClipIndex = (idleClipIndex + direction + idleClipNames.length) % idleClipNames.length
-  loadCurrentDance()
+  loadCurrentDance().catch((error: unknown) => {
+    console.error(error)
+  })
   // console.log(`idle animation: ${idleClipNames[idleClipIndex]}`)
 }
 const idleClipState = {
@@ -1624,11 +1625,6 @@ function applyDuckPosition(position: Vec3, sync = false, save = true) {
 function duckRiders(pose: DuckPose) {
   const riders = new Set<Player>()
 
-  for (const player of duckRiderPlayers) {
-    if (player.mode !== 'jump' && onOutsideDuckPlatform(player.position, pose.position)) {
-      riders.add(player)
-    }
-  }
   if (hasMultiplayer) {
     for (const player of multiplayer.players.values()) {
       if (player.mode !== 'jump' && onOutsideDuckPlatform(player.position, pose.position)) {
@@ -1851,8 +1847,11 @@ const tripKinds = [0, 1, 2] as const
 let outsideTree: CircleBounds = { ...outsideTreeStart }
 let lastStamp = 0
 let graphicsPaused = document.hidden
-let coreLoadStarted = false
-let postEntryLoadsStarted = false
+let introPreloadStarted = false
+let introPreloadDone = false
+let introPreloadFailed = false
+let introPreloadComplete = 0
+let introPreloadTotal = 1
 let mainWorldLoad: Promise<void> | undefined
 let loftPlantsLoad: Promise<void> | undefined
 let feedbackToiletStartStamp = 0
@@ -1935,7 +1934,7 @@ function startIntro() {
 }
 
 function introReadyToEnter() {
-  return characterRenderSystem.assetsLoaded && introNicknameInput.validity.valid && djVideoUi.canPlay()
+  return introPreloadDone && !introPreloadFailed && introNicknameInput.validity.valid && djVideoUi.canPlay()
 }
 
 function randomIntroFruitEmoji() {
@@ -3170,8 +3169,10 @@ function activateLoft(room: LoftRoomPayload, push: boolean) {
   resetLocalSpaceState()
   connectMultiplayer(room.slug)
   syncSpaceUi()
-  if (postEntryLoadsStarted) {
-    loadLoftDecorOnce()
+  if (introHidden) {
+    loadLoftDecorOnce().catch((error: unknown) => {
+      console.error(error)
+    })
   }
 }
 
@@ -4866,53 +4867,50 @@ function paintTShirtLogo() {
   }
 }
 
-function startCoreLoads() {
-  if (coreLoadStarted) {
+function startIntroPreload() {
+  if (introPreloadStarted) {
     return
   }
 
-  coreLoadStarted = true
-  characterRenderSystem.loadCoreOnce().catch((error: unknown) => {
-    console.error(error)
-  })
-}
+  introPreloadStarted = true
+  introPreloadComplete = 0
+  introPreloadTotal = appSpace.kind === 'loft' ? 5 : 4
 
-function startPostEntryLoads() {
-  if (postEntryLoadsStarted) {
-    return
-  }
-
-  postEntryLoadsStarted = true
-  characterRenderSystem.loadDetailsOnce().catch((error: unknown) => {
-    console.error(error)
-  })
-  loadCurrentDance()
-  loadMainWorldOnce()
-  if (appSpace.kind === 'loft') {
-    loadLoftDecorOnce()
-  }
-  requestIdle(() => {
-    characterRenderSystem.loadRemainingDancesIdle().catch((error: unknown) => {
+  Promise.all([
+    trackIntroPreload(characterRenderSystem.loadDetailsOnce()),
+    trackIntroPreload(loadCurrentDance()),
+    trackIntroPreload(loadMainWorldOnce()),
+    trackIntroPreload(characterRenderSystem.loadRemainingDancesIdle()),
+    ...(appSpace.kind === 'loft' ? [trackIntroPreload(loadLoftDecorOnce())] : []),
+  ])
+    .then(() => {
+      introPreloadDone = true
+    })
+    .catch((error: unknown) => {
+      introPreloadFailed = true
       console.error(error)
     })
+}
+
+function trackIntroPreload(load: Promise<void>) {
+  return load.then(() => {
+    introPreloadComplete++
   })
 }
 
 function loadCurrentDance() {
   if (idleClipIndex === 0) {
-    return
+    return Promise.resolve()
   }
 
-  characterRenderSystem.loadDanceOnce(idleClipIndex).catch((error: unknown) => {
-    console.error(error)
-  })
+  return characterRenderSystem.loadDanceOnce(idleClipIndex)
 }
 
 function updateIntro() {
   const coreProgress = characterRenderSystem.coreProgress
   const startReady = introReadyToEnter()
-  const progress = characterRenderSystem.assetsLoaded ? 100 : coreLoadStarted
-    ? 45 + coreProgress * 55
+  const progress = introPreloadDone ? 100 : introPreloadStarted
+    ? 45 + coreProgress * 25 + (introPreloadComplete / introPreloadTotal) * 30
     : introLoadProgressValue()
   const nextProgress = setIntroLoadProgress({ introBar, introProgress }, progress, introEffectRenderer)
 
@@ -4944,9 +4942,6 @@ function enterIntro() {
     helpUi.show()
     syncOnlineIndicator()
   }
-  afterNextPaint().then(() => requestIdle(startPostEntryLoads)).catch((error: unknown) => {
-    console.error(error)
-  })
 }
 
 function takeRemoteSeats(stamp: number) {
@@ -5050,7 +5045,6 @@ const { addLocalReflection, addSunLitTriangle } = createSceneLighting({
 const npcPlayerPool = createPlayers(maxNpcPlayers, outsideTree, occupiedSeats)
 const npcPlayers = [...npcPlayerPool]
 const renderPlayers: Player[] = [...npcPlayers]
-duckRiderPlayers = renderPlayers
 const characterRenderSystem = createCharacterRenderSystem({
   boxInstanceBuffer: characterBoxInstanceBuffer,
   boxInstanceSize: characterBoxInstanceSize,
@@ -5072,7 +5066,7 @@ const characterRenderSystem = createCharacterRenderSystem({
 
 setIntroLoadProgress({ introBar, introProgress }, 45, introEffectRenderer)
 await afterNextPaint()
-startCoreLoads()
+startIntroPreload()
 scheduleFrame()
 
 function loadMainWorldOnce() {
@@ -5080,10 +5074,10 @@ function loadMainWorldOnce() {
     .then(nextTree => {
       outsideTree = nextTree
       treeLoaded = true
-      refreshRoomBuffer()
     })
     .catch((error: unknown) => {
       console.error(error)
+      throw error
     })
     .then(() =>
       Promise.all([
@@ -5098,11 +5092,10 @@ function loadMainWorldOnce() {
         })
           .then(() => {
             palmTreeLoaded = true
-            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
-            refreshRoomBuffer()
+            throw error
           }),
         loadStaticFbxObject(vertices, {
           color: arcadeMeshColor,
@@ -5113,11 +5106,9 @@ function loadMainWorldOnce() {
           sourceUp: 'y',
           turn: insideArcade.turn,
         }, addSunLitTriangle)
-          .then(() => {
-            refreshRoomBuffer()
-          })
           .catch((error: unknown) => {
             console.error(error)
+            throw error
           }),
         loadStaticFbxObject(vertices, {
           color: [1, 1, 1],
@@ -5131,10 +5122,10 @@ function loadMainWorldOnce() {
         }, addSunLitTriangle)
           .then(() => {
             buddhaLoaded = true
-            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
+            throw error
           }),
         loadStaticFbxObject(vertices, {
           color: [0.72, 0.72, 0.68],
@@ -5146,11 +5137,9 @@ function loadMainWorldOnce() {
           trianglePattern: foodTruckGraffitiTriangle,
           turn: outsideFoodTruckTurn,
         }, addSunLitTriangle)
-          .then(() => {
-            refreshRoomBuffer()
-          })
           .catch((error: unknown) => {
             console.error(error)
+            throw error
           }),
         loadStaticFbxObjects(vertices, outsideStaticPropPlacements().map(prop => ({
           ...prop,
@@ -5158,10 +5147,10 @@ function loadMainWorldOnce() {
         })), addSunLitTriangle)
           .then(() => {
             rocksLoaded = true
-            refreshRoomBuffer()
           })
           .catch((error: unknown) => {
             console.error(error)
+            throw error
           }),
         loadStaticFbxObjects(vertices, outsidePlantPlacements().map(plant => ({
           color: outsidePlantMeshColor,
@@ -5174,15 +5163,15 @@ function loadMainWorldOnce() {
           sourceUp: 'y',
           turn: plant.turn,
         })), addOutsidePlantTriangle)
-          .then(() => {
-            refreshRoomBuffer()
-          })
           .catch((error: unknown) => {
             console.error(error)
+            throw error
           }),
       ])
     )
-    .then(() => undefined)
+    .then(() => {
+      refreshRoomBuffer()
+    })
 
   return mainWorldLoad
 }
@@ -5293,11 +5282,10 @@ function loadLoftStatuesOnce() {
       turn: Math.PI,
     }, addLoftStatueTriangle)
   ))
-    .then(() => {
-      refreshRoomBuffer()
-    })
+    .then(() => undefined)
     .catch((error: unknown) => {
       console.error(error)
+      throw error
     })
 
   return loftStatuesLoad
@@ -5314,17 +5302,19 @@ function loadLoftPlantsOnce() {
     sourceUp: 'y',
     turn: index === 0 ? 0.35 : -0.35,
   })), addLoftPlantTriangle)
-    .then(() => {
-      refreshRoomBuffer()
-    })
     .catch((error: unknown) => {
       console.error(error)
+      throw error
     })
 
   return loftPlantsLoad
 }
 
 function loadLoftDecorOnce() {
-  loadLoftPlantsOnce()
-  loadLoftStatuesOnce()
+  return Promise.all([
+    loadLoftPlantsOnce(),
+    loadLoftStatuesOnce(),
+  ]).then(() => {
+    refreshRoomBuffer()
+  })
 }
