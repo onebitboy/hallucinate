@@ -167,7 +167,7 @@ export type ActionsPacket = ClientActionsPacket & {
 
 export type AdminPacket = {
   pass: string
-  command: 'ban' | 'banSubnet' | 'randomTrack'
+  command: 'ban' | 'banSubnet' | 'randomTrack' | 'resetObjects'
   id: number
 }
 
@@ -925,7 +925,7 @@ export function decodeAdminMessage(view: DataView): AdminPacket {
   expectTextSize(view, commandOffset + 2, commandLength)
   const command = textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + commandOffset + 2, commandLength))
 
-  if (command !== 'ban' && command !== 'banSubnet' && command !== 'randomTrack') {
+  if (command !== 'ban' && command !== 'banSubnet' && command !== 'randomTrack' && command !== 'resetObjects') {
     throw new Error(`Invalid admin command ${command}`)
   }
 

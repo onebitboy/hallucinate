@@ -12,7 +12,15 @@ import { cigaretteExhale, cigaretteHeldSmoke, cigaretteTipSmoke } from './cigare
 import { restoreClubState, saveClubState } from './club-persistence.ts'
 import { createSaveTimer, readClubState } from './club-state.ts'
 import { createDomWallProjection, domWallCorners } from './dom-wall.ts'
-import { duckBoundsAt, duckPose, duckPosition, duckTurn, setDuckPose } from './duck-position.ts'
+import {
+  defaultDuckPosition,
+  defaultDuckTurn,
+  duckBoundsAt,
+  duckPose,
+  duckPosition,
+  duckTurn,
+  setDuckPose,
+} from './duck-position.ts'
 import type { DuckPose } from './duck-position.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { createFoamSystem, writeFoamGeometry } from './foam.ts'
@@ -925,6 +933,7 @@ const adminMusicInput = document.createElement('input')
 const adminMusicSubmit = document.createElement('button')
 const adminRandomTrackSubmit = document.createElement('button')
 const adminClearBansSubmit = document.createElement('button')
+const adminResetObjectsSubmit = document.createElement('button')
 const loftMusicDialog = document.createElement('dialog')
 const loftMusicForm = document.createElement('form')
 const loftMusicUsername = document.createElement('input')
@@ -975,8 +984,11 @@ adminRandomTrackSubmit.setAttribute('aria-label', 'next track')
 adminClearBansSubmit.type = 'button'
 adminClearBansSubmit.textContent = '🧹'
 adminClearBansSubmit.setAttribute('aria-label', 'clear global bans')
+adminResetObjectsSubmit.type = 'button'
+adminResetObjectsSubmit.textContent = '↩'
+adminResetObjectsSubmit.setAttribute('aria-label', 'reset objects')
 adminForm.append(adminUsername, adminInput, adminSubmit, adminBanIdInput, adminBanIdSubmit, adminMusicInput,
-  adminMusicSubmit, adminRandomTrackSubmit, adminClearBansSubmit)
+  adminMusicSubmit, adminRandomTrackSubmit, adminClearBansSubmit, adminResetObjectsSubmit)
 adminDialog.append(adminForm)
 loftMusicDialog.id = 'loft-music-dialog'
 loftMusicForm.method = 'dialog'
@@ -1072,6 +1084,13 @@ adminClearBansSubmit.addEventListener('click', async () => {
   adminPass = adminInput.value
   setAdminView(adminPass.length > 0)
   await clearGlobalBans(adminPass)
+})
+
+adminResetObjectsSubmit.addEventListener('click', () => {
+  adminPass = adminInput.value
+  setAdminView(adminPass.length > 0)
+  resetLocalSpaceState()
+  multiplayer.sendAdmin(adminPass, 'resetObjects', 0)
 })
 
 loftMusicCancel.addEventListener('click', () => {
@@ -3223,6 +3242,8 @@ function resetLocalSpaceState() {
   }
   beachBallAuthorityUntil.clear()
   beachBallGeometryDirty = true
+  duckLocalAuthorityUntil = 0
+  applyDuckPose({ position: [...defaultDuckPosition], turn: defaultDuckTurn }, false, false)
   treeSwingGeometryDirty = true
   updateBeachBallBuffer()
 }

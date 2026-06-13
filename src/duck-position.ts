@@ -13,8 +13,9 @@ const stageDuck = duck
 export const duckPlatformPadding = 0.18
 export const duckPlatformStep = 0.42
 export const defaultDuckPosition: Vec3 = [stageDuck.x, characterFloor, stageDuck.z]
+export const defaultDuckTurn = stageDuck.turn
 export const duckPosition: Vec3 = [...defaultDuckPosition]
-export let duckTurn = stageDuck.turn
+export let duckTurn = defaultDuckTurn
 export let duckPositionVersion = 0
 export const duckStageProp = stageDuck
 

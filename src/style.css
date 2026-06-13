@@ -1581,8 +1581,8 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
 
 #admin-dialog form {
   display: grid;
-  grid-template-columns: minmax(128px, 1fr) auto minmax(64px, 0.55fr) auto minmax(128px, 1fr) auto auto auto;
-  max-width: min(808px, calc(100dvw - 56px));
+  grid-template-columns: minmax(128px, 1fr) auto minmax(64px, 0.55fr) auto minmax(128px, 1fr) auto auto auto auto;
+  max-width: min(854px, calc(100dvw - 56px));
 }
 
 #loft-music-dialog form {

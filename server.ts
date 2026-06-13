@@ -76,7 +76,7 @@ import {
   type VideoPlaylistEntry,
   type VideoSyncEntry,
 } from './src/protocol.ts'
-import { defaultDuckPosition, duckTurn as defaultDuckTurn, onDuckPlatform, validateDuckPosition } from './src/duck-position.ts'
+import { defaultDuckPosition, defaultDuckTurn, onDuckPlatform, validateDuckPosition } from './src/duck-position.ts'
 import type { DuckPose } from './src/duck-position.ts'
 import { outsideBounds, outsideRooftop, outsideTreeStart, roomBounds, upstairsWallHeight, videoPlaylists } from './src/scene-data.ts'
 import { resolveDuckPosition, roomAt, seatAt } from './src/scene.ts'
@@ -3577,6 +3577,21 @@ async function applyAdminMessage(client: Client, packet: ReturnType<typeof decod
   else if (packet.command === 'randomTrack') {
     await advanceAdminVideoTrack(space, space.kind === 'loft' ? 'loft' : roomVideoZone(packet.id))
   }
+  else if (packet.command === 'resetObjects') {
+    resetAdminObjects(space)
+  }
+}
+
+function resetAdminObjects(space: SpaceState) {
+  const balls = createBeachBalls()
+
+  space.beachBalls = balls
+  space.beachBallAuthorities = balls.map(() => ({ client: 0, until: 0 }))
+  space.duckPosition = [...defaultDuckPosition]
+  space.duckTurn = defaultDuckTurn
+  saveDuckPosition(space)
+  broadcastBeachBalls(space)
+  broadcastDuckPosition(space)
 }
 
 async function advanceAdminVideoTrack(space: SpaceState, zone: VideoZone) {
