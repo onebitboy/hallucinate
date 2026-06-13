@@ -115,6 +115,9 @@ export const outsideCouches: Couch[] = [
   { x: -13.75, z: 10.55, width: 0.82, depth: 2.15, color: [0.42, 0.09, 0.46], face: 'east' },
   { x: -12.55, z: 31.05, width: 2.35, depth: 0.82, color: [0.06, 0.36, 0.42], face: 'south' },
   { x: -13.95, z: 29.7, width: 0.82, depth: 2.35, color: [0.46, 0.11, 0.38], face: 'east' },
+  { x: -9.25, z: 31.55, width: 2.1, depth: 0.82, color: [0.5, 0.11, 0.32], face: 'south' },
+  { x: -8.45, z: 27.35, width: 2.2, depth: 0.82, color: [0.08, 0.42, 0.48], face: 'north' },
+  { x: -6.95, z: 29.45, width: 0.82, depth: 2.1, color: [0.5, 0.32, 0.08], face: 'west' },
   { x: 16.1, z: 16.3, width: 2.15, depth: 0.82, color: [0.06, 0.38, 0.42], face: 'north' },
   { x: 17.7, z: 18.05, width: 0.82, depth: 2, color: [0.5, 0.18, 0.05], face: 'west' },
 ]

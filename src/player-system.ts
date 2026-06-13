@@ -11,6 +11,7 @@ import {
   outsideHutBar,
   outsideLakeIslandShore,
   outsideLakeWaterShore,
+  outsidePalmTree,
   outsidePhotoWall,
   outsideRooftop,
   outsideRooftopLanding,
@@ -51,19 +52,21 @@ const npcConfig = {
   destination: {
     weights: {
       insideDj: 0.2,
-      outsideDj: 0.36,
+      outsideDj: 0.34,
+      palmTree: 0.36,
       upstairsDj: 0.52,
       upstairsBarDance: 0.57,
       lounge: 0.68,
       stool: 0.8,
-      tree: 0.88,
-      lake: 0.98,
-      kiosk: 0.988,
-      foodTruck: 0.994,
+      tree: 0.86,
+      lake: 0.91,
+      kiosk: 0.99,
+      foodTruck: 0.993,
       restroom: 0.997,
       photoWall: 0.999,
     },
     linger: [20, 65] as const,
+    kioskLinger: [35, 95] as const,
     shortLinger: [5, 14] as const,
     jitter: [0.35, 0.9] as const,
     danceFloor: {
@@ -78,9 +81,11 @@ const npcConfig = {
       distance: 0.9,
       jitter: 0.8,
     },
-    kioskRadius: [1.9, 6.4] as const,
+    kioskRadius: [1.45, 4.8] as const,
     foodTruckDistance: [1.25, 2.25] as const,
     foodTruckSpread: 2.1,
+    palmTreeRadius: [1.35, 4.4] as const,
+    palmTreeSpots: 10,
     treeRadius: [2.6, 9.5] as const,
     treeSpots: 12,
     lakeSpots: 18,
@@ -131,13 +136,26 @@ const upstairsDoorLaneFront = Math.min(
   upstairsDoor.z + upstairsDoor.width / 2 - 0.35,
   outsideRooftopLanding.z + outsideRooftopLanding.depth / 2 - 0.25,
 )
-const upstairsStairBottom: Vec3 = [
-  outsideRooftopStairs.x,
+const upstairsStairLaneOffset = outsideRooftopStairs.width * 0.24
+const upstairsStairUpX = outsideRooftopStairs.x + upstairsStairLaneOffset
+const upstairsStairDownX = outsideRooftopStairs.x - upstairsStairLaneOffset
+const upstairsStairUpBottom: Vec3 = [
+  upstairsStairUpX,
   characterFloor,
   outsideRooftopStairs.z + outsideRooftopStairs.depth / 2 - 0.2,
 ]
-const upstairsStairTop: Vec3 = [
-  outsideRooftopLanding.x,
+const upstairsStairUpTop: Vec3 = [
+  upstairsStairUpX,
+  upstairsFloor,
+  outsideRooftopLanding.z,
+]
+const upstairsStairDownBottom: Vec3 = [
+  upstairsStairDownX,
+  characterFloor,
+  outsideRooftopStairs.z + outsideRooftopStairs.depth / 2 - 0.2,
+]
+const upstairsStairDownTop: Vec3 = [
+  upstairsStairDownX,
   upstairsFloor,
   outsideRooftopLanding.z,
 ]
@@ -900,9 +918,9 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
 
   if (player.position[1] < upstairsFloor - 0.7) {
     if (!onUpstairsStairPath(player.position)
-      && distanceSq(player.position, upstairsStairBottom) > npcConfig.arrive.waypoint ** 2)
+      && distanceSq(player.position, upstairsStairUpBottom) > npcConfig.arrive.waypoint ** 2)
     {
-      return travelPathTarget(player, upstairsStairBottom, outsideTree)
+      return travelPathTarget(player, upstairsStairUpBottom, outsideTree)
     }
 
     return upstairsStairClimbTarget(player.position)
@@ -925,7 +943,7 @@ function upstairsTravelTarget(player: Player, time: number, outsideTree: CircleB
 
 function downstairsTravelTarget(player: Player, time: number, outsideTree: CircleBounds) {
   const onStairs = onUpstairsStairPath(player.position)
-  const nearStairTop = distanceSq(player.position, upstairsStairTop) <= npcConfig.arrive.waypoint ** 2
+  const nearStairTop = distanceSq(player.position, upstairsStairDownTop) <= npcConfig.arrive.waypoint ** 2
   const insideDoor = upstairsDoorInsideTarget(player)
   const outsideDoor = upstairsDoorOutsideTarget(player)
 
@@ -944,9 +962,9 @@ function downstairsTravelTarget(player: Player, time: number, outsideTree: Circl
     }
 
     if (!onStairs && !nearStairTop
-      && distanceSq(player.position, upstairsStairTop) > npcConfig.arrive.waypoint ** 2)
+      && distanceSq(player.position, upstairsStairDownTop) > npcConfig.arrive.waypoint ** 2)
     {
-      return upstairsStairTop
+      return upstairsStairDownTop
     }
 
     return upstairsStairDescendTarget(player.position)
@@ -990,14 +1008,14 @@ function upstairsStairClimbTarget(position: Vec3): Vec3 {
   const stairBack = outsideRooftopStairs.z - outsideRooftopStairs.depth / 2
   const nextZ = Math.max(stairBack + 0.35, position[2] - 0.55)
 
-  return nextZ <= stairBack + 0.4 ? upstairsStairTop : [outsideRooftopStairs.x, position[1], nextZ]
+  return nextZ <= stairBack + 0.4 ? upstairsStairUpTop : [upstairsStairUpX, position[1], nextZ]
 }
 
 function upstairsStairDescendTarget(position: Vec3): Vec3 {
   const stairFront = outsideRooftopStairs.z + outsideRooftopStairs.depth / 2
   const nextZ = Math.min(stairFront - 0.35, position[2] + 0.55)
 
-  return nextZ >= stairFront - 0.4 ? upstairsStairBottom : [outsideRooftopStairs.x, position[1], nextZ]
+  return nextZ >= stairFront - 0.4 ? upstairsStairDownBottom : [upstairsStairDownX, position[1], nextZ]
 }
 
 function onUpstairsExitPath(position: Vec3) {
@@ -1152,6 +1170,10 @@ function rawPlayerDestination(
 
   if (pick < weights.outsideDj) {
     return djDestination(seed, step, false)
+  }
+
+  if (pick < weights.palmTree) {
+    return palmTreeDestination(seed, step)
   }
 
   if (pick < weights.upstairsDj) {
@@ -1359,6 +1381,28 @@ function treeDestination(
   }
 }
 
+function palmTreeDestination(seed: number, step: number): PlayerDestination {
+  const spot = Math.floor(seededRange(seed, step + 125, 0, npcConfig.destination.palmTreeSpots))
+  const spread = Math.PI / npcConfig.destination.palmTreeSpots
+  const angle = spot / npcConfig.destination.palmTreeSpots * Math.PI * 2 + seededRange(seed, step + 126, -spread,
+    spread)
+  const distance = seededRange(seed, step + 127, outsidePalmTree.radius + npcConfig.destination.palmTreeRadius[0],
+    outsidePalmTree.radius + npcConfig.destination.palmTreeRadius[1])
+
+  return {
+    kind: 'palmTree',
+    outside: true,
+    position: [
+      outsidePalmTree.x + Math.sin(angle) * distance,
+      characterFloor,
+      outsidePalmTree.z + Math.cos(angle) * distance,
+    ],
+    zone: 'outside',
+    lookAt: [outsideDjBooth.x, characterFloor, outsideDjBooth.z],
+    linger: [npcConfig.destination.linger[0], npcConfig.destination.linger[1]],
+  }
+}
+
 function lakeDestination(seed: number, step: number): PlayerDestination {
   const center = lakeCenter(outsideLakeIslandShore)
   const position = lakeIslandPoint(seed, step)
@@ -1415,7 +1459,7 @@ function kioskDestination(seed: number, step: number): PlayerDestination {
       outsideHutBar.z + Math.cos(angle) * distance],
     zone: 'outside',
     lookAt: [outsideHutBar.x, characterFloor, outsideHutBar.z],
-    linger: [npcConfig.destination.linger[0], npcConfig.destination.linger[1]],
+    linger: [npcConfig.destination.kioskLinger[0], npcConfig.destination.kioskLinger[1]],
   }
 }
 

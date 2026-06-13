@@ -182,7 +182,8 @@ export type ResolvedPlayerStyle = {
 }
 
 export type PlayerDestination = {
-  kind: 'dj' | 'foodTruck' | 'kiosk' | 'lake' | 'lounge' | 'photoWall' | 'random' | 'restroom' | 'stool' | 'tree'
+  kind: 'dj' | 'foodTruck' | 'kiosk' | 'lake' | 'lounge' | 'palmTree' | 'photoWall' | 'random' | 'restroom'
+    | 'stool' | 'tree'
   outside: boolean
   position: Vec3
   zone: VideoZone
