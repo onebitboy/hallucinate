@@ -113,8 +113,8 @@ export const outsideCouches: Couch[] = [
   { x: 13.35, z: 13.65, width: 0.82, depth: 2.05, color: [0.42, 0.28, 0.04], face: 'west' },
   { x: -11.8, z: 8.7, width: 2.55, depth: 0.82, color: [0.1, 0.36, 0.18], face: 'north' },
   { x: -13.75, z: 10.55, width: 0.82, depth: 2.15, color: [0.42, 0.09, 0.46], face: 'east' },
-  { x: -12.55, z: 31.05, width: 2.35, depth: 0.82, color: [0.06, 0.36, 0.42], face: 'south' },
-  { x: -13.95, z: 29.7, width: 0.82, depth: 2.35, color: [0.46, 0.11, 0.38], face: 'east' },
+  { x: -12.55, z: 31.55, width: 2.35, depth: 0.82, color: [0.06, 0.36, 0.42], face: 'south' },
+  { x: -14.55, z: 29.45, width: 0.82, depth: 2.35, color: [0.46, 0.11, 0.38], face: 'east' },
   { x: -9.25, z: 31.55, width: 2.1, depth: 0.82, color: [0.5, 0.11, 0.32], face: 'south' },
   { x: -8.45, z: 27.35, width: 2.2, depth: 0.82, color: [0.08, 0.42, 0.48], face: 'north' },
   { x: -6.95, z: 29.45, width: 0.82, depth: 2.1, color: [0.5, 0.32, 0.08], face: 'west' },
@@ -152,10 +152,10 @@ export const tentDoor = {
   height: tent.doorHeight,
 }
 export const outsideLakeShore: Vec3[] = smoothShore([25.1, characterFloor + 0.018, -7.4], 11.4, 15.8, 72)
-export const outsideLakeSandInnerShore: Vec3[] = insetShore(outsideLakeShore, (angle) =>
-  0.19 + Math.sin(angle * 3 + 0.4) * 0.035 + Math.sin(angle * 7 - 1.2) * 0.02)
-export const outsideLakeWaterShore: Vec3[] = insetShore(outsideLakeSandInnerShore, (angle) =>
-  0.09 + Math.sin(angle * 5 + 1.8) * 0.018)
+export const outsideLakeSandInnerShore: Vec3[] = insetShore(outsideLakeShore,
+  angle => 0.19 + Math.sin(angle * 3 + 0.4) * 0.035 + Math.sin(angle * 7 - 1.2) * 0.02)
+export const outsideLakeWaterShore: Vec3[] = insetShore(outsideLakeSandInnerShore,
+  angle => 0.09 + Math.sin(angle * 5 + 1.8) * 0.018)
 export const outsideLakeIslandShore: Vec3[] = smoothShore([25.6, characterFloor + 0.032, -7.8], 2.05, 2.75, 40)
 export const outsideLakePalmTree: CircleBounds = { x: 25.35, z: -7.95, radius: 0.38 }
 export const tentVideoWall = {
