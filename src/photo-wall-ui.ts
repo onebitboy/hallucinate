@@ -964,6 +964,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }
 
     const currentRect = viewerPolaroid.getBoundingClientRect()
+    const currentWidth = viewerPolaroid.offsetWidth
+    const currentHeight = viewerPolaroid.offsetHeight
     const currentPhoto = viewedPhoto!
     const outgoing = viewerPolaroid.cloneNode(true) as HTMLElement
     const currentTilt = photoTilt(currentPhoto)
@@ -972,7 +974,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     const outgoingX = -incomingX
 
     viewerAnimation?.cancel()
-    prepareSlideClone(outgoing, currentRect)
+    prepareSlideClone(outgoing, currentWidth, currentHeight)
     viewerStage.append(outgoing)
     viewerPolaroid.style.visibility = 'hidden'
     let nextTilt: number
@@ -1014,12 +1016,12 @@ export function createPhotoWallUi(element: HTMLElement, options: {
     }, { once: true })
   }
 
-  function prepareSlideClone(slide: HTMLElement, rect: DOMRect) {
+  function prepareSlideClone(slide: HTMLElement, width: number, height: number) {
     slide.removeAttribute('id')
     slide.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'))
     slide.className = 'photo-viewer-polaroid-slide'
-    slide.style.width = `${rect.width}px`
-    slide.style.height = `${rect.height}px`
+    slide.style.width = `${width}px`
+    slide.style.height = `${height}px`
     slide.style.maxHeight = 'none'
     slide.style.pointerEvents = 'none'
   }
