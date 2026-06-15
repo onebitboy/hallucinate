@@ -935,12 +935,14 @@ vec3 bloomGlow(vec2 point) {
 `
 
 const postDitherGlsl = `
+uniform int ditherEnabled;
+
 float outputNoise(vec2 point) {
   return fract(sin(dot(point, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
 vec3 ditherPostColor(vec3 color) {
-  return clamp(color + (outputNoise(gl_FragCoord.xy) - 0.5) / 255.0, 0.0, 1.0);
+  return ditherEnabled == 1 ? clamp(color + (outputNoise(gl_FragCoord.xy) - 0.5) / 255.0, 0.0, 1.0) : color;
 }
 `
 

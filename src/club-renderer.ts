@@ -125,12 +125,15 @@ export function renderClubFrame(options: {
     bloom: WebGLUniformLocation
     bloomResolution: WebGLUniformLocation
     daylight: WebGLUniformLocation
+    ditherEnabled: WebGLUniformLocation
+    ditherEnabledValue: number
     feedback: WebGLUniformLocation
     feedbackAmount: WebGLUniformLocation
     moonDirection: WebGLUniformLocation
     plain: {
       bloom: WebGLUniformLocation
       bloomResolution: WebGLUniformLocation
+      ditherEnabled: WebGLUniformLocation
       program: WebGLProgram
       scene: WebGLUniformLocation
     }
@@ -272,6 +275,7 @@ export function renderClubFrame(options: {
     gl.bindTexture(gl.TEXTURE_2D, options.target.bloom)
     gl.uniform1i(options.post.plain.bloom, 1)
     gl.uniform2f(options.post.plain.bloomResolution, options.target.width, options.target.height)
+    gl.uniform1i(options.post.plain.ditherEnabled, options.post.ditherEnabledValue)
   }
   else {
     gl.useProgram(options.post.program)
@@ -290,6 +294,7 @@ export function renderClubFrame(options: {
     gl.uniform1f(options.post.time, options.time)
     gl.uniform1i(options.post.tripKind, options.feedback.tripKind)
     gl.uniform1f(options.post.daylight, options.dayCycle.daylight)
+    gl.uniform1i(options.post.ditherEnabled, options.post.ditherEnabledValue)
     gl.uniform1f(options.post.moonProgress, options.dayCycle.moonProgress)
     gl.uniform1f(options.post.sunProgress, options.dayCycle.progress)
     gl.uniform3f(options.post.moonDirection, options.dayCycle.moonDirection[0], options.dayCycle.moonDirection[1],

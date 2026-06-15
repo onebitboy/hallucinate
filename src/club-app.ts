@@ -21,7 +21,6 @@ import {
   duckTurn,
   setDuckPose,
 } from './duck-position.ts'
-import type { DuckPose } from './duck-position.ts'
 import { addRoom, addRoomSmoke, addWallStrips } from './environment-object.ts'
 import { createFoamSystem, writeFoamGeometry } from './foam.ts'
 import {
@@ -38,7 +37,6 @@ import {
   sprayWallPoint,
 } from './graffiti.ts'
 import { bindKeyboardInput, setInputLayout } from './input.ts'
-import type { InputLayout } from './input.ts'
 import { addLoftLightGeometry, addLoftRoom, addLoftSmoke, loftSpawn } from './loft-scene.ts'
 import { lengthSq, mix } from './math.ts'
 import { createMultiplayer, updateRemotePlayers } from './multiplayer.ts'
@@ -81,10 +79,10 @@ import {
   upstairsDoor,
 } from './scene-data.ts'
 import {
-  isOutside,
   inLake,
   inLakeShore,
   inPolygon,
+  isOutside,
   nearInsideArcade,
   onOutsideDuckPlatform,
   resolveDuckPosition,
@@ -160,9 +158,12 @@ import { createCharacterRenderSystem } from './character-render-system.ts'
 import { createChatUi } from './chat-ui.ts'
 import { renderClubFrame } from './club-renderer.ts'
 import { dayCycleAt } from './constants.ts'
+import { isMobileUserAgent } from './device.ts'
 import { createDjVideoUi } from './dj-video-ui.ts'
 import { getDomElements } from './dom-elements.ts'
+import type { DuckPose } from './duck-position.ts'
 import { createHelpUi } from './help-ui.ts'
+import type { InputLayout } from './input.ts'
 import { createInstagramLink } from './instagram-link.ts'
 import { createIntroEffect } from './intro-effect.ts'
 import { createLocalCharacter } from './local-character.ts'
@@ -1862,6 +1863,7 @@ const arcadeScreenPoints: [ProjectedPoint, ProjectedPoint, ProjectedPoint, Proje
   { x: 0, y: 0 },
 ]
 const adaptiveResolution = createAdaptiveResolution()
+const ditherEnabled = 1 // isMobileUserAgent() ? 0 : 1
 const introEffectRenderer = createIntroEffect(introEffect)
 const mentionDing = new Audio('/ding.mp3')
 const feedbackMaxAmount = 0.91
@@ -2156,6 +2158,7 @@ const postBloom = gl.getUniformLocation(postProgram, 'bloom')
 const postFeedback = gl.getUniformLocation(postProgram, 'feedback')
 const postBloomResolution = gl.getUniformLocation(postProgram, 'bloomResolution')
 const postFeedbackAmount = gl.getUniformLocation(postProgram, 'feedbackAmount')
+const postDitherEnabled = gl.getUniformLocation(postProgram, 'ditherEnabled')
 const postRenderSky = gl.getUniformLocation(postProgram, 'renderSky')
 const postSkyForward = gl.getUniformLocation(postProgram, 'skyForward')
 const postSkyRight = gl.getUniformLocation(postProgram, 'skyRight')
@@ -2170,6 +2173,7 @@ const postTripKind = gl.getUniformLocation(postProgram, 'tripKind')!
 const postPlainScene = gl.getUniformLocation(postPlainProgram, 'scene')
 const postPlainBloom = gl.getUniformLocation(postPlainProgram, 'bloom')
 const postPlainBloomResolution = gl.getUniformLocation(postPlainProgram, 'bloomResolution')
+const postPlainDitherEnabled = gl.getUniformLocation(postPlainProgram, 'ditherEnabled')
 const array = gl.createVertexArray()
 const buffer = gl.createBuffer()
 const lightArray = gl.createVertexArray()
@@ -2223,10 +2227,12 @@ if (!viewProjection || !cameraEye || !renderZone || !bloomPass || !bloomWrite ||
   || !strobeTime || !strobeSmokeMap || !strobeRenderZone || !strobeViewProjection || !hairViewProjection
   || !hairRenderZone || !roomSmokeTime || !roomSmokeMap || !roomSmokeViewProjection || !roomSmokeCameraRight
   || !roomSmokeCameraUp || !postScene || !postBloom || !postFeedback || !postBloomResolution || !postFeedbackAmount
-  || !postRenderSky
+  || !postDitherEnabled || !postRenderSky
   || !postSkyForward || !postSkyRight || !postSkyUp || !postMoonDirection || !postMoonProgress || !postSunDirection
-  || !postSunProgress || !postDaylight || !postPlainScene || !postPlainBloom || !postPlainBloomResolution || !array
-  || !buffer || !lightArray || !lightBuffer || !strobeArray || !strobeGeometryBuffer || !strobeInstanceBuffer
+  || !postSunProgress || !postDaylight || !postPlainScene || !postPlainBloom || !postPlainBloomResolution
+  || !postPlainDitherEnabled || !array || !buffer || !lightArray || !lightBuffer || !strobeArray
+  || !strobeGeometryBuffer
+  || !strobeInstanceBuffer
   || !smokeArray || !smokeBuffer || !characterArray || !characterBuffer
   || !characterBoxArray || !characterBoxGeometryBuffer || !characterBoxInstanceBuffer || !postArray || !postBuffer
   || !beachBallArray || !beachBallBuffer || !treeSwingArray || !treeSwingBuffer || !bubbleArray || !bubbleBuffer
@@ -2247,8 +2253,8 @@ const hairUniforms = {
 }
 
 gl.bindTexture(gl.TEXTURE_2D, graffitiTexture)
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, graffitiTextureSize, graffitiTextureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
@@ -3899,7 +3905,7 @@ const resize = () => {
     resizeTarget(gl, feedback.next, width, height)
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, feedback.current.frame)
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, feedback.next.frame)
-    gl.blitFramebuffer(0, 0, feedbackWidth, feedbackHeight, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.LINEAR)
+    gl.blitFramebuffer(0, 0, feedbackWidth, feedbackHeight, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST)
     resizeTarget(gl, feedback.current, width, height)
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, feedback.next.frame)
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, feedback.current.frame)
@@ -3995,7 +4001,9 @@ function recoverGraphicsFocus() {
 }
 
 function shouldRecoverGraphicsFocus(target: EventTarget | null) {
-  return !(target as Element).closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')
+  return !(target as Element).closest(
+    'a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])',
+  )
 }
 
 function resumeGraphics() {
@@ -4083,6 +4091,8 @@ function renderCurrentSceneFrame(options: {
       bloom: postBloom!,
       bloomResolution: postBloomResolution!,
       daylight: postDaylight!,
+      ditherEnabled: postDitherEnabled!,
+      ditherEnabledValue: ditherEnabled,
       feedback: postFeedback!,
       feedbackAmount: postFeedbackAmount!,
       moonDirection: postMoonDirection!,
@@ -4090,6 +4100,7 @@ function renderCurrentSceneFrame(options: {
       plain: {
         bloom: postPlainBloom!,
         bloomResolution: postPlainBloomResolution!,
+        ditherEnabled: postPlainDitherEnabled!,
         program: postPlainProgram,
         scene: postPlainScene!,
       },
@@ -4254,8 +4265,9 @@ const draw = (stamp: number) => {
   const inLoft = appSpace.kind === 'loft'
 
   if (!inLoft) {
-    treeSwingGeometryDirty = updateTreeSwing(delta, outsideTree, occupiedSeats.has(treeSwing.seat.id),
-      treeSwingControl()) || treeSwingGeometryDirty
+    treeSwingGeometryDirty =
+      updateTreeSwing(delta, outsideTree, occupiedSeats.has(treeSwing.seat.id), treeSwingControl())
+      || treeSwingGeometryDirty
   }
 
   localCharacter.update(delta, cameraController.turn, outsideTree, styleController.bottomMode, inLoft, occupiedSeats,
@@ -4714,8 +4726,8 @@ function updateFoamBuffer() {
 }
 
 function updateSmokeBuffer() {
-  smokePuffPoints = updateDynamicGeometry(smokeSystem.puffs.length > 0, smokeWriter, smokePuffBuffer,
-    smokeBufferCache, () => writeSmokeGeometry(smokeWriter, smokeSystem.puffs))
+  smokePuffPoints = updateDynamicGeometry(smokeSystem.puffs.length > 0, smokeWriter, smokePuffBuffer, smokeBufferCache,
+    () => writeSmokeGeometry(smokeWriter, smokeSystem.puffs))
 }
 
 function updateBeachBallBuffer() {
@@ -4730,8 +4742,8 @@ function updateBeachBallBuffer() {
     return
   }
 
-  beachBallPoints = updateDynamicGeometry(beachBalls.length > 0, beachBallWriter, beachBallBuffer,
-    beachBallBufferCache, () => writeBeachBallGeometry(beachBallWriter, beachBalls, cameraController.position))
+  beachBallPoints = updateDynamicGeometry(beachBalls.length > 0, beachBallWriter, beachBallBuffer, beachBallBufferCache,
+    () => writeBeachBallGeometry(beachBallWriter, beachBalls, cameraController.position))
   beachBallGeometryDirty = false
   beachBallGeometryKey = nextKey
 }

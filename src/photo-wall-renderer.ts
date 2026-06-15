@@ -1,7 +1,8 @@
-import type { CameraMatrix } from './camera-matrix.ts'
-import { domWallCorners } from './dom-wall.ts'
 import { photoWallColumns, photoWallRows, photoWallSurface } from './photo-wall-data.ts'
 import { videoPreviewFragment, videoPreviewVertex } from './shaders.ts'
+
+import type { CameraMatrix } from './camera-matrix.ts'
+import { domWallCorners } from './dom-wall.ts'
 import type { Vec3 } from './types.ts'
 import { createProgram } from './webgl.ts'
 
@@ -43,8 +44,8 @@ export function createPhotoWallRenderer(gl: WebGL2RenderingContext) {
   )
   gl.bindVertexArray(null)
   gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
