@@ -3994,6 +3994,10 @@ function recoverGraphicsFocus() {
   canvas.focus()
 }
 
+function shouldRecoverGraphicsFocus(target: EventTarget | null) {
+  return !(target as Element).closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')
+}
+
 function resumeGraphics() {
   if (!graphicsPaused) {
     return
@@ -5050,20 +5054,20 @@ addEventListener('focus', () => {
   }
 })
 addEventListener('pointerdown', event => {
-  const target = event.target as Element
-
-  if (!target.closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')) {
+  if (shouldRecoverGraphicsFocus(event.target)) {
     recoverGraphicsFocus()
   }
 }, { capture: true })
 addEventListener('pointerup', event => {
-  const target = event.target as Element
-
-  if (!target.closest('a, button, dialog, input, select, textarea, [contenteditable], [tabindex]:not([tabindex="-1"])')) {
+  if (shouldRecoverGraphicsFocus(event.target)) {
     recoverGraphicsFocus()
   }
 }, { capture: true })
-addEventListener('keydown', recoverGraphicsFocus, { capture: true })
+addEventListener('keydown', event => {
+  if (shouldRecoverGraphicsFocus(event.target)) {
+    recoverGraphicsFocus()
+  }
+}, { capture: true })
 addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pauseGraphics()
