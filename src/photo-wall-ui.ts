@@ -78,6 +78,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   const viewerStage = document.createElement('div')
   const viewerPolaroid = document.createElement('div')
   const viewerImage = document.createElement('img')
+  const viewerActions = document.createElement('div')
   const viewerPrevious = document.createElement('button')
   const viewerNext = document.createElement('button')
   const viewerLike = document.createElement('button')
@@ -109,6 +110,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerStage.id = 'photo-viewer-stage'
   viewerPolaroid.id = 'photo-viewer-polaroid'
   viewerImage.id = 'photo-viewer-image'
+  viewerActions.id = 'photo-viewer-actions'
   viewerPrevious.id = 'photo-viewer-previous'
   viewerNext.id = 'photo-viewer-next'
   viewerLike.id = 'photo-viewer-like'
@@ -119,6 +121,7 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   flightItem.dataset.ready = 'true'
   flightImage.decoding = 'async'
   flightImage.loading = 'eager'
+  viewerActions.className = 'photo-viewer-actions'
   viewerPrevious.className = 'photo-viewer-control photo-viewer-previous'
   viewerNext.className = 'photo-viewer-control photo-viewer-next'
   viewerLike.className = 'photo-viewer-control photo-viewer-like'
@@ -145,7 +148,8 @@ export function createPhotoWallUi(element: HTMLElement, options: {
   viewerClose.setAttribute('aria-label', 'close photo')
   flightItem.append(flightImage)
   panel.append(grid, flightGrid)
-  viewerPolaroid.append(viewerImage, viewerPrevious, viewerNext, viewerLike, viewerDelete, viewerClose)
+  viewerActions.append(viewerPrevious, viewerClose, viewerLike, viewerNext, viewerDelete)
+  viewerPolaroid.append(viewerImage, viewerActions)
   viewerStage.append(viewerPolaroid)
   viewer.append(viewerStage)
   element.append(panel)
