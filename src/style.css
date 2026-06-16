@@ -449,6 +449,7 @@ canvas {
   min-width: 52px;
   padding: 0 12px;
   font-size: 17px;
+  white-space: nowrap;
 }
 
 #photo-viewer-delete,
