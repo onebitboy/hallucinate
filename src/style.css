@@ -85,6 +85,7 @@ canvas {
 #dj-video {
   left: 0;
   top: 0;
+  contain: layout paint style;
   mix-blend-mode: screen;
   filter: saturate(1.15) contrast(1.08) brightness(0.9);
   transform-origin: 0 0;
@@ -101,6 +102,7 @@ canvas {
   left: 0;
   top: 0;
   z-index: 65;
+  contain: layout paint style;
   mix-blend-mode: screen;
   transform-origin: 0 0;
   will-change: transform;
@@ -110,6 +112,7 @@ canvas {
   left: 0;
   top: 0;
   z-index: 64;
+  contain: layout paint style;
   color: rgb(245 255 255);
   cursor: default;
   font-family: "Iansui", ui-sans-serif, system-ui, sans-serif;
@@ -261,6 +264,7 @@ canvas {
   left: 0;
   top: 0;
   z-index: 64;
+  contain: layout paint style;
   display: grid;
   gap: 5px;
   box-sizing: border-box;
@@ -1409,6 +1413,7 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
 }
 
 #admin-id-root {
+  contain: layout paint style;
   inset: 0;
   pointer-events: none;
   position: fixed;
@@ -1418,6 +1423,7 @@ html[data-touch-controls="true"] body[data-intro-visible="true"] #rooms-button {
 .admin-id-label {
   background: rgb(255 40 120 / 0.32);
   border: 1px solid rgb(255 255 255 / 0.5);
+  contain: layout paint style;
   color: white;
   font: 700 12px/1.1 monospace;
   left: 0;
@@ -2159,6 +2165,7 @@ html[data-touch-controls="true"] #chat-log {
   left: 0;
   top: 0;
   z-index: 20;
+  contain: layout paint style;
   will-change: transform;
 }
 
@@ -2228,6 +2235,7 @@ html[data-touch-controls="true"] #chat-log {
 
 .chat-label {
   position: absolute;
+  contain: layout paint style;
   max-width: 42dvw;
   min-width: 28px;
   width: max-content;

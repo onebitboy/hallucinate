@@ -1,4 +1,12 @@
 import { identity, nodeTransform, transformOrigin } from './math.ts'
+import {
+  blendGroundedPoseInto,
+  blendPoseInto,
+  createPose,
+  placeBlendedPoseInto,
+  placePoseInto,
+  poseGround,
+} from './character-pose.ts'
 import type { AssimpChannel, AssimpNode, AssimpScene, CharacterClip, CharacterMode, CharacterRig, Mat4, PoseBlendCache,
   Quat, RigNode, SampledPose, Vec3 } from './types.ts'
 
@@ -161,8 +169,7 @@ export function sampleCharacterPose(
       const base = basePose
         ?? sampleBasePose(rig, time, characterPoseJoints, characterPoseJointSet, player.idleClipIndex ?? 0)
 
-      const blended = blendGroundedPoseInto(base.stand, pose, blend, characterPoseJoints, characterGroundJointIndices,
-        placedPose)
+      const blended = blendGroundedPoseInto(base.stand, pose, blend, characterGroundJointIndices, placedPose)
 
       return placeCharacterPose(blended, player.position, player.turn, characterPoseJoints, characterGroundJointIndices,
         characterScale, placedPose, 0, player.poseUp)
@@ -295,42 +302,7 @@ function clipStartGround(
 function blendCharacterPose(stand: Vec3[], run: Vec3[], blend: number, characterPoseJoints: string[]) {
   const pose = createPose(characterPoseJoints.length)
 
-  return blendPoseInto(stand, run, blend, characterPoseJoints, pose)
-}
-
-function blendPoseInto(from: Vec3[], to: Vec3[], blend: number, characterPoseJoints: string[],
-  target = createPose(characterPoseJoints.length))
-{
-  for (let i = 0; i < characterPoseJoints.length; i++) {
-    const point = from[i]!
-    const next = to[i]!
-    const value = target[i]!
-
-    value[0] = point[0] + (next[0] - point[0]) * blend
-    value[1] = point[1] + (next[1] - point[1]) * blend
-    value[2] = point[2] + (next[2] - point[2]) * blend
-  }
-
-  return target
-}
-
-function blendGroundedPoseInto(from: Vec3[], to: Vec3[], blend: number, characterPoseJoints: string[],
-  characterGroundJointIndices: number[], target = createPose(characterPoseJoints.length))
-{
-  const fromGround = poseGround(from, characterGroundJointIndices)
-  const toGround = poseGround(to, characterGroundJointIndices)
-
-  for (let i = 0; i < characterPoseJoints.length; i++) {
-    const point = from[i]!
-    const next = to[i]!
-    const value = target[i]!
-
-    value[0] = point[0] + (next[0] - point[0]) * blend
-    value[1] = point[1] - fromGround + (next[1] - toGround - point[1] + fromGround) * blend
-    value[2] = point[2] + (next[2] - point[2]) * blend
-  }
-
-  return target
+  return blendPoseInto(stand, run, blend, pose)
 }
 
 function breakdanceBlend(clip: CharacterClip, time: number) {
@@ -412,34 +384,7 @@ function placeBlendedCharacterPose(
   characterScale: number,
   target = createPose(characterPoseJoints.length),
 ) {
-  let ground = Infinity
-  const sin = Math.sin(turn)
-  const cos = Math.cos(turn)
-
-  for (const index of characterGroundJointIndices) {
-    const point = stand[index]!
-    const next = run[index]!
-
-    ground = Math.min(ground, point[1] + (next[1] - point[1]) * blend)
-  }
-
-  for (let i = 0; i < characterPoseJoints.length; i++) {
-    const point = stand[i]!
-    const next = run[i]!
-    const x = (point[0] + (next[0] - point[0]) * blend) * characterScale
-    const y = (point[1] + (next[1] - point[1]) * blend - ground) * characterScale
-    const z = (point[2] + (next[2] - point[2]) * blend) * characterScale
-    const placed = target[i]
-    const px = position[0] + x * cos + z * sin
-    const py = position[1] + y
-    const pz = position[2] - x * sin + z * cos
-
-    placed[0] = px
-    placed[1] = py
-    placed[2] = pz
-  }
-
-  return target
+  return placeBlendedPoseInto(stand, run, blend, position, turn, characterGroundJointIndices, characterScale, target)
 }
 
 export function sampleBasePose(
@@ -761,78 +706,7 @@ export function placeCharacterPose(
   ground = poseGround(pose, characterGroundJointIndices),
   poseUp?: Vec3,
 ) {
-  const sin = Math.sin(turn)
-  const cos = Math.cos(turn)
-  let sideX = cos
-  let sideY = 0
-  let sideZ = -sin
-  let upX = 0
-  let upY = 1
-  let upZ = 0
-
-  if (poseUp) {
-    const upLength = Math.sqrt(poseUp[0] * poseUp[0] + poseUp[1] * poseUp[1] + poseUp[2] * poseUp[2])
-
-    if (upLength === 0) {
-      throw new Error('Cannot place character pose with zero up vector')
-    }
-
-    upX = poseUp[0] / upLength
-    upY = poseUp[1] / upLength
-    upZ = poseUp[2] / upLength
-
-    const dot = sideX * upX + sideY * upY + sideZ * upZ
-
-    sideX -= upX * dot
-    sideY -= upY * dot
-    sideZ -= upZ * dot
-
-    const sideLength = Math.sqrt(sideX * sideX + sideY * sideY + sideZ * sideZ)
-
-    if (sideLength === 0) {
-      throw new Error('Cannot place character pose with parallel turn and up')
-    }
-
-    sideX /= sideLength
-    sideY /= sideLength
-    sideZ /= sideLength
-  }
-
-  const forwardX = sideY * upZ - sideZ * upY
-  const forwardY = sideZ * upX - sideX * upZ
-  const forwardZ = sideX * upY - sideY * upX
-
-  for (let i = 0; i < characterPoseJoints.length; i++) {
-    const point = pose[i]!
-    const x = point[0] * characterScale
-    const y = (point[1] - ground) * characterScale
-    const z = point[2] * characterScale
-
-    const next = target[i]
-    const px = position[0] + x * sideX + y * upX + z * forwardX
-    const py = position[1] + x * sideY + y * upY + z * forwardY
-    const pz = position[2] + x * sideZ + y * upZ + z * forwardZ
-
-    next[0] = px
-    next[1] = py
-    next[2] = pz
-  }
-
-  return target
-}
-
-function poseGround(pose: Vec3[], characterGroundJointIndices: number[]) {
-  let ground = Infinity
-
-  for (const index of characterGroundJointIndices) {
-    ground = Math.min(ground, pose[index]![1])
-  }
-
-  return ground
-}
-
-function createPose(length: number) {
-  return Array.from({ length }, () => [0, 0, 0] as Vec3)
+  return placePoseInto(pose, position, turn, characterGroundJointIndices, characterScale, target, ground, poseUp)
 }
 
 function getPoseSamplePlan(rig: CharacterRig, characterPoseJoints: string[], characterPoseJointSet: Set<string>) {

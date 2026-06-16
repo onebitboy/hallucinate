@@ -102,6 +102,14 @@ type PaddedPlatform = {
   bounds: PaddedBounds
   top: number
 }
+type PolygonPlan = {
+  back: number
+  front: number
+  left: number
+  right: number
+  xs: Float64Array
+  zs: Float64Array
+}
 
 const djBoothCollision = paddedBounds(djBooth)
 const bartenderBarCollision = paddedBounds(bartenderBar)
@@ -117,6 +125,12 @@ const seatStools = [...bartenderStools, ...outsideHutBarStools, ...upstairsBarSt
 const djSpeakerCollisions = djSpeakers.map(bounds => paddedBounds(bounds))
 const outsideDjBoothCollision = paddedBounds(outsideDjBooth)
 const outsideStageCollision = paddedBounds(outsideStage, 0.12)
+const outsideStageRockPlatforms = outsideStageProps.flatMap(prop => prop.kind === 'rock'
+  ? [{
+      bounds: paddedBounds(prop, 0.18),
+      top: characterFloor + prop.height - 0.1,
+    }]
+  : [])
 const outsideDjSpeakerCollisions = outsideDjSpeakers.map(bounds => paddedBounds(bounds))
 const upstairsDjBoothCollision = paddedBounds(upstairsDjBooth)
 const upstairsDjSpeakerCollisions = upstairsDjSpeakers.map(bounds => paddedBounds(bounds))
@@ -185,6 +199,7 @@ const outsideRooftopStairWalkLift = 0.12
 const outsideRooftopLandingTransitionPadding = outsideRooftopLanding.x + outsideRooftopLanding.width / 2
   - (outsideRooftop.x - outsideRooftop.width / 2) + 0.05
 const emptySeats = new Set<string>()
+const polygonPlans = new WeakMap<Vec3[], PolygonPlan>()
 
 export function walkHeight(x: number, y: number, z: number) {
   return walkHeightWithDuck(x, y, z, true)
@@ -260,14 +275,23 @@ function isAtTentDoor(position: Vec3, padding = 0) {
 }
 
 export function isOutside(position: Vec3) {
-  return !isUpstairs(position) && onOutsideRooftopPath(position)
+  return !isUpstairsAt(position[0], position[1], position[2]) && onOutsideRooftopPathAt(position[0], position[1],
+    position[2])
     || position[0] < roomBounds.left || position[0] > roomBounds.right || position[2] < roomBounds.back
     || position[2] > roomBounds.front
 }
 
 export function isUpstairs(position: Vec3) {
-  return position[1] > outsideRooftopTop - platformStep
-    && inBoundsInclusive(position[0], position[2], outsideRooftop)
+  return isUpstairsAt(position[0], position[1], position[2])
+}
+
+function isOutsideAt(x: number, y: number, z: number) {
+  return !isUpstairsAt(x, y, z) && onOutsideRooftopPathAt(x, y, z)
+    || x < roomBounds.left || x > roomBounds.right || z < roomBounds.back || z > roomBounds.front
+}
+
+function isUpstairsAt(x: number, y: number, z: number) {
+  return y > outsideRooftopTop - platformStep && inBoundsInclusive(x, z, outsideRooftop)
 }
 
 export function roomAt(position: Vec3): VideoZone {
@@ -624,10 +648,9 @@ function isWalkableWithDuck(
   options: WalkableOptions | undefined,
   duckWalks: boolean,
 ) {
-  const point: Vec3 = [x, y, z]
   const clearance = options?.clearance ?? 0
 
-  if (isUpstairs(point)) {
+  if (isUpstairsAt(x, y, z)) {
     return x >= roomBounds.left + 0.55 + clearance
       && x <= roomBounds.right - 0.55 - clearance
       && z >= roomBounds.back + 0.55 + clearance
@@ -641,13 +664,13 @@ function isWalkableWithDuck(
       && (!duckWalks || duckWalkable(x, z, y, clearance))
   }
 
-  if (isOutside(point)) {
+  if (isOutsideAt(x, y, z)) {
     return x >= outsideBounds.left + clearance
       && x <= outsideBounds.right - clearance
       && z >= outsideBounds.back + clearance
       && z <= outsideBounds.front - clearance
       && !inBuildingWall(x, z, 0.45 + clearance, clearance)
-      && !inOutsideRooftopStairWall(point, clearance)
+      && !inOutsideRooftopStairWallAt(x, y, z, clearance)
       && !inTentWall(x, z, 0.35, clearance)
       && !inCircle(x, z, tentPole, clearance)
       && !inCircle(x, z, outsideTree, clearance)
@@ -663,7 +686,7 @@ function isWalkableWithDuck(
       && !inPaddedBounds(x, z, outsidePhotoWallCollision, clearance)
       && !inPaddedBounds(x, z, outsideScheduleWallCollision, clearance)
       && outsideDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
-      && outsideStageRockCollisions().every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
+      && outsideStageRockPlatforms.every(prop => !inPaddedBounds(x, z, prop.bounds, clearance))
       && (!duckWalks || duckWalkable(x, z, y, clearance))
       && tentDjSpeakerCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
       && outsideCouchCollisions.every(bounds => !inPaddedBounds(x, z, bounds, clearance))
@@ -1258,12 +1281,15 @@ function inBoundsInclusive(x: number, z: number, bounds: Bounds, padding = 0) {
 }
 
 function onOutsideRooftopPath(position: Vec3) {
-  const stairs = outsideRooftopStairPathHeight(position[0], position[2])
+  return onOutsideRooftopPathAt(position[0], position[1], position[2])
+}
 
-  return (stairs !== undefined && position[1] > stairs - platformStep)
-    || ((inBoundsInclusive(position[0], position[2], outsideRooftop)
-      || inBoundsInclusive(position[0], position[2], outsideRooftopLanding))
-      && position[1] > outsideRooftopTop - platformStep)
+function onOutsideRooftopPathAt(x: number, y: number, z: number) {
+  const stairs = outsideRooftopStairPathHeight(x, z)
+
+  return (stairs !== undefined && y > stairs - platformStep)
+    || ((inBoundsInclusive(x, z, outsideRooftop) || inBoundsInclusive(x, z, outsideRooftopLanding))
+      && y > outsideRooftopTop - platformStep)
 }
 
 export function onOutsideRooftopStairPath(position: Vec3) {
@@ -1405,11 +1431,15 @@ function collideSphereUnderOutsideRooftopStairs(position: Vec3, radius: number) 
 }
 
 function inOutsideRooftopStairWall(position: Vec3, clearance = 0) {
-  if (onOutsideRooftopPath(position)) {
+  return inOutsideRooftopStairWallAt(position[0], position[1], position[2], clearance)
+}
+
+function inOutsideRooftopStairWallAt(x: number, y: number, z: number, clearance = 0) {
+  if (onOutsideRooftopPathAt(x, y, z)) {
     return false
   }
 
-  if (inBoundsInclusive(position[0], position[2], outsideRooftopLanding, 0.12 + clearance)) {
+  if (inBoundsInclusive(x, z, outsideRooftopLanding, 0.12 + clearance)) {
     return true
   }
 
@@ -1417,10 +1447,10 @@ function inOutsideRooftopStairWall(position: Vec3, clearance = 0) {
   const front = stairs.z + stairs.depth / 2
   const bottomOpeningBack = front - 1.1
 
-  return position[0] >= stairs.x - stairs.width / 2 - 0.12 - clearance
-    && position[0] <= stairs.x + stairs.width / 2 + 0.12 + clearance
-    && position[2] >= stairs.z - stairs.depth / 2 - 0.12 - clearance
-    && position[2] <= bottomOpeningBack + clearance
+  return x >= stairs.x - stairs.width / 2 - 0.12 - clearance
+    && x <= stairs.x + stairs.width / 2 + 0.12 + clearance
+    && z >= stairs.z - stairs.depth / 2 - 0.12 - clearance
+    && z <= bottomOpeningBack + clearance
 }
 
 function collideOutsideRooftopSideWall(position: Vec3, previous: Vec3, x: number, back: number, front: number) {
@@ -1570,12 +1600,7 @@ function collideDuck(position: Vec3) {
 }
 
 function outsideStageRockCollisions(): PaddedPlatform[] {
-  return outsideStageProps.flatMap(prop => prop.kind === 'rock'
-    ? [{
-        bounds: paddedBounds(prop, 0.18),
-        top: characterFloor + prop.height - 0.1,
-      }]
-    : [])
+  return outsideStageRockPlatforms
 }
 
 function inPaddedBounds(x: number, z: number, bounds: PaddedBounds, clearance = 0) {
@@ -1773,21 +1798,37 @@ export function inLakeShore(x: number, z: number, clearance = 0) {
 }
 
 export function inPolygon(x: number, z: number, points: Vec3[], clearance = 0) {
-  if (clearance > 0 && polygonDistanceSq(x, z, points) < clearance * clearance) {
+  const plan = polygonPlan(points)
+
+  if (x < plan.left - clearance || x > plan.right + clearance || z < plan.back - clearance
+    || z > plan.front + clearance)
+  {
+    return false
+  }
+
+  if (clearance > 0 && polygonDistanceSq(x, z, plan, clearance * clearance) < clearance * clearance) {
     return true
   }
 
-  return pointInPolygon(x, z, points)
+  return pointInPolygonPlan(x, z, plan)
 }
 
 function pointInPolygon(x: number, z: number, points: Vec3[]) {
+  return pointInPolygonPlan(x, z, polygonPlan(points))
+}
+
+function pointInPolygonPlan(x: number, z: number, plan: PolygonPlan) {
+  const xs = plan.xs
+  const zs = plan.zs
   let inside = false
 
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const a = points[i]!
-    const b = points[j]!
+  for (let i = 0, j = xs.length - 1; i < xs.length; j = i++) {
+    const ax = xs[i]!
+    const az = zs[i]!
+    const bx = xs[j]!
+    const bz = zs[j]!
 
-    if ((a[2] > z) !== (b[2] > z) && x < (b[0] - a[0]) * (z - a[2]) / (b[2] - a[2]) + a[0]) {
+    if ((az > z) !== (bz > z) && x < (bx - ax) * (z - az) / (bz - az) + ax) {
       inside = !inside
     }
   }
@@ -1795,18 +1836,59 @@ function pointInPolygon(x: number, z: number, points: Vec3[]) {
   return inside
 }
 
-function polygonDistanceSq(x: number, z: number, points: Vec3[]) {
+function polygonDistanceSq(x: number, z: number, plan: PolygonPlan, stopDistanceSq = Infinity) {
+  const xs = plan.xs
+  const zs = plan.zs
   let distanceSq = Infinity
 
-  for (let i = 0; i < points.length; i++) {
-    const point = closestSegmentPoint(x, z, points[i]!, points[(i + 1) % points.length]!)
-    const dx = x - point[0]
-    const dz = z - point[1]
+  for (let i = 0; i < xs.length; i++) {
+    const nextIndex = (i + 1) % xs.length
+    const ax = xs[i]!
+    const az = zs[i]!
+    const edgeX = xs[nextIndex]! - ax
+    const edgeZ = zs[nextIndex]! - az
+    const t = clamp(((x - ax) * edgeX + (z - az) * edgeZ) / (edgeX * edgeX + edgeZ * edgeZ), 0, 1)
+    const dx = x - (ax + edgeX * t)
+    const dz = z - (az + edgeZ * t)
 
     distanceSq = Math.min(distanceSq, dx * dx + dz * dz)
+    if (distanceSq < stopDistanceSq) {
+      return distanceSq
+    }
   }
 
   return distanceSq
+}
+
+function polygonPlan(points: Vec3[]) {
+  let plan = polygonPlans.get(points)
+
+  if (plan) {
+    return plan
+  }
+
+  let left = Infinity
+  let right = -Infinity
+  let back = Infinity
+  let front = -Infinity
+  const xs = new Float64Array(points.length)
+  const zs = new Float64Array(points.length)
+
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i]!
+
+    xs[i] = point[0]
+    zs[i] = point[2]
+    left = Math.min(left, point[0])
+    right = Math.max(right, point[0])
+    back = Math.min(back, point[2])
+    front = Math.max(front, point[2])
+  }
+
+  plan = { back, front, left, right, xs, zs }
+  polygonPlans.set(points, plan)
+
+  return plan
 }
 
 function closestSegmentPoint(x: number, z: number, a: Vec3, b: Vec3): [number, number] {

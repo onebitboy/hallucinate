@@ -439,25 +439,67 @@ function addCharacterBoxInstance(
 ) {
   reserveFloats(instances, 17)
 
-  const data = instances.data
-  let offset = instances.length
+  instances.length = writeCharacterBoxInstance(
+    instances.data,
+    instances.length,
+    a[0],
+    a[1],
+    a[2],
+    b[0],
+    b[1],
+    b[2],
+    sideX,
+    sideY,
+    sideZ,
+    upX,
+    upY,
+    upZ,
+    color[0],
+    color[1],
+    color[2],
+    glow,
+    strobe,
+  )
+}
 
-  data[offset++] = a[0]
-  data[offset++] = a[1]
-  data[offset++] = a[2]
-  data[offset++] = b[0]
-  data[offset++] = b[1]
-  data[offset++] = b[2]
+export function writeCharacterBoxInstance(
+  data: Float32Array,
+  offset: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  sideX: number,
+  sideY: number,
+  sideZ: number,
+  upX: number,
+  upY: number,
+  upZ: number,
+  r: number,
+  g: number,
+  b: number,
+  glow: number,
+  strobe: number,
+) {
+  data[offset++] = ax
+  data[offset++] = ay
+  data[offset++] = az
+  data[offset++] = bx
+  data[offset++] = by
+  data[offset++] = bz
   data[offset++] = sideX
   data[offset++] = sideY
   data[offset++] = sideZ
   data[offset++] = upX
   data[offset++] = upY
   data[offset++] = upZ
-  data[offset++] = color[0]
-  data[offset++] = color[1]
-  data[offset++] = color[2]
+  data[offset++] = r
+  data[offset++] = g
+  data[offset++] = b
   data[offset++] = glow
   data[offset++] = strobe
-  instances.length = offset
+
+  return offset
 }
