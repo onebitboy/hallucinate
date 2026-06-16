@@ -260,6 +260,7 @@ const lights: Vertex[] = []
 const smoke: Vertex[] = []
 const vertexSize = 11
 let frameId = 0
+let introFrameId = 0
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
 const reactionSlotsKey = 'club-reaction-slots'
@@ -3986,6 +3987,20 @@ function scheduleFrame() {
   clubGlobal.clubFrameId = frameId
 }
 
+function scheduleIntroFrame() {
+  if (introHidden) {
+    return
+  }
+
+  introFrameId = requestAnimationFrame(updateIntroFrame)
+}
+
+function updateIntroFrame() {
+  introFrameId = 0
+  updateIntro()
+  scheduleIntroFrame()
+}
+
 function pauseGraphics() {
   graphicsPaused = true
   cancelAnimationFrame(frameId)
@@ -4997,6 +5012,7 @@ function enterIntro() {
   document.body.dataset.introVisible = String(!introHidden)
   removeEventListener('keydown', handleIntroStartKey)
   intro.dataset.hidden = 'true'
+  cancelAnimationFrame(introFrameId)
   introEffectRenderer.stop()
   multiplayer.sendEnter()
 
@@ -5066,6 +5082,7 @@ function setNpcPlayerCount(count: number) {
 
 import.meta.hot?.dispose(() => {
   cancelAnimationFrame(frameId)
+  cancelAnimationFrame(introFrameId)
   introEffectRenderer.stop()
   multiplayer.close()
 })
@@ -5148,6 +5165,7 @@ const characterRenderSystem = createCharacterRenderSystem({
 setIntroLoadProgress({ introBar, introProgress }, 45, introEffectRenderer)
 await afterNextPaint()
 startIntroPreload()
+scheduleIntroFrame()
 scheduleFrame()
 
 function loadMainWorldOnce() {

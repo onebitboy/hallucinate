@@ -1,3 +1,5 @@
+const touchControlsMaxWidth = 1024
+
 export function isMobileUserAgent() {
   const platform = navigator.platform
   const agent = navigator.userAgent
@@ -14,5 +16,5 @@ export function usesTouchMovementControls() {
 }
 
 export function usesTouchControls() {
-  return usesTouchMovementControls() || innerWidth <= 1180
+  return usesTouchMovementControls() || innerWidth <= touchControlsMaxWidth
 }
