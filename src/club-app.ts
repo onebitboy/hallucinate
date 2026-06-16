@@ -260,7 +260,7 @@ const lights: Vertex[] = []
 const smoke: Vertex[] = []
 const vertexSize = 11
 let frameId = 0
-let introFrameId = 0
+let introUpdateTimer: ReturnType<typeof setTimeout> | undefined
 const saveKey = 'club-state'
 const helpSeenKey = 'club-help-seen'
 const reactionSlotsKey = 'club-reaction-slots'
@@ -3987,18 +3987,18 @@ function scheduleFrame() {
   clubGlobal.clubFrameId = frameId
 }
 
-function scheduleIntroFrame() {
+function scheduleIntroUpdate() {
   if (introHidden) {
     return
   }
 
-  introFrameId = requestAnimationFrame(updateIntroFrame)
+  introUpdateTimer = setTimeout(updateIntro, 100)
 }
 
-function updateIntroFrame() {
-  introFrameId = 0
-  updateIntro()
-  scheduleIntroFrame()
+function updateIntro() {
+  introUpdateTimer = undefined
+  refreshIntro()
+  scheduleIntroUpdate()
 }
 
 function pauseGraphics() {
@@ -4497,7 +4497,7 @@ const draw = (stamp: number) => {
   updateFoamBuffer()
   updateSmokeBuffer()
   if (!introHidden) {
-    updateIntro()
+    refreshIntro()
   }
 
   renderCurrentSceneFrame({
@@ -4987,7 +4987,7 @@ function loadCurrentDance() {
   return characterRenderSystem.loadDanceOnce(idleClipIndex)
 }
 
-function updateIntro() {
+function refreshIntro() {
   const coreProgress = characterRenderSystem.coreProgress
   const startReady = introReadyToEnter()
   const progress = introPreloadDone ? 100 : introPreloadStarted
@@ -5012,7 +5012,7 @@ function enterIntro() {
   document.body.dataset.introVisible = String(!introHidden)
   removeEventListener('keydown', handleIntroStartKey)
   intro.dataset.hidden = 'true'
-  cancelAnimationFrame(introFrameId)
+  clearTimeout(introUpdateTimer)
   introEffectRenderer.stop()
   multiplayer.sendEnter()
 
@@ -5082,7 +5082,7 @@ function setNpcPlayerCount(count: number) {
 
 import.meta.hot?.dispose(() => {
   cancelAnimationFrame(frameId)
-  cancelAnimationFrame(introFrameId)
+  clearTimeout(introUpdateTimer)
   introEffectRenderer.stop()
   multiplayer.close()
 })
@@ -5165,7 +5165,7 @@ const characterRenderSystem = createCharacterRenderSystem({
 setIntroLoadProgress({ introBar, introProgress }, 45, introEffectRenderer)
 await afterNextPaint()
 startIntroPreload()
-scheduleIntroFrame()
+scheduleIntroUpdate()
 scheduleFrame()
 
 function loadMainWorldOnce() {
