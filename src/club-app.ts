@@ -179,6 +179,7 @@ import { createObjectTurnBasisCache } from './turn-basis.ts'
 import { createVideoPreviewRenderer } from './video-preview-renderer.ts'
 
 const clubGlobal = globalThis as ClubGlobal
+const pip = new URLSearchParams(location.search).has('pip')
 
 if (clubGlobal.clubFrameId !== undefined) {
   cancelAnimationFrame(clubGlobal.clubFrameId)
@@ -1874,7 +1875,7 @@ const feedbackSitResetSeconds = 3
 const tripKinds = [0, 1, 2] as const
 let outsideTree: CircleBounds = { ...outsideTreeStart }
 let lastStamp = 0
-let graphicsPaused = document.hidden
+let graphicsPaused = document.hidden && !pip
 let introPreloadStarted = false
 let introPreloadDone = false
 let introPreloadFailed = false
@@ -4002,6 +4003,10 @@ function updateIntro() {
 }
 
 function pauseGraphics() {
+  if (pip) {
+    return
+  }
+
   graphicsPaused = true
   cancelAnimationFrame(frameId)
 }
