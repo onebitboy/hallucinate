@@ -2550,6 +2550,10 @@ async function youtubeVideoMetadata(id: string) {
   }
 
   const next = fetchYouTubeVideoMetadata(id)
+    .catch((e: unknown) => {
+      youtubeMetadataCache.delete(id)
+      throw e
+    })
 
   youtubeMetadataCache.set(id, next)
 
@@ -2572,7 +2576,8 @@ async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetada
       title?: unknown
     }
   }
-  const title = data.videoDetails?.title
+  const rawTitle = data.videoDetails?.title
+  const title = typeof rawTitle === 'string' ? rawTitle : fallbackYouTubeTitle(text)
   const duration = Number(data.videoDetails?.lengthSeconds)
 
   if (typeof title !== 'string') {
@@ -2584,6 +2589,22 @@ async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetada
   }
 
   return { duration, title }
+}
+
+function fallbackYouTubeTitle(text: string) {
+  const ogTitle = /<meta\s+property="og:title"\s+content="([^"]+)"/.exec(text)?.[1]
+  const pageTitle = /<title>([^<]+)<\/title>/.exec(text)?.[1]?.replace(/\s*-\s*YouTube\s*$/, '')
+
+  return ogTitle ? htmlText(ogTitle) : pageTitle ? htmlText(pageTitle) : undefined
+}
+
+function htmlText(text: string) {
+  return text
+    .replaceAll('&amp;', '&')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
 }
 
 async function syncVideoPlaylistsFromSources(space: SpaceState, now: number) {
@@ -2990,11 +3011,7 @@ async function ensureVideoQueueFromPlaylist(space: SpaceState, zone: VideoZone, 
 
   const playlist = videoPlaylist(space, zone).ids
 
-  if (!playlist.includes(queue.currentId) || !queue.shuffledIds || queue.cursor === undefined
-    || queue.shuffledIds[queue.cursor] !== queue.currentId || !queue.nextId
-    || !Number.isFinite(queue.duration) || queue.duration <= 0
-    || !Number.isFinite(queue.nextDuration) || (queue.nextDuration ?? 0) <= 0)
-  {
+  if (!playlist.includes(queue.currentId) || invalidVideoQueue(queue)) {
     await setShuffledVideoQueue(space, zone, now, queue.currentId, queue.startedAt)
     return true
   }
@@ -3033,12 +3050,16 @@ async function setShuffledVideoQueue(
 async function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number) {
   const queue = videoQueue(space, zone)!
 
-  if (!queue.shuffledIds || queue.cursor === undefined) {
-    await setShuffledVideoQueue(space, zone, now, queue.currentId)
+  if (invalidVideoQueue(queue)) {
+    const startedAt = Number.isFinite(queue.startedAt) ? queue.startedAt : now
+
+    await setShuffledVideoQueue(space, zone, now, queue.currentId, startedAt)
     return true
   }
 
-  if (queue.shuffledIds.length === 1 && now >= videoScheduleEnd(queue)) {
+  const shuffledIds = queue.shuffledIds!
+
+  if (shuffledIds.length === 1 && now >= videoScheduleEnd(queue)) {
     const duration = queue.duration * 1000
     const cycles = Math.floor((now - queue.startedAt) / duration)
 
@@ -3081,6 +3102,12 @@ async function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number
   }
 
   return changed
+}
+
+function invalidVideoQueue(queue: StoredVideoQueueEntry) {
+  return !queue.shuffledIds || queue.cursor === undefined || queue.shuffledIds[queue.cursor] !== queue.currentId
+    || !queue.nextId || !Number.isFinite(queue.duration) || queue.duration <= 0
+    || !Number.isFinite(queue.nextDuration) || (queue.nextDuration ?? 0) <= 0
 }
 
 async function skipVideoQueue(space: SpaceState, zone: VideoZone, now: number) {

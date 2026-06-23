@@ -2165,8 +2165,16 @@ html[data-touch-controls="true"] #chat-log {
   left: 0;
   top: 0;
   z-index: 20;
-  contain: layout paint style;
   will-change: transform;
+}
+
+#chat-form,
+.chat-bubble {
+  contain: layout paint style;
+}
+
+.chat-reaction {
+  contain: layout style;
 }
 
 #chat-form,
