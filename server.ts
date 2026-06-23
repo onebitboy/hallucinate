@@ -135,6 +135,8 @@ type YouTubeVideoMetadata = {
   title: string
 }
 
+class YouTubeMetadataRateLimitError extends Error {}
+
 type ChatHistoryEntry = MessagePacket
 
 type StoredChatHistory = {
@@ -2509,6 +2511,18 @@ async function videoScheduleColumn(space: SpaceState, zone: VideoZone): Promise<
 
   const ids = upcomingVideoIds(space, zone, videoScheduleCount)
   const metadata = await Promise.all(ids.map(id => youtubeVideoMetadata(id)))
+    .catch((e: unknown) => {
+      if (e instanceof YouTubeMetadataRateLimitError) {
+        return undefined
+      }
+
+      throw e
+    })
+
+  if (!metadata) {
+    return { zone, sets: [] }
+  }
+
   const queue = videoQueue(space, zone)
   let startAt = queue ? queue.startedAt : now
   const sets = ids.map((id, index) => {
@@ -2566,7 +2580,7 @@ async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetada
   const now = Date.now()
 
   if (now < youtubeMetadataRetryAt) {
-    throw new Error(`YouTube metadata rate limited ${id}`)
+    throw new YouTubeMetadataRateLimitError(`YouTube metadata rate limited ${id}`)
   }
 
   const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(id)}`, {
@@ -2576,6 +2590,8 @@ async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetada
   if (!response.ok) {
     if (response.status === 429) {
       youtubeMetadataRetryAt = now + 60_000
+      console.error(new Error(`YouTube metadata rate limited until ${new Date(youtubeMetadataRetryAt).toISOString()}`))
+      throw new YouTubeMetadataRateLimitError(`YouTube metadata request failed ${id}: ${response.status}`)
     }
 
     throw new Error(`YouTube metadata request failed ${id}: ${response.status}`)
@@ -3005,8 +3021,19 @@ async function normalizeVideoSchedules(space: SpaceState, now: number, zones?: S
   const changedZones = new Set<VideoZone>()
 
   for (const queue of [...space.videoQueues]) {
-    if ((!zones || zones.has(queue.zone)) && await advanceVideoQueue(space, queue.zone, now)) {
-      changedZones.add(queue.zone)
+    if (!zones || zones.has(queue.zone)) {
+      try {
+        if (await advanceVideoQueue(space, queue.zone, now)) {
+          changedZones.add(queue.zone)
+        }
+      }
+      catch (e) {
+        if (e instanceof YouTubeMetadataRateLimitError) {
+          return changedZones
+        }
+
+        throw e
+      }
     }
   }
 
