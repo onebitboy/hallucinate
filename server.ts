@@ -245,11 +245,13 @@ const videoPlaylistRequestTimeout = 3000
 const videoScheduleSyncInterval = 1000
 const videoPlaylistMaxLength = 5000
 const videoScheduleCount = 5
+const videoQueueCatchUpMaxSteps = 3
 const youtubePlaylistMaxPages = 80
 const youtubeUserAgent =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36'
 const videoPlaylistFetches = new Map<string, Promise<string[]>>()
 const youtubeMetadataCache = new Map<string, Promise<YouTubeVideoMetadata>>()
+let youtubeMetadataRetryAt = 0
 const beachBallAuthorityDuration = 2000
 const adminPass = process.env.ADMIN_PASS ?? ''
 const bannedIps = await loadBannedIps()
@@ -2561,11 +2563,21 @@ async function youtubeVideoMetadata(id: string) {
 }
 
 async function fetchYouTubeVideoMetadata(id: string): Promise<YouTubeVideoMetadata> {
+  const now = Date.now()
+
+  if (now < youtubeMetadataRetryAt) {
+    throw new Error(`YouTube metadata rate limited ${id}`)
+  }
+
   const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(id)}`, {
     headers: youtubeHeaders(),
   })
 
   if (!response.ok) {
+    if (response.status === 429) {
+      youtubeMetadataRetryAt = now + 60_000
+    }
+
     throw new Error(`YouTube metadata request failed ${id}: ${response.status}`)
   }
 
@@ -3071,11 +3083,21 @@ async function advanceVideoQueue(space: SpaceState, zone: VideoZone, now: number
   }
 
   let changed = false
+  let steps = 0
 
   while (now >= videoScheduleEnd(videoQueue(space, zone)!)) {
     const current = videoQueue(space, zone)!
+
+    if (steps >= videoQueueCatchUpMaxSteps) {
+      await setShuffledVideoQueue(space, zone, now)
+      console.log(`[video] stale queue reset ${videoQueueStats(space, zone).join(' ')}`)
+      return true
+    }
+
     const startedAt = videoScheduleEnd(current)
     const nextCursor = current.cursor! + 1
+
+    steps++
 
     if (nextCursor < current.shuffledIds!.length) {
       await setPreparedVideoQueue(space, { ...current, cursor: nextCursor, currentId: current.shuffledIds![nextCursor]!,
