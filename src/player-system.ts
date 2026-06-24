@@ -38,7 +38,7 @@ import { createObjectTurnBasisCache } from './turn-basis.ts'
 import type { CircleBounds, Player, PlayerDestination, PlayerStyle, Vec3 } from './types.ts'
 
 const npcConfig = {
-  initialSeatedCount: 12,
+  initialSeatedCount: 18,
   leaveSeatTime: 1.4,
   movement: {
     minimumTravelers: 7,
@@ -51,15 +51,15 @@ const npcConfig = {
   },
   destination: {
     weights: {
-      insideDj: 0.2,
-      outsideDj: 0.34,
-      palmTree: 0.36,
-      upstairsDj: 0.52,
-      upstairsBarDance: 0.57,
+      insideDj: 0.16,
+      outsideDj: 0.27,
+      palmTree: 0.32,
+      upstairsDj: 0.43,
+      upstairsBarDance: 0.48,
       lounge: 0.68,
-      stool: 0.8,
-      tree: 0.86,
-      lake: 0.91,
+      stool: 0.86,
+      tree: 0.9,
+      lake: 0.94,
       kiosk: 0.99,
       foodTruck: 0.993,
       restroom: 0.997,
@@ -91,7 +91,7 @@ const npcConfig = {
     lakeSpots: 18,
   },
   seat: {
-    linger: [35, 110] as const,
+    linger: [55, 160] as const,
   },
   decision: {
     interval: [0.8, 2.2] as const,
